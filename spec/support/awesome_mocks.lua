@@ -20,18 +20,18 @@
 --   awesome.kill(pid, signal) — no-op by default; replace in spec as needed
 
 -- awesome is a global in AwesomeWM, not a module.
-awesome = { kill = function(pid, signal) end, connect_signal = function(name, cb) end } -- luacheck: globals awesome
+awesome = { kill = function(_pid, _signal) end, connect_signal = function(_name, _cb) end } -- luacheck: globals awesome
 
 package.preload["awful"] = function()
 	return {
 		spawn = {
-			easy_async = function(cmd, cb) end,
+			easy_async = function(_cmd, _cb) end,
 			-- Returns a fake PID integer, matching the real awful.spawn.with_line_callback API.
-			with_line_callback = function(cmd, callbacks)
+			with_line_callback = function(_cmd, _callbacks)
 				return 0
 			end,
 		},
-		button = function(mods, btn, fn)
+		button = function(_mods, _btn, _fn)
 			return {}
 		end,
 	}
@@ -39,9 +39,9 @@ end
 
 local _gears_mod
 _gears_mod = {
-	debug = { print_warning = function(msg) end },
+	debug = { print_warning = function(_msg) end },
 	table = {
-		join = function(...)
+		join = function()
 			return {}
 		end,
 	},
@@ -51,7 +51,7 @@ _gears_mod = {
 			_opts = opts,
 			again_count = 0,
 			stopped = false,
-			start = function(self) end,
+			start = function(_self) end,
 			stop = function(self)
 				self.stopped = true
 			end,
@@ -79,10 +79,10 @@ end
 
 local _naughty_mod
 _naughty_mod = {
-	notify = function(opts)
+	notify = function(_opts)
 		return { id = 1 }
 	end,
-	connect_signal = function(name, cb) end,
+	connect_signal = function(_name, _cb) end,
 	notification_closed_reason = { dismissed_by_command = "dismissed_by_command" },
 	config = { notify_callback = nil },
 }
@@ -92,8 +92,8 @@ _naughty_mod.make_notification = function(opts)
 	n.destroy = function(self)
 		self._private.is_destroyed = true
 	end
-	n.connect_signal = function(self, name, cb) end
-	n.reset_timeout = function(self) end
+	n.connect_signal = function(_self, _name, _cb) end
+	n.reset_timeout = function(_self) end
 	return n
 end
 _naughty_mod.notification = _naughty_mod.make_notification
@@ -103,7 +103,7 @@ end
 
 package.preload["menubar.utils"] = function()
 	return {
-		lookup_icon = function(name)
+		lookup_icon = function(_name)
 			return nil
 		end,
 	}
@@ -125,10 +125,10 @@ end
 
 package.preload["wibox.hierarchy"] = function()
 	return {
-		new = function(context, widget, width, height, redraw_cb, layout_cb, obj)
+		new = function(_context, _widget, _width, _height, _redraw_cb, _layout_cb, _obj)
 			return {
-				draw = function(self, ctx, cr) end,
-				update = function(self, ...) end,
+				draw = function(_self, _ctx, _cr) end,
+				update = function(_self) end,
 			}
 		end,
 	}
@@ -136,14 +136,14 @@ end
 
 package.preload["wibox.widget.base"] = function()
 	return {
-		make_widget = function(orig, name, args)
+		make_widget = function(_orig, _name, _args)
 			local w = { _private = {} }
-			w.emit_signal = function(self, sig) end
-			w.connect_signal = function(self, sig, cb) end
-			w.buttons = function(self, btns) end
+			w.emit_signal = function(_self, _sig) end
+			w.connect_signal = function(_self, _sig, _cb) end
+			w.buttons = function(_self, _btns) end
 			return w
 		end,
-		fit_widget = function(parent, context, widget, width, height)
+		fit_widget = function(_parent, context, widget, width, height)
 			if widget and widget.fit then
 				return widget:fit(context, width, height)
 			end

@@ -258,14 +258,14 @@ describe("registry", function()
 			spy.position_cb = nil
 			local caps = {
 				position = {
-					subscribe = function(source_id, cb)
+					subscribe = function(_source_id, cb)
 						spy.subscribe_calls = spy.subscribe_calls + 1
 						spy.position_cb = cb
 						return function()
 							spy.stop_called = true
 						end
 					end,
-					get = function(source_id, cb)
+					get = function(_source_id, cb)
 						cb(spy.get_val)
 					end,
 				},
@@ -747,14 +747,14 @@ describe("registry", function()
 
 		it("unsubscribing on_playback_action stops callback from firing on subsequent actions", function()
 			local exec = {
-				play = function(id) end,
-				pause = function(id) end,
-				play_pause = function(id) end,
-				stop = function(id) end,
-				next = function(id) end,
-				previous = function(id) end,
-				seek = function(id, s) end,
-				set_position = function(id, s) end,
+				play = function(_id) end,
+				pause = function(_id) end,
+				play_pause = function(_id) end,
+				stop = function(_id) end,
+				next = function(_id) end,
+				previous = function(_id) end,
+				seek = function(_id, _s) end,
+				set_position = function(_id, _s) end,
 			}
 			local flags = {
 				can_control = true,

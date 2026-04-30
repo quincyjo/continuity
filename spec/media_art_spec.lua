@@ -6,11 +6,10 @@ package.loaded["continuity.media.art"] = nil
 
 local awful = require("awful")
 local gears = require("gears")
-local last_cmd, last_cb, warned
+local last_cmd, warned
 
-awful.spawn.easy_async = function(cmd, cb)
+awful.spawn.easy_async = function(cmd, _cb)
 	last_cmd = type(cmd) == "table" and table.concat(cmd, " ") or cmd
-	last_cb = cb
 end
 
 gears.debug.print_warning = function()
@@ -22,7 +21,6 @@ local art = require("continuity.media.art")
 describe("art.resolve", function()
 	before_each(function()
 		last_cmd = nil
-		last_cb = nil
 		warned = false
 		art._clear_cache()
 	end)

@@ -10,3 +10,11 @@ globals = {
 self = false
 max_string_line_length = false
 max_comment_line_length = false
+
+-- Spec files monkey-patch globals for test isolation.
+files["spec/"] = {
+	globals = {
+		"awesome", -- overrides read_globals; allows awesome.kill = ... etc.
+		"os", -- allows os.time = ... for time-travel tests
+	},
+}

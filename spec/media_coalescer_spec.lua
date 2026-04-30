@@ -24,14 +24,14 @@ local function make_pos_caps(spy)
 	spy.get_val = nil
 	local caps = {
 		position = {
-			subscribe = function(source_id, cb)
+			subscribe = function(_source_id, cb)
 				spy.subscribe_calls = spy.subscribe_calls + 1
 				spy.position_cb = cb
 				return function()
 					spy.stop_called = true
 				end
 			end,
-			get = function(source_id, cb)
+			get = function(_source_id, cb)
 				cb(spy.get_val)
 			end,
 		},
@@ -60,10 +60,10 @@ local function make_playback_caps()
 		previous = function(id)
 			calls[#calls + 1] = { action = "previous", id = id }
 		end,
-		seek = function(id, s)
+		seek = function(id, _s)
 			calls[#calls + 1] = { action = "seek", id = id }
 		end,
-		set_position = function(id, s)
+		set_position = function(id, _s)
 			calls[#calls + 1] = { action = "set_position", id = id }
 		end,
 	}
@@ -388,7 +388,7 @@ describe("coalescer playback_capabilities forwarding", function()
 
 	local function make_caps_spy_inner()
 		local spy = { added = {}, updated = {}, removed = {} }
-		spy.add = function(id, name, s, caps)
+		spy.add = function(id, _name, _s, caps)
 			spy.added[#spy.added + 1] = { id = id, caps = caps }
 		end
 		spy.update = function(id, s, flags)

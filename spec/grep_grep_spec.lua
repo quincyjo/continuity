@@ -10,15 +10,6 @@ local function has_token(args, t)
 	return false
 end
 
-local function has_pair(args, a, b)
-	for i = 1, #args - 1 do
-		if args[i] == a and args[i + 1] == b then
-			return true
-		end
-	end
-	return false
-end
-
 describe("grep backend", function()
 	it("has command 'grep'", function()
 		assert.equals("grep", grep_cmd.command)

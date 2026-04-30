@@ -9,10 +9,10 @@ describe("sysinfo.cpu module", function()
 		package.loaded["continuity.sysinfo.cpu"] = nil
 		captured_cb = nil
 		mock_backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				captured_cb = cb
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		cpu = require("continuity.sysinfo.cpu")
 	end)
@@ -44,9 +44,7 @@ describe("sysinfo.cpu module", function()
 
 	it("state delivers nil before any backend push", function()
 		cpu.setup({ backend = mock_backend })
-		local result = "not_called"
-		result = cpu.state()
-		assert.is_nil(result)
+		assert.is_nil(cpu.state())
 	end)
 
 	it("subscriber is called when backend pushes state", function()
@@ -112,13 +110,11 @@ describe("sysinfo.cpu module", function()
 		cpu.setup({ backend = mock_backend })
 		push(state(50))
 		cpu.stop()
-		local result = "not_called"
-		result = cpu.state()
-		assert.is_nil(result)
+		assert.is_nil(cpu.state())
 		-- re-setup works
 		local new_cb
 		local new_backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				new_cb = cb
 			end,
 			stop = function() end,

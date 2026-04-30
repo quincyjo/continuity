@@ -8,10 +8,10 @@ describe("sysinfo.net module", function()
 		package.loaded["continuity.sysinfo.net"] = nil
 		captured_cb = nil
 		mock_backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				captured_cb = cb
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		net = require("continuity.sysinfo.net")
 	end)

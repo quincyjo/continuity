@@ -12,11 +12,11 @@ describe("temp.backends.sysfs", function()
 		awful = require("awful")
 		gears_mod = require("gears")
 		gears_mod._created = {}
-		awful.spawn.with_line_callback = function(cmd, cbs)
+		awful.spawn.with_line_callback = function(_cmd, cbs)
 			captured_cbs = cbs
 			return 12345
 		end
-		awesome.kill = function(pid, sig)
+		awesome.kill = function(_pid, _sig)
 			kill_called = true
 		end
 		sysfs = require("continuity.sysinfo.temp.backends.sysfs")
@@ -91,7 +91,7 @@ describe("temp.backends.sysfs", function()
 
 	it("retry timer restarts the process", function()
 		local spawn_count = 0
-		awful.spawn.with_line_callback = function(cmd, cbs)
+		awful.spawn.with_line_callback = function(_cmd, cbs)
 			spawn_count = spawn_count + 1
 			captured_cbs = cbs
 			return spawn_count * 100

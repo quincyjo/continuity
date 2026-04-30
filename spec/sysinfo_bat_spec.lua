@@ -8,10 +8,10 @@ describe("sysinfo.bat module", function()
 		package.loaded["continuity.sysinfo.bat"] = nil
 		captured_cb = nil
 		mock_backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				captured_cb = cb
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		bat = require("continuity.sysinfo.bat")
 	end)

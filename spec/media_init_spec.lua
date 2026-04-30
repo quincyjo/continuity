@@ -44,10 +44,10 @@ describe("media module", function()
 		local started_with
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				started_with = reg
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		assert.is_not_nil(started_with)
@@ -61,10 +61,10 @@ describe("media module", function()
 		local added
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", { title = "Track", status = "playing", uri = "x:1" })
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		media.on_source_added(function(s)
@@ -80,10 +80,10 @@ describe("media module", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", { title = "Track" })
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		local sources = media.sources()
@@ -95,10 +95,10 @@ describe("media module", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", { title = "Song", status = "playing", uri = "x:1" })
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		assert.equals(1, #notifications_fired)
@@ -144,10 +144,10 @@ describe("media module", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", { title = "Song", status = "playing" })
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend }, notifications = false })
 		assert.equals(0, #notifications_fired)
@@ -158,10 +158,10 @@ describe("media module", function()
 		local reg_seen
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg_seen = reg
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({
 			backends = { fake_backend },
@@ -183,20 +183,20 @@ describe("media module", function()
 
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", { status = "playing" }, {
 					position = {
-						subscribe = function(source_id, cb)
+						subscribe = function(_source_id, cb)
 							position_cb_for["fake:1"] = cb
 							return function() end
 						end,
-						get = function(source_id, cb)
+						get = function(_source_id, cb)
 							cb(nil)
 						end,
 					},
 				})
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 
 		media.setup({
@@ -221,10 +221,10 @@ describe("media module", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", {})
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({
 			backends = { fake_backend },
@@ -256,13 +256,13 @@ describe("media module", function()
 		}
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", {}, {
 					playback = playback_executor,
 					flags = { can_control = true, can_play = true, can_pause = true },
 				})
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		local src = media.sources()[1]
@@ -278,10 +278,10 @@ describe("media module", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg.add("fake:1", "fake", {})
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		assert.is_nil(media.sources()[1].playback)
@@ -298,7 +298,7 @@ describe("media module", function()
 		local reg_seen
 		local fake_backend = {
 			name = "fake",
-			start = function(self, reg)
+			start = function(_self, reg)
 				reg_seen = reg
 				reg.add("fake:1", "fake", {}, {
 					playback = {
@@ -313,7 +313,7 @@ describe("media module", function()
 					},
 				})
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
 		local src = media.sources()[1]

@@ -73,7 +73,7 @@ describe("find (async)", function()
 	end)
 
 	after_each(function()
-		awful.spawn.easy_async = function(cmd, cb) end
+		awful.spawn.easy_async = function(_cmd, _cb) end
 	end)
 
 	it("calls easy_async with command prepended to build_args output", function()
@@ -153,7 +153,7 @@ describe("find.stream", function()
 	end)
 
 	after_each(function()
-		awful.spawn.with_line_callback = function(cmd, callbacks)
+		awful.spawn.with_line_callback = function(_cmd, _callbacks)
 			return {}
 		end
 	end)

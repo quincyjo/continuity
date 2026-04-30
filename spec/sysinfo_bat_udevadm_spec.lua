@@ -13,14 +13,14 @@ describe("bat.backends.udevadm", function()
 		awful = require("awful")
 		gears_mod = require("gears")
 		gears_mod._created = {}
-		awful.spawn.with_line_callback = function(cmd, cbs)
+		awful.spawn.with_line_callback = function(_cmd, cbs)
 			wlc_cbs = cbs
 			return 12345
 		end
-		awesome.kill = function(pid, sig)
+		awesome.kill = function(_pid, _sig)
 			kill_called = true
 		end
-		awful.spawn.easy_async = function(cmd, cb)
+		awful.spawn.easy_async = function(_cmd, cb)
 			easy_async_cb = cb
 		end
 		udevadm = require("continuity.sysinfo.bat.backends.udevadm")

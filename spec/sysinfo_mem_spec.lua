@@ -9,10 +9,10 @@ describe("sysinfo.mem module", function()
 		package.loaded["continuity.sysinfo.mem"] = nil
 		captured_cb = nil
 		mock_backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				captured_cb = cb
 			end,
-			stop = function(self) end,
+			stop = function(_self) end,
 		}
 		mem = require("continuity.sysinfo.mem")
 	end)
@@ -58,7 +58,7 @@ describe("sysinfo.mem module", function()
 		assert.is_nil(r)
 		local new_cb
 		mem.setup({ backend = {
-			start = function(self, cb)
+			start = function(_self, cb)
 				new_cb = cb
 			end,
 			stop = function() end,

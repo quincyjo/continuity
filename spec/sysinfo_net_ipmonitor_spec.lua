@@ -21,11 +21,11 @@ describe("net.backends.ipmonitor", function()
 		awful = require("awful")
 		gears_mod = require("gears")
 		gears_mod._created = {}
-		awful.spawn.with_line_callback = function(cmd, cbs)
+		awful.spawn.with_line_callback = function(_cmd, cbs)
 			wlc_cbs = cbs
 			return 12345
 		end
-		awesome.kill = function(pid, sig)
+		awesome.kill = function(_pid, _sig)
 			kill_called = true
 		end
 		awful.spawn.easy_async = function(cmd, cb)
@@ -275,7 +275,7 @@ describe("net.backends.ipmonitor", function()
 
 	it("retry timer restarts the monitor process", function()
 		local spawn_count = 0
-		awful.spawn.with_line_callback = function(cmd, cbs)
+		awful.spawn.with_line_callback = function(_cmd, cbs)
 			spawn_count = spawn_count + 1
 			wlc_cbs = cbs
 			return spawn_count * 100

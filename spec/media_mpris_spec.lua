@@ -193,7 +193,7 @@ method return time=1234567890.123456 sender=:1.42 -> destination=:1.100 serial=1
 			-- dbus-send does not escape " inside string values; the parser must
 			-- capture up to the last " on the line, not stop at the first inner one.
 			local quoted_title =
-				[[Cynthia: Champion Cynthia (From "Pokémon Diamond and Pearl") / Battle! Champion (From "Pokémon Diamond and Pearl")]]
+				[[Cynthia: Champion Cynthia (From "Pokémon Diamond and Pearl") / Battle! Champion (From "Pokémon Diamond and Pearl")]] -- luacheck: ignore
 			local output = string.format(
 				[[
 method return time=1.0 sender=:1.42 -> destination=:1.1 serial=1 reply_serial=2
@@ -449,7 +449,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 				end
 			end
 			local call_count = 0
-			mock_grep_fn = function(opts, cb)
+			mock_grep_fn = function(_opts, cb)
 				call_count = call_count + 1
 				if call_count == 1 then
 					cb({
@@ -477,7 +477,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 		end)
 
 		it("calls cb with nil when no .desktop file found via grep", function()
-			mock_grep_fn = function(opts, cb)
+			mock_grep_fn = function(_opts, cb)
 				cb({}, 0)
 			end
 			local result = "not_called"
@@ -489,7 +489,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 
 		it("calls cb with nil when Icon= field absent from .desktop file", function()
 			local call_count = 0
-			mock_grep_fn = function(opts, cb)
+			mock_grep_fn = function(_opts, cb)
 				call_count = call_count + 1
 				if call_count == 1 then
 					cb({
@@ -577,7 +577,7 @@ describe("backend instance", function()
 	it("fetches DesktopEntry and passes resolved icon as app_icon to registry.add", function()
 		package.loaded["continuity.media.backends.mpris"] = nil
 		package.loaded["continuity.util.app_icon"] = {
-			by_desktop_entry = function(entry, cb)
+			by_desktop_entry = function(_entry, cb)
 				cb("/usr/share/icons/hicolor/48x48/apps/spotify.png")
 			end,
 		}
@@ -619,7 +619,7 @@ describe("backend instance", function()
 		local b = require("continuity.media.backends.mpris")()
 		local add_args
 		local reg = {
-			add = function(sid, name, state, caps, app_name, app_icon)
+			add = function(sid, name, _state, _caps, app_name, app_icon)
 				add_args = { sid = sid, name = name, app_name = app_name, app_icon = app_icon }
 			end,
 			update = function() end,
@@ -635,7 +635,7 @@ describe("backend instance", function()
 	it("passes resolved icon from app_icon module to registry.add", function()
 		package.loaded["continuity.media.backends.mpris"] = nil
 		package.loaded["continuity.util.app_icon"] = {
-			by_desktop_entry = function(entry, cb)
+			by_desktop_entry = function(_entry, cb)
 				cb("/icons/com.spotify.Client.png")
 			end,
 		}
@@ -673,7 +673,7 @@ describe("backend instance", function()
 		local b = require("continuity.media.backends.mpris")()
 		local add_args
 		local reg = {
-			add = function(sid, name, state, caps, app_name, app_icon)
+			add = function(_sid, _name, _state, _caps, _app_name, app_icon)
 				add_args = { app_icon = app_icon }
 			end,
 			update = function() end,
@@ -710,7 +710,7 @@ describe("backend instance", function()
 		local b = require("continuity.media.backends.mpris")()
 		local add_args
 		local reg = {
-			add = function(sid, name, state, caps, app_name, app_icon)
+			add = function(_sid, _name, _state, _caps, _app_name, app_icon)
 				add_args = { app_icon = app_icon }
 			end,
 			update = function() end,
@@ -760,7 +760,7 @@ describe("backend instance", function()
 		local b = require("continuity.media.backends.mpris")()
 		local add_args
 		local reg = {
-			add = function(sid, name, state, caps, app_name, app_icon)
+			add = function(_sid, name, _state, _caps, _app_name, _app_icon)
 				add_args = { name = name }
 			end,
 			update = function() end,
@@ -806,7 +806,7 @@ describe("backend instance", function()
 		local b = require("continuity.media.backends.mpris")()
 		local add_args
 		local reg = {
-			add = function(sid, name, state, caps, app_name, app_icon)
+			add = function(_sid, name, _state, _caps, _app_name, _app_icon)
 				add_args = { name = name }
 			end,
 			update = function() end,

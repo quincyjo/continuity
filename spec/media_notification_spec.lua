@@ -47,7 +47,7 @@ end
 
 package.preload["continuity.media.art"] = function()
 	return {
-		resolve = function(uri, cb)
+		resolve = function(_uri, cb)
 			if art_deferred then
 				pending_art_callbacks[#pending_art_callbacks + 1] = cb
 			else
@@ -121,7 +121,7 @@ describe("notification", function()
 		n.destroy = function(self)
 			self._private.is_destroyed = true
 		end
-		n.connect_signal = function(self, name, cb) end
+		n.connect_signal = function(_self, _name, _cb) end
 		return n
 	end
 
@@ -237,7 +237,7 @@ describe("notification", function()
 		it("uses returned args for notification", function()
 			local mock_reg = make_mock_registry()
 			notification.new(mock_reg, {
-				notify_callback = function(source, icon)
+				notify_callback = function(_source, _icon)
 					return { title = "custom", message = "custom msg" }
 				end,
 			})
@@ -249,7 +249,7 @@ describe("notification", function()
 		it("suppresses notification when callback returns nil", function()
 			local mock_reg = make_mock_registry()
 			notification.new(mock_reg, {
-				notify_callback = function(source, icon)
+				notify_callback = function(_source, _icon)
 					return nil
 				end,
 			})
@@ -453,7 +453,7 @@ describe("notification", function()
 			mock_reg.fire_updated(source)
 			assert.equals(1, #notifications_fired)
 			local reset_count = 0
-			notifications_fired[1].reset_timeout = function(self)
+			notifications_fired[1].reset_timeout = function(_self)
 				reset_count = reset_count + 1
 			end
 			-- Same identity: simulate restart — refreshes (resets timeout), no new notification
