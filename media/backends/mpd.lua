@@ -156,8 +156,10 @@ local function create_backend(opts)
 
 	local connect_cmd = string.format(
 		"printf %q | nc %s %d 2>/dev/null",
-		table.concat(password and { string.format("password %s\n", password), "idle player mixer options\n" }
-			or { "idle player mixer options\n" }),
+		table.concat(
+			password and { string.format("password %s\n", password), "idle player mixer options\n" }
+				or { "idle player mixer options\n" }
+		),
 		host,
 		port
 	)
