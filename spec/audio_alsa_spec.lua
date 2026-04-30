@@ -52,7 +52,8 @@ describe("audio.backends.alsa", function()
 		end)
 
 		it("returns nil, nil when output has no percent", function()
-			local level, muted = alsa._private.parse_channel("amixer: Mixer attach default error: No such file or directory\n")
+			local level, muted =
+				alsa._private.parse_channel("amixer: Mixer attach default error: No such file or directory\n")
 			assert.is_nil(level)
 			assert.is_nil(muted)
 		end)

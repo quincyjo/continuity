@@ -220,10 +220,14 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 		assert.equals(count + 1, #easy_cmds)
 	end)
 
-	local VOLUME_MUTE_OUTPUT = table.concat({
-		"Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: 32768 /  50% / -18.06 dB",
-		"        balance 0.00",
-		"Mute: no",
+	local INPUT_POLL_OUTPUT = table.concat({
+		"Sink Input #263",
+		"\tSink: 57",
+		"\tMute: no",
+		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+		"\tProperties:",
+		'\t\tapplication.name = "spotify"',
+		'\t\tmedia.name = "Spotify"',
 	}, "\n") .. "\n"
 
 	it("calls inputs.update on 'change' sink-input event", function()
@@ -243,12 +247,14 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 		assert.equals(count + 1, #easy_cmds)
 		local cmd_str = type(easy_cmds[#easy_cmds].cmd) == "table" and table.concat(easy_cmds[#easy_cmds].cmd, " ")
 			or easy_cmds[#easy_cmds].cmd
-		assert.truthy(cmd_str:find("get%-sink%-input%-volume"))
-		easy_cmds[#easy_cmds].cb(VOLUME_MUTE_OUTPUT, "", "", 0)
+		assert.truthy(cmd_str:find("list sink%-inputs"))
+		easy_cmds[#easy_cmds].cb(INPUT_POLL_OUTPUT, "", "", 0)
 		assert.equals(1, #updated)
 		assert.equals("263", updated[1].id)
 		assert.equals(50, updated[1].state.level)
 		assert.is_false(updated[1].state.muted)
+		assert.equals("Spotify", updated[1].state.name)
+		assert.equals(57, updated[1].state.sink)
 	end)
 
 	it("fires two update polls when pending_inputs is empty", function()
@@ -273,10 +279,14 @@ end)
 describe("audio.backends.pulse (sink-input control)", function()
 	local pulse, awful, easy_cmds, wlc_cbs
 
-	local VOLUME_MUTE_OUTPUT = table.concat({
-		"Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: 32768 /  50% / -18.06 dB",
-		"        balance 0.00",
-		"Mute: no",
+	local INPUT_POLL_OUTPUT = table.concat({
+		"Sink Input #263",
+		"\tSink: 57",
+		"\tMute: no",
+		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+		"\tProperties:",
+		'\t\tapplication.name = "spotify"',
+		'\t\tmedia.name = "Spotify"',
 	}, "\n") .. "\n"
 
 	before_each(function()
@@ -313,8 +323,8 @@ describe("audio.backends.pulse (sink-input control)", function()
 		fire(1, "") -- set completes
 		assert.equals(2, #easy_cmds) -- post-set query
 		local q_str = table.concat(easy_cmds[2].cmd, " ")
-		assert.truthy(q_str:find("get%-sink%-input%-volume"))
-		fire(2, VOLUME_MUTE_OUTPUT)
+		assert.truthy(q_str:find("list sink%-inputs"))
+		fire(2, INPUT_POLL_OUTPUT)
 		assert.is_not_nil(result)
 		assert.equals(50, result.level)
 		assert.is_false(result.muted)

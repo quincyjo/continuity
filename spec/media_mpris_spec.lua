@@ -590,7 +590,8 @@ describe("backend instance", function()
 				elseif last == "org.freedesktop.DBus.GetNameOwner" then
 					cb('   string ":1.42"\n', "", "", 0)
 				elseif last == "string:org.mpris.MediaPlayer2" then
-					cb([[   array [
+					cb(
+						[[   array [
 					      dict entry(
 					         string "Identity"
 					         variant             string "Spotify"
@@ -600,7 +601,11 @@ describe("backend instance", function()
 					         variant             string "spotify"
 					      )
 					   ]
-					]], "", "", 0)
+					]],
+						"",
+						"",
+						0
+					)
 				else
 					cb("", "", "", 0)
 				end
@@ -643,13 +648,18 @@ describe("backend instance", function()
 				elseif last == "org.freedesktop.DBus.GetNameOwner" then
 					cb('   string ":1.42"\n', "", "", 0)
 				elseif last == "string:org.mpris.MediaPlayer2" then
-					cb([[   array [
+					cb(
+						[[   array [
 					      dict entry(
 					         string "DesktopEntry"
 					         variant             string "spotify"
 					      )
 					   ]
-					]], "", "", 0)
+					]],
+						"",
+						"",
+						0
+					)
 				else
 					cb("", "", "", 0)
 				end
@@ -721,7 +731,8 @@ describe("backend instance", function()
 				if last == "org.freedesktop.DBus.ListNames" then
 					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
 				elseif last == "string:org.mpris.MediaPlayer2" then
-					cb([[   array [
+					cb(
+						[[   array [
 					      dict entry(
 					         string "Identity"
 					         variant             string "Spotify"
@@ -731,7 +742,11 @@ describe("backend instance", function()
 					         variant             string "spotify"
 					      )
 					   ]
-					]], "", "", 0)
+					]],
+						"",
+						"",
+						0
+					)
 				else
 					cb("", "", "", 0)
 				end
@@ -766,13 +781,18 @@ describe("backend instance", function()
 				if last == "org.freedesktop.DBus.ListNames" then
 					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
 				elseif last == "string:org.mpris.MediaPlayer2" then
-					cb([[   array [
+					cb(
+						[[   array [
 					      dict entry(
 					         string "DesktopEntry"
 					         variant             string "spotify"
 					      )
 					   ]
-					]], "", "", 0)
+					]],
+						"",
+						"",
+						0
+					)
 				else
 					cb("", "", "", 0)
 				end

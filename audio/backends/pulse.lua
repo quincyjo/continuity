@@ -328,19 +328,19 @@ local function create(_) -- luacheck: ignore
 						if pending_inputs[idx_str] and pending_inputs[idx_str] > 0 then
 							pending_inputs[idx_str] = pending_inputs[idx_str] - 1
 						else
-							awful.spawn.easy_async({
-								"sh",
-								"-c",
-								"pactl get-sink-input-volume " .. idx_str .. "; pactl get-sink-input-mute " .. idx_str,
-							}, function(stdout, _, _, exitcode)
-								if exitcode ~= 0 or not input_handles then
-									return
+							awful.spawn.easy_async(
+								{ "sh", "-c", "pactl list sink-inputs" },
+								function(stdout, _, _, exitcode)
+									if exitcode ~= 0 or not input_handles then
+										return
+									end
+									local block = find_sink_input_block(stdout, idx_str)
+									if block then
+										local s = parse_sink_input_block(idx_str, block)
+										input_handles.update(idx_str, s)
+									end
 								end
-								local level, muted = parse_volume_mute(stdout)
-								if level ~= nil then
-									input_handles.update(idx_str, { level = level, muted = muted })
-								end
-							end)
+							)
 						end
 					end
 				end
@@ -468,17 +468,14 @@ local function create(_) -- luacheck: ignore
 	end
 
 	local function after_set_input(id, cb)
-		awful.spawn.easy_async({
-			"sh",
-			"-c",
-			"pactl get-sink-input-volume " .. id .. "; pactl get-sink-input-mute " .. id,
-		}, function(stdout, _, _, exitcode)
+		awful.spawn.easy_async({ "sh", "-c", "pactl list sink-inputs" }, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 then
 				return
 			end
-			local level, muted = parse_volume_mute(stdout)
-			if level ~= nil and cb then
-				cb(level, muted)
+			local block = find_sink_input_block(stdout, id)
+			if block and cb then
+				local s = parse_sink_input_block(id, block)
+				cb(s.level, s.muted)
 			end
 		end)
 	end

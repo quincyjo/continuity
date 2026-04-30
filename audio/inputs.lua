@@ -59,25 +59,25 @@ function inputs.new(backend)
 
 	local HandleMT = {
 		__index = {
-			subscribe = function(self, cb) -- luacheck: ignore 212
+			subscribe = function(self, cb)
 				local cbs = state.subscribers[self.id]
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
 
-			on_control = function(self, cb) -- luacheck: ignore 212
+			on_control = function(self, cb)
 				local cbs = state.on_control_cbs[self.id]
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
 
-			on_removed = function(self, cb) -- luacheck: ignore 212
+			on_removed = function(self, cb)
 				local cbs = state.handle_removed_cbs[self.id]
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
 
-			adjust_perc = function(self, delta) -- luacheck: ignore 212
+			adjust_perc = function(self, delta)
 				if delta > 0 and delta + self.state.level > 100 then
 					delta = 100 - self.state.level
 				elseif delta < 0 and delta + self.state.level < 0 then
@@ -98,7 +98,7 @@ function inputs.new(backend)
 				end)
 			end,
 
-			set_perc = function(self, value) -- luacheck: ignore 212
+			set_perc = function(self, value)
 				value = math.max(0, math.min(100, math.floor(value + 0.5)))
 				backend:set_input_perc(self.id, value, function(level, muted)
 					local changed = self.state.level ~= level or self.state.muted ~= muted
@@ -111,7 +111,7 @@ function inputs.new(backend)
 				end)
 			end,
 
-			toggle_mute = function(self) -- luacheck: ignore 212
+			toggle_mute = function(self)
 				backend:toggle_input(self.id, function(level, muted)
 					local changed = self.state.level ~= level or self.state.muted ~= muted
 					self.state.level = level
@@ -127,23 +127,23 @@ function inputs.new(backend)
 
 	local inst = {}
 
-	function inst:on_input_added(cb) -- luacheck: ignore 212
+	function inst:on_input_added(cb)
 		state.on_added_cbs[#state.on_added_cbs + 1] = cb
 		return make_unsub(state.on_added_cbs, cb)
 	end
 
-	function inst:on_input_updated(cb) -- luacheck: ignore 212
+	function inst:on_input_updated(cb)
 		state.on_updated_cbs[#state.on_updated_cbs + 1] = cb
 		return make_unsub(state.on_updated_cbs, cb)
 	end
 
-	function inst:on_input_removed(cb) -- luacheck: ignore 212
+	function inst:on_input_removed(cb)
 		state.on_removed_cbs[#state.on_removed_cbs + 1] = cb
 		return make_unsub(state.on_removed_cbs, cb)
 	end
 
 	---@return SinkInputHandle[]
-	function inst:all() -- luacheck: ignore 212
+	function inst:all()
 		local list = {}
 		for _, h in pairs(state.inputs) do
 			list[#list + 1] = h

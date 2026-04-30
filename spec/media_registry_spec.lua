@@ -142,17 +142,13 @@ describe("registry", function()
 			it("flags update is a no-op when source.playback is nil", function()
 				reg.add("src:1", "source", {})
 				assert.has_no.errors(function()
-					reg.update(
-						"src:1",
-						{},
-						{
-							can_seek = true,
-							can_go_next = true,
-							can_go_previous = true,
-							can_play = true,
-							can_pause = true,
-						}
-					)
+					reg.update("src:1", {}, {
+						can_seek = true,
+						can_go_next = true,
+						can_go_previous = true,
+						can_play = true,
+						can_pause = true,
+					})
 				end)
 			end)
 		end)
