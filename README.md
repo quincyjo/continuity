@@ -1,0 +1,416 @@
+# continuity
+
+A collection of AwesomeWM modules providing system monitoring, media integration,
+audio control, client switching, and async CLI tool wrappers. Modules use a
+declarative configuration setup and provide lifecycle subscription callbacks to
+monitor system state.
+
+Provided UI is minimalistic, as this is meant to provide an event driven
+interface for building your own UIs. Check out the docs for each module for
+some examples.
+
+## Compatibility
+
+This module is built to run on AwesomeWM 4.3 and later (git master). It may not
+work with earlier versions, and there is currently no plan to support older
+versions.
+
+This module is meant to be runnable in Lua 5.1+ and LuaJIT. My personal runtime
+is LuaJIT 2.1. If you encounter issues with compatibility on any of these,
+please open an issue.
+
+## Installation
+
+Clone the repo into your `~/.config/awesome` directory:
+
+```bash
+git clone https://github.com/quincyjo/continuity.git ~/.config/awesome
+```
+
+## Conventions
+
+**sysinfo modules** (`bat`, `cpu`, `mem`, `net`, `temp`) share a uniform interface:
+
+```lua
+module.setup(opts)              -- call once in rc.lua; opts.backend overrides default
+local unsub = module:subscribe( -- push-based updates; fires immediately if state is known
+  function(state) ... end
+)
+unsub()                         -- stop receiving updates
+module.state()                  -- synchronous read of last-known state (may be nil)
+module.stop()                   -- tear down backend and clear subscribers
+```
+
+---
+
+## sysinfo
+
+The `sysinfo` module provides system-level information, such as battery status,
+CPU usage, and network rates. Subscribers receive updates regularly via push-based
+callbacks, and new subscribers are notified immediately if the state is already
+known.
+
+### bat — Battery
+
+Monitors battery charge, status, and power draw across all batteries via `udevadm`.
+Maintains an EMA-smoothed power average for time-remaining estimates.
+
+```lua
+local bat = require("continuity.sysinfo.bat")
+bat.setup()
+bat:subscribe(function(state)
+    -- state.perc, state.status ("Charging"|"Discharging")
+    -- state.power_now, state.power_average (watts)
+    -- state.ac_online, state.batteries (per-battery breakdown)
+end)
+
+local seconds = bat.time_remaining()  -- nil unless discharging
+local seconds = bat.time_until_full() -- nil unless charging
+```
+
+[Full documentation](docs/sysinfo/bat.md)
+
+---
+
+### cpu — CPU
+
+Reads `/proc/stat` on a timer and reports aggregate and per-core usage.
+
+```lua
+local cpu = require("continuity.sysinfo.cpu")
+cpu.setup()
+cpu:subscribe(function(state)
+    -- state.usage  (aggregate %)
+    -- state.cores[n].usage, .user, .system, .idle, .iowait, .steal
+end)
+```
+
+[Full documentation](docs/sysinfo/cpu.md)
+
+---
+
+### mem — Memory
+
+Parses `/proc/meminfo` and reports RAM and swap usage.
+
+```lua
+local mem = require("continuity.sysinfo.mem")
+mem.setup()
+mem:subscribe(function(state)
+    -- state.total, state.used, state.free (MiB)
+    -- state.perc  (used / total * 100)
+    -- state.swap_total, state.swap_used, state.swap_free (MiB)
+end)
+```
+
+[Full documentation](docs/sysinfo/mem.md)
+
+---
+
+### net — Network
+
+Tracks per-interface TX/RX rates, link state, and WiFi signal strength.
+
+```lua
+local net = require("continuity.sysinfo.net")
+net.setup()
+net:subscribe(function(state)
+    -- state.tx_rate, state.rx_rate  (aggregate bytes/s)
+    -- state.devices["eth0"].tx_rate, .rx_rate, .state, .carrier, .wifi, .signal
+end)
+```
+
+[Full documentation](docs/sysinfo/net.md)
+
+---
+
+### temp — Temperature
+
+Reads thermal zone temperatures from sysfs.
+
+```lua
+local temp = require("continuity.sysinfo.temp")
+temp.setup()
+temp:subscribe(function(state)
+    -- state.avg                  (mean °C across all zones)
+    -- state.zones["/sys/..."]    (°C per zone path)
+end)
+```
+
+[Full documentation](docs/sysinfo/temp.md)
+
+---
+
+## media
+
+Aggregates playback state from one or more backends (MPD, MPRIS) into
+individual observable and controllable playback sources. Provides configurable
+notifications, remote art resolution, and playback control.
+
+While the default configuration will work for the majority of cases out of the
+box, this module is by the far the most complex and supports a wide range of
+customization. Refer to the [full documentation](docs/media.md) for more
+information.
+
+```lua
+local media  = require("continuity.media")
+local mpd    = require("continuity.media.backends.mpd")
+local mpris  = require("continuity.media.backends.mpris")
+
+media.setup({
+    -- backends = { mpris(), mpd { host = "localhost", port = 6600 } }, -- Configure backends. Default is MPRIS only.
+    -- notifications = false  -- disable OSD notifications
+    -- notifications = theme.media_notification  -- provide a custom notification handler.
+})
+
+-- Each returns an unsub function if used in a temporary context, such as a popup or notification.
+media.on_source_added(function(source) ... end)
+-- Updates *should* only be fired when something has changed, but exact behaviour depends
+-- on the specific backend and upstream application.
+media.on_source_updated(function(source)
+    -- source.state.title, .artist, .album, .art_path
+    -- source.playback.play_pause(), .next(), .previous(), .stop()
+end)
+media.on_source_removed(function(source_id) ... end)
+
+media.play_pause() -- play/pause most-recent source
+media.next()       -- skip forward
+media.previous()   -- skip backward
+```
+
+[Full documentation](docs/media.md)
+
+---
+
+## audio
+
+Tracks volume and mute state for the default output (sink) and input (source)
+devices via push-based event subscription — no polling. Out-of-band changes
+(hardware keys, other applications) are detected immediately via `pactl subscribe`
+or `amixer sevents`. The PulseAudio/PipeWire backend is the default; an ALSA
+backend is also provided.
+
+Two pre-created handles, `Audio.Volume` (sink) and `Audio.Capture` (source), are
+available after `setup`. Subscribers receive a full `AudioState` on each change,
+including port type (speaker, headphones, headset, …) and connection type (analog,
+bluetooth, …) when the backend can derive them.
+
+```lua
+local audio = require("continuity.audio")
+audio.setup()
+
+local volume  = audio.Volume   -- default sink
+local capture = audio.Capture  -- default source
+
+-- Current readable state. May be (0, false) if not yet known, i.e., before
+-- the first backend event has been received.
+local current_level, current_muted = volume.state.level, volume.state.muted
+
+-- Alternatively, seed initial state with on_ready:
+-- Fires exactly once when state is first known, or immediately if already known.
+-- Any on_ready hooks are guaranteed to run before any subscribe hooks registered
+-- during the same execution cycle.
+volume:on_ready(function(state)
+    -- Concrete known values.
+    current_level, current_muted = state.level, state.muted
+end)
+
+-- Fires whenever a material change is observed (out-of-band or from a control call).
+volume:subscribe(function(state)
+    require("naughty").notify {
+        title   = "Volume",
+        message = state.muted and "Muted" or string.format("%d%%", state.level),
+    }
+end)
+
+-- Fires on every control call, regardless of whether the value changed.
+-- Use this for immediate UI feedback (e.g. a transient popup).
+volume:on_control(function(state)
+    show_volume_popup(state)
+end)
+
+-- Subscribers are informed immediately:
+volume:adjust_perc(5)    -- +5% (also unmutes on PulseAudio backend)
+volume:adjust_perc(-5)   -- -5%
+volume:set_perc(50)      -- absolute
+volume:toggle_mute()
+
+-- Switch to the ALSA backend:
+audio.setup({ backend = require("continuity.audio.backends.alsa")() })
+```
+
+[Full documentation](docs/audio.md)
+
+---
+
+## backlight
+
+Controls and monitors display (and keyboard) brightness via sysfs, acpilight, or
+xbacklight. A `primary_display` handle is pre-created and wired to the first
+discovered display device. `on_control` fires on every control call for transient
+UI feedback; `subscribe` fires only on out-of-band changes.
+
+```lua
+local backlight = require("continuity.backlight")
+backlight.setup({
+    -- backend = require("continuity.backlight.backends.acpilight")(), -- default: sysfs
+})
+
+-- Current readable state. May be 0 until first discovery poll completes.
+local current = backlight.primary_display.brightness
+
+-- Fires once when state is first known or immediately if already known.
+backlight.primary_display:on_ready(function(brightness, raw)
+    current = brightness
+end)
+
+-- Fires on every change (e.g. control API, hardware key, another application).
+backlight.primary_display:subscribe(function(brightness, raw)
+    print("brightness changed:", brightness)
+end)
+
+-- Fires on every control call, even when value is unchanged.
+-- Use this for transient UI such as a popup.
+backlight.primary_display:on_control(function(brightness, raw)
+    show_brightness_popup(brightness)
+end)
+
+backlight.primary_display:adjust_perc(10)   -- +10%
+backlight.primary_display:adjust_perc(-10)  -- -10%
+backlight.primary_display:set_perc(75)      -- absolute
+
+-- Step-based control (sysfs and acpilight backends):
+backlight.primary_display:adjust(2)         -- +2 raw steps
+backlight.primary_display:adjust(-2)        -- -2 raw steps
+backlight.primary_display:set(10)           -- absolute raw step
+```
+
+[Full documentation](docs/backlight.md)
+
+---
+
+## alttab
+
+A keyboard-driven client switcher that maintains a focus-ordered stack and hands
+off to a `keygrabber` during an active switch session. The UI is provided by the
+caller via an `AlttabUI` callback table; a notification-based fallback is used if
+none is supplied.
+
+All keybinds require `held_key` (default "Mod1") to be held. Releasing the held key 
+focuses the selected client's screen, switches to that client's tag, and focuses
+and raises the client. Using the `pull_key` also closes the session.
+
+- `select_key` to select next client
+- `mod_key + select_key` to select previous client
+- `pull_key` close the session and moves the selected client to the current
+  screen and current primary tag
+- `mod_key + pull_key` close the session and moves the selected client to the current
+  screen and appends the current primary tag without removing other tags.
+- `1,2,...9` moves the selected client to the corresponding tag
+- `mod_key + 1,2,...9` Toggles the corresponding tag on the selected client
+- `escape` close the session without doing anything
+
+```lua
+local alttab = require("continuity.alttab")
+
+alttab.setup({
+    ui = my_ui,          -- AlttabUI implementation (optional)
+    held_key  = "Mod1",  -- key held while switcher is open (default: "Mod1" eg alt)
+    select_key = "Tab",  -- key to cycle through clients     (default: "Tab")
+	mod_key = "Shift",   -- key to modify actions, eg index -1 (default "Shift")
+	pull_key = "Space",  -- key to pull selected client to current screen and tag (default: "Space")
+	number_shift_mappings = { ... }, -- If you don't use QWERTY, tell the keygrabber what the shift values for numbers keys are, 1-9.
+})
+
+-- Bind in rc.lua globalkeys:
+awful.key({ "Mod1" },         "Tab", function() alttab.switch(1)  end)
+awful.key({ "Mod1", "Shift"}, "Tab", function() alttab.switch(-1) end)
+```
+
+[Full documentation](docs/alttab.md)
+
+---
+
+## tools
+
+Async wrappers around system CLI tools. Backend is selected at load time from
+whatever is available on `PATH` (prefers the faster/richer option).
+
+### find
+
+Wraps `fd` (preferred) or `find`. Accepts a pattern string or an options table.
+
+```lua
+local find = require("continuity.tools.find")
+
+-- Collect all results then call cb once:
+find("config", function(results, exit_code)
+    for _, path in ipairs(results) do ... end
+end)
+
+-- Stream results in batches as they arrive, batched per glib loop:
+find.stream({ pattern = "continuity", type = "file", extension = "lua", path = "~/.config" }, function(batch, exit_code)
+    -- Batch is nil once the stream is closed.
+    if batch then
+        for _, path in ipairs(batch) do ... end
+    end
+end)
+```
+
+[Full documentation](docs/tools/find.md)
+
+---
+
+### grep
+
+Wraps `rg` (preferred) or `grep`. Results are structured `{ filepath, line_number, text }`.
+
+```lua
+local grep = require("continuity.tools.grep")
+
+grep({ "setup", "~/.config/awesome" }, function(results, exit_code)
+    for _, r in ipairs(results) do
+        print(string.format("%s:%d: %s", r.filepath, r.line_number, r.text))
+    end
+end)
+
+-- Streaming variant:
+grep.stream({ pattern = "todo", path = "~", case_insensitive = true }, function(batch, exit_code)
+    -- Batch is nil once the stream is closed.
+    if batch then
+        for _, path in ipairs(batch) do ... end
+    end
+end)
+```
+
+[Full documentation](docs/tools/grep.md)
+
+### Notes
+
+You will likely see some Awesome warning pairs when reloading like this:
+
+```
+2026-04-23 16:23:28 W: awesome: sysinfo.bat.udevadm: Shutting down process group 1224241. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: sysinfo.temp.sysfs: Shutting down process group 1224246. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: sysinfo.cpu.procstat: Shutting down process group 1224249. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: sysinfo.mem.procmeminfo: Shutting down process group 1224253. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: sysinfo.net.ipmonitor: Shutting down process group 1224390. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: backlight.acpilight: Shutting down process group 1224259. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: media.mpris.monitor: Shutting down process group 1224338. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: media.mpris.lifecycle: Shutting down process group 1224339. A following unknown child exited with signal 15 may occur and can be ignored.
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224241 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224246 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224249 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224253 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224259 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224338 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224339 exited with signal 15
+2026-04-23 16:23:28 W: awesome: spawn_child_exited:388: Unknown child 1224390 exited with signal 15
+```
+
+This is expected, and can be ignored. Many of the backends use long-lived
+processes instead of a `gears.timer`. When Awesome reloads, the process groups
+are killed, and if this happens after the reload transfers all subprocesses to
+the new Awesome instance, the child exits will be reported as
+`Unknown child ... exited with signal 15`. This is confirmation that the
+process properly cleaned itself up, and it is not an error.
