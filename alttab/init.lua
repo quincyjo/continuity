@@ -8,7 +8,7 @@
 -- be called from rc.lua.
 
 local awful = require("awful")
-local naughty = require("naughty")
+local nc = require("continuity.compat.naughty")
 require("themes.qubit.types")
 ---@diagnostic disable-next-line: undefined-global
 local client, tag = client, tag
@@ -103,9 +103,9 @@ local function make_default_ui()
 		end
 		local message = table.concat(lines, "\n")
 		if notif then
-			notif.message = message
+			notif = nc.update_message(notif, message)
 		else
-			notif = naughty.notification({
+			notif = nc.notify({
 				title = "Alt-Tab",
 				message = message,
 				timeout = 0,
@@ -126,7 +126,7 @@ local function make_default_ui()
 		end,
 		hide = function()
 			if notif then
-				notif:destroy()
+				nc.destroy(notif)
 				notif = nil
 			end
 			current_clients = nil

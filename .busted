@@ -4,5 +4,11 @@ return {
     lpath     = "../?.lua;../?/init.lua;./?.lua;./?/init.lua;./spec/?.lua;./spec/?/init.lua",
     pattern   = "_spec",
     recursive = true,
-  }
+  },
+  luajit = {
+    lua       = "luajit",
+    lpath     = "../?.lua;../?/init.lua;./?.lua;./?/init.lua;./spec/?.lua;./spec/?/init.lua",
+    pattern   = "_spec",
+    recursive = true,
+  },
 }

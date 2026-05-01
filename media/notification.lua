@@ -1,7 +1,7 @@
 -- Naughty notification integration.
 -- Subscribes to source lifecycle and fires per-source track-change notifications.
 
-local naughty = require("naughty")
+local nc = require("continuity.compat.naughty")
 local awful = require("awful")
 local art = require("continuity.media.art")
 local PlaybackAction = require("continuity.media.registry").PlaybackAction
@@ -23,12 +23,12 @@ local notification = {}
 ---@field on_destroy? fun(): boolean Cleanup callback called when the
 ---                   notification is destroyed.
 ---@field callback?   fun(notification: NaughtyNotification) Callback called when the
----                   notification is created.
+---                   notification is created. Receives the raw naughty notification.
 
 ---@class NaughtyNotificationArgs
 ---@field title?           string
 ---@field message?         string
----@field text?            string  -- alias for message; accepted by older naughty.notify() API
+---@field text?            string  -- normalized to message by compat layer
 ---@field icon?            string
 ---@field timeout?         number
 ---@field widget_template? AwesomeWidgetTemplate
@@ -100,8 +100,8 @@ function notification.new(registry, setup_opts)
 	local last_identity = {} -- source_id -> identity string
 	---@type table<string, 0|1>
 	local last_status = {} -- source_id -> 0 (paused) or 1 (playing)
-	---@type table<string, { notif: NaughtyNotification, opts: MediaNotificationOptions }>
-	local last_notif = {} -- source_id -> naughty notification object
+	---@type table<string, { notif: CompatNotification, opts: MediaNotificationOptions }>
+	local last_notif = {} -- source_id -> compat notification handle
 	---@type table<string, string>
 	local current_title = {} -- source_id -> current playing title (set immediately on update)
 	local last_notified_title = {} -- source_id -> title for which we last fired a notification
@@ -117,7 +117,7 @@ function notification.new(registry, setup_opts)
 		-- but before request::display; setting ignore=true then destroying the
 		-- notification here prevents it from ever being displayed.
 		-- D-Bus-originated notifications carry freedesktop_hints; our own
-		-- naughty.notification() calls do not, so that field is the discriminator.
+		-- nc.notify() calls do not, so that field is the discriminator.
 		--
 		-- Suppression checks in priority order:
 		--   1. _unique_sender matches source.dbus_senders — reliable identity even
@@ -127,7 +127,10 @@ function notification.new(registry, setup_opts)
 		--   3. Title match against current_title / last_notified_title — legacy
 		--      fallback for the MPRIS-first / D-Bus-second race; also parks
 		--      unmatched notifications for update_title() to clear later.
-		naughty.connect_signal("added", function(notif, args)
+		--
+		-- Note: requires Awesome git HEAD. nc.connect_signal is a no-op on 4.3,
+		-- so D-Bus suppression is silently inactive on that version.
+		nc.connect_signal("added", function(notif, args)
 			if not args or not args.freedesktop_hints then
 				return
 			end
@@ -161,7 +164,7 @@ function notification.new(registry, setup_opts)
 			for source_id, _ in pairs(sources_to_check) do
 				if args.title == current_title[source_id] or args.title == last_notified_title[source_id] then
 					notif.ignore = true
-					notif:destroy(naughty.notification_closed_reason.dismissed_by_command)
+					notif:destroy(nc.reason.dismissed_by_command)
 					return
 				end
 			end
@@ -206,11 +209,11 @@ function notification.new(registry, setup_opts)
 	--- in its options, that is always called, but the timeout is only reset if
 	--- notifications are enabled.
 	---@param source MediaSource The source to refresh the notification for.
-	---@param existing_notif NaughtyNotification The notification to refresh.
+	---@param existing_notif CompatNotification The notification to refresh.
 	---@param notification_opts MediaNotificationOptions The options for the notification.
 	local function refresh_notification(source, existing_notif, notification_opts)
 		if enabled then -- Only reset if notifications enabled.
-			existing_notif:reset_timeout()
+			nc.reset_timeout(existing_notif)
 		end
 		-- Always refresh if requested so that it doesn't go stale.
 		if notification_opts.reuse then
@@ -229,7 +232,7 @@ function notification.new(registry, setup_opts)
 	--- Create a new notification for the given source, replacing any existing
 	--- notification for the source.
 	---@param source MediaSource The source to refresh the notification for.
-	---@param existing_notif? NaughtyNotification The notification to refresh.
+	---@param existing_notif? CompatNotification The notification to replace.
 	local function create_notification(source, existing_notif)
 		local captured_identity = identity(source.state)
 		art.resolve(source.state.art_uri, function(art_path)
@@ -240,11 +243,8 @@ function notification.new(registry, setup_opts)
 			end
 
 			-- Dismiss the previous notification for this source to avoid stacking.
-			-- naughty.notification() does not automatically close the old notification,
-			-- so we destroy it explicitly before creating the new one.
-			-- TODO: Maybe support replaces_id for 4.X?
 			if existing_notif then
-				existing_notif:destroy(naughty.notification_closed_reason.dismissed_by_command)
+				nc.destroy(existing_notif, nc.reason.dismissed_by_command)
 			end
 
 			-- Suppress if source's app is visible on the focused screen.
@@ -256,17 +256,13 @@ function notification.new(registry, setup_opts)
 			if not args then
 				return
 			end
-			local notif
-			-- AwesomeWM master forward compatibility.
-			if type(naughty.notification) == "function" then
-				-- New API
-				args.message = args.message or args.text
-				notif = naughty.notification(args)
-			else
-				-- 4.3 and older API
-				args.text = args.text or args.message
-				notif = naughty.notify(args)
-			end
+
+			local notif = nc.notify(args, function()
+				if opts and opts.on_destroy then
+					opts.on_destroy()
+				end
+				last_notif[source.id] = nil
+			end)
 
 			last_notif[source.id] = {
 				notif = notif,
@@ -275,15 +271,8 @@ function notification.new(registry, setup_opts)
 			last_notified_title[source.id] = source.state.title
 
 			if opts and opts.callback then
-				opts.callback(notif)
+				opts.callback(notif._raw)
 			end
-
-			notif:connect_signal("destroyed", function()
-				if opts and opts.on_destroy then
-					opts.on_destroy()
-				end
-				last_notif[source.id] = nil
-			end)
 		end)
 	end
 
@@ -295,7 +284,7 @@ function notification.new(registry, setup_opts)
 			local pending = pending_dbus[title]
 			if pending then
 				pending_dbus[title] = nil
-				pending:destroy(naughty.notification_closed_reason.dismissed_by_command)
+				pending:destroy(nc.reason.dismissed_by_command)
 			end
 		end
 	end
@@ -315,7 +304,7 @@ function notification.new(registry, setup_opts)
 	--- Destroy all notifications.
 	function n:destroy_all()
 		for id, last in pairs(last_notif) do
-			last.notif:destroy(naughty.notification_closed_reason.dismissed_by_command)
+			nc.destroy(last.notif, nc.reason.dismissed_by_command)
 			last_notif[id] = nil
 		end
 	end
@@ -368,7 +357,7 @@ function notification.new(registry, setup_opts)
 			pending_dbus[title] = nil
 		end
 		if last_notif[source_id] then
-			last_notif[source_id].notif:destroy(naughty.notification_closed_reason.dismissed_by_command)
+			nc.destroy(last_notif[source_id].notif, nc.reason.dismissed_by_command)
 		end
 		current_title[source_id] = nil
 		last_notified_title[source_id] = nil

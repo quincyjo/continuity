@@ -243,6 +243,11 @@ them with the module's own if they occur first.
 The notification suppression can be disabled or customized via the
 `notifications.intercept_dbus_notifications` option.
 
+> **Awesome version requirement:** D-Bus notification suppression uses the
+> `naughty` module-level signal API introduced in Awesome git HEAD. On
+> Awesome 4.3, `intercept_dbus_notifications` is accepted without error
+> but suppression is silently inactive.
+
 DBUS notification intercept modes:
 - `true` (default): Suppress DBUS notifications that have a matching
   title to a notifying source.
@@ -254,10 +259,10 @@ DBUS notification intercept modes:
 
 ### Examples
 
-If your build of `awesome` supports `naughty.noficiation` API, then the
-module will use `naughty.notification` to emit notifications. If the build of
-`awesome` does not support `naughty.notification`, then the module will use
-`naughty.notify`. If the former is available, this allows for completely
+The module automatically selects the correct notification API for your Awesome
+version at load time. On Awesome git HEAD it uses `naughty.notification`
+(supports `widget_template` and other extended args); on Awesome 4.3 it falls
+back to `naughty.notify`. The `naughty.notification` API allows for completely
 custom notifications via the `widget_template` arg, such as a seeking playback
 position slider.
 

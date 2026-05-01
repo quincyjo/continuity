@@ -83,7 +83,13 @@ _naughty_mod = {
 		return { id = 1 }
 	end,
 	connect_signal = function(_name, _cb) end,
-	notification_closed_reason = { dismissed_by_command = "dismissed_by_command" },
+	notification_closed_reason = {
+		dismissed_by_command = "dismissed_by_command",
+		dismissed_by_user = "dismissed_by_user",
+		expired = "expired",
+		silent = "silent",
+		undefined = "undefined",
+	},
 	config = { notify_callback = nil },
 }
 -- Shared factory used by the base mock and by spec overrides.
