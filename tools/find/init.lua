@@ -9,7 +9,7 @@
 local awful = require("awful")
 local gears = require("gears")
 
-local unpack = unpack or unpack -- luacheck: globals unpack
+local unpack = unpack or table.unpack -- luacheck: globals unpack
 
 local fd = require("continuity.tools.find.backends.fd")
 local find_cmd = require("continuity.tools.find.backends.find")

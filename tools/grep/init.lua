@@ -9,7 +9,7 @@
 local awful = require("awful") -- used in grep() and grep.stream()
 local gears = require("gears")
 
-local unpack = unpack or unpack -- luacheck: globals unpack
+local unpack = unpack or table.unpack -- luacheck: globals unpack
 
 local rg = require("continuity.tools.grep.backends.rg")
 local grep_cmd = require("continuity.tools.grep.backends.grep")
