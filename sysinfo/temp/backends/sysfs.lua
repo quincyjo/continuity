@@ -10,10 +10,8 @@ local sysfs = {}
 function sysfs._parse_temp_lines(lines)
 	local zones = {}
 	for _, line in ipairs(lines) do
-		-- Line format: /path/to/thermal_zoneN/temp:52000
-		local path, val = line:match("^(.+):(%d+)$")
-		if path and val then
-			local zone = path:match("^(.+)/temp$") or path
+		local zone, val = line:match("^(.+)/temp:(%d+)$")
+		if zone then
 			zones[zone] = tonumber(val) / 1000
 		end
 	end
@@ -36,9 +34,7 @@ local function create(opts)
 	local proc = Process({
 		name = "sysinfo.temp.sysfs",
 		cmd = {
-			[[for f in /sys/devices/virtual/thermal/thermal_zone*/temp; do
-  [ -f "$f" ] && printf '%s:%s\n' "$f" "$(cat "$f")"
-done]],
+			[[awk '{print FILENAME ":" $1}' /sys/devices/virtual/thermal/thermal_zone*/temp 2>/dev/null]],
 			"echo '---'",
 		},
 		interval = interval,

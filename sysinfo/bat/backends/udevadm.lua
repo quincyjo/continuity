@@ -47,7 +47,7 @@ function udevadm_mod._parse_bat_output(stdout)
 			cur_name = sep
 			cur_fields = {}
 		elseif cur_fields then
-			local key, val = line:match("^POWER_SUPPLY_(%S-)=(.*)$")
+			local key, val = line:match("^POWER_SUPPLY_([^=]-)=(.*)")
 			if key then
 				cur_fields[key:lower()] = val
 			end
@@ -177,11 +177,13 @@ local function create(opts)
 
 	local proc = Process({
 		name = "sysinfo.bat.udevadm",
-		cmd = { "udevadm", "monitor", "--udev", "--subsystem-match=power_supply" },
-		stdout = function(line)
-			if line:match("^UDEV%s+%[") then
-				do_read()
-			end
+		cmd = {
+			"sh",
+			"-c",
+			"udevadm monitor --udev --subsystem-match=power_supply | grep --line-buffered '^UDEV'",
+		},
+		stdout = function(_)
+			do_read()
 		end,
 	})
 

@@ -10,22 +10,17 @@ local ipmonitor_mod = {}
 ---@param line string
 ---@return table|nil  { name, state, carrier, deleted }
 function ipmonitor_mod._parse_ip_link_line(line)
-	if line:match("^%s") then
-		return nil
-	end -- skip link-layer lines
-
 	local deleted = line:match("^Deleted ") ~= nil
 	local clean = deleted and line:sub(9) or line
 
-	local idx, raw_name = clean:match("^(%d+): (%S+):")
-	if not idx then
+	local raw_name = clean:match("^%d+: (%S+):")
+	if not raw_name then
 		return nil
 	end
 
 	local name = raw_name:match("^([^@]+)") or raw_name
-	-- Exclude loopback
 	local flags_section = clean:match("<([^>]*)>") or ""
-	if flags_section:find("LOOPBACK") then
+	if flags_section:find("LOOPBACK", 1, true) then
 		return nil
 	end
 
@@ -35,7 +30,7 @@ function ipmonitor_mod._parse_ip_link_line(line)
 
 	local state_str = clean:match("state (%S+)") or "UNKNOWN"
 	local up = state_str == "UP" or state_str == "UNKNOWN"
-	local carrier = flags_section:find("LOWER_UP") ~= nil
+	local carrier = flags_section:find("LOWER_UP", 1, true) ~= nil
 
 	return { name = name, deleted = false, state = up and "up" or "down", carrier = carrier }
 end
@@ -57,7 +52,7 @@ function ipmonitor_mod._parse_stats_output(stdout)
 			elseif key == "carrier" then
 				devs[name].carrier = val == "1"
 			elseif key == "wifi" then
-				devs[name].wifi = tonumber(val) == 1
+				devs[name].wifi = val == "1"
 			elseif key == "signal" then
 				local s = tonumber(val)
 				devs[name].signal = s ~= 0 and s or nil
@@ -166,7 +161,7 @@ local function create(opts)
 
 	local proc = Process({
 		name = "sysinfo.net.ipmonitor",
-		cmd = { "ip", "monitor", "link" },
+		cmd = { "sh", "-c", "ip monitor link | grep --line-buffered -E '^[0-9]|^Deleted'" },
 		stdout = function(line)
 			local info = ipmonitor_mod._parse_ip_link_line(line)
 			if not info then

@@ -50,7 +50,10 @@ local function create(opts)
 
 	local proc = Process({
 		name = "sysinfo.mem.procmeminfo",
-		cmd = { "cat /proc/meminfo", "echo '---'" },
+		cmd = {
+			"grep -E '^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree):' /proc/meminfo",
+			"echo '---'",
+		},
 		interval = interval,
 		stdout = function(line)
 			if line ~= "---" then
