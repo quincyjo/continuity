@@ -99,7 +99,7 @@ local naughty = require("naughty")
 
 media.setup { notifications = false }
 
-media.on_source_updated(function(source)
+media.sources.on_updated(function(source)
     if source.state.status ~= "playing" or not source.state.title then
         return
     end
@@ -115,7 +115,7 @@ end)
 -- if data is streamed in or multiple backends are backing the source.
 -- The subscriber will be notified once a source has stopped receiving updates
 -- (excluding playback position) for the debounce period.
-media.on_source_updated(function(source) ... end, { debounce = 0.2 })
+media.sources.on_updated(function(source) ... end, { debounce = 0.2 })
 ```
 
 ### Playback Position
@@ -171,7 +171,7 @@ awful.keyboard.append_global_keybindings {
 }
 
 -- Per-source control via the playback capability.
-media.on_source_added(function(source)
+media.sources.on_added(function(source)
     if not source.playback then return end
     -- source.playback exposes: play, pause, play_pause, stop, next, previous,
     -- seek(offset_seconds), set_position(pos_seconds)

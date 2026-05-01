@@ -164,14 +164,14 @@ media.setup({
 })
 
 -- Each returns an unsub function if used in a temporary context, such as a popup or notification.
-media.on_source_added(function(source) ... end)
+media.sources.on_added(function(source) ... end)
 -- Updates *should* only be fired when something has changed, but exact behaviour depends
 -- on the specific backend and upstream application.
-media.on_source_updated(function(source)
+media.sources.on_updated(function(source)
     -- source.state.title, .artist, .album, .art_path
     -- source.playback.play_pause(), .next(), .previous(), .stop()
 end)
-media.on_source_removed(function(source_id) ... end)
+media.sources.on_removed(function(source_id) ... end)
 
 media.play_pause() -- play/pause most-recent source
 media.next()       -- skip forward
@@ -260,19 +260,19 @@ backlight.setup({
 local current = backlight.primary_display.brightness
 
 -- Fires once when state is first known or immediately if already known.
-backlight.primary_display:on_ready(function(brightness, raw)
-    current = brightness
+backlight.primary_display:on_ready(function(update)
+    current = update.brightness
 end)
 
 -- Fires on every change (e.g. control API, hardware key, another application).
-backlight.primary_display:subscribe(function(brightness, raw)
-    print("brightness changed:", brightness)
+backlight.primary_display:subscribe(function(update)
+    print("brightness changed:", update.brightness)
 end)
 
 -- Fires on every control call, even when value is unchanged.
 -- Use this for transient UI such as a popup.
-backlight.primary_display:on_control(function(brightness, raw)
-    show_brightness_popup(brightness)
+backlight.primary_display:on_control(function(update)
+    show_brightness_popup(update.brightness)
 end)
 
 backlight.primary_display:adjust_perc(10)   -- +10%

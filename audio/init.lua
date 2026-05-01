@@ -19,7 +19,7 @@ local inputs_mod = require("continuity.audio.inputs")
 
 ---@class AudioHandle
 ---@field state       AudioState
----@field on_ready    fun(self: AudioHandle, cb: AudioCallback): fun()
+---@field on_ready    fun(self: AudioHandle, cb: AudioCallback)
 ---@field on_control  fun(self: AudioHandle, cb: AudioCallback): fun()
 ---@field subscribe   fun(self: AudioHandle, cb: AudioCallback): fun()
 ---@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
@@ -111,16 +111,26 @@ Audio.Capture = setmetatable({
 
 local function refresh(handle, id, state)
 	handle.id = id
-	handle.state = state
 	if not handle._private.initialized then
+		handle.state = state
 		handle._private.initialized = true
 		for _, cb in ipairs(handle._private.on_ready_cbs) do
 			cb(handle.state)
 		end
 		handle._private.on_ready_cbs = nil
 	else
-		for _, cb in ipairs(handle._private.subscribers) do
-			cb(handle.state)
+		local prev = handle.state
+		if
+			prev.level ~= state.level
+			or prev.muted ~= state.muted
+			or prev.port ~= state.port
+			or prev.port_type ~= state.port_type
+			or prev.connection ~= state.connection
+		then
+			handle.state = state
+			for _, cb in ipairs(handle._private.subscribers) do
+				cb(handle.state)
+			end
 		end
 	end
 end

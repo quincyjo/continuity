@@ -46,8 +46,8 @@ Array of handles for all discovered display devices, in discovery order.
 
 ### `backlight.all()`
 
-Returns a snapshot table of all known handles keyed by device id, including
-keyboard backlights.
+Returns an array of all known handles, including keyboard backlights. Each
+handle carries its own `id` field.
 
 ## Handle Fields
 
@@ -67,8 +67,8 @@ Fires once when the device's first state is known, or immediately if already
 initialized. Use this to seed UI state on startup.
 
 ```lua
-backlight.primary_display:on_ready(function(brightness, raw)
-    print("initial:", brightness, raw)
+backlight.primary_display:on_ready(function(update)
+    print("initial:", update.brightness, update.raw)
 end)
 ```
 
@@ -80,8 +80,8 @@ discovery or changes that result in no change, EG brightness is at 100% and
 adjust(1) is called.
 
 ```lua
-local unsub = backlight.primary_display:subscribe(function(brightness, raw)
-    print("brightness changed:", brightness)
+local unsub = backlight.primary_display:subscribe(function(update)
+    print("brightness changed:", update.brightness)
 end)
 unsub()  -- stop receiving updates
 ```
@@ -94,8 +94,8 @@ a brightness popup that should appear on every keypress even when already at
 maximum.
 
 ```lua
-backlight.primary_display:on_control(function(brightness, raw)
-    show_brightness_popup(brightness)
+backlight.primary_display:on_control(function(update)
+    show_brightness_popup(update.brightness)
 end)
 ```
 
@@ -149,12 +149,12 @@ local brightness_widget = wibox.widget({
     widget = wibox.widget.textbox,
 })
 
-local function update(brightness)
-    brightness_widget:set_markup(string.format("🔆 %3d%%", brightness))
+local function on_update(update)
+    brightness_widget:set_markup(string.format("🔆 %3d%%", update.brightness))
 end
 
-backlight.primary_display:on_ready(update)
-backlight.primary_display:subscribe(update)
+backlight.primary_display:on_ready(on_update)
+backlight.primary_display:subscribe(on_update)
 ```
 
 ## Permissions

@@ -103,47 +103,41 @@ function media.setup(opts)
 	end
 end
 
---- Subscription for when new media sources are added.
----@param cb fun(source: MediaSource)
----@return fun()
-function media.on_source_added(cb)
-	assert(_registry, "media.on_source_added() called before media.setup()")
-	return _registry.on_source_added(cb)
-end
+---@class MediaSources
+---@field on_added   fun(cb: fun(source: MediaSource)): fun()
+---@field on_updated fun(cb: fun(source: MediaSource), opts?: RegistrySubscribeOpts): fun()
+---@field on_removed fun(cb: fun(source_id: string)): fun()
+---@field all        fun(): MediaSource[]
 
---- Subscription for when media sources are updated after initial registration.
---- These subscriptions are not informed when playback position changes. A
---- debounce can be specified via opts.debounce, which will allow rapid or
---- streamed updates to a given source to settle before the subscription is
---- triggered.
----@param cb fun(source: MediaSource)
----@param opts RegistrySubscribeOpts|nil
----@return fun()
-function media.on_source_updated(cb, opts)
-	assert(_registry, "media.on_source_updated() called before media.setup()")
-	return _registry.on_source_updated(cb, opts)
-end
+--- Source lifecycle subscriptions and snapshot accessor.
+--- on_updated debounce opts allow multi-backend coalescing to settle before firing.
+media.sources = {
+	on_added = function(cb)
+		assert(_registry, "media.sources.on_added() called before media.setup()")
+		return _registry.on_source_added(cb)
+	end,
 
---- Subscription for when media sources are removed.
----@param cb fun(source_id: string)
----@return fun()
-function media.on_source_removed(cb)
-	assert(_registry, "media.on_source_removed() called before media.setup()")
-	return _registry.on_source_removed(cb)
-end
+	on_updated = function(cb, opts)
+		assert(_registry, "media.sources.on_updated() called before media.setup()")
+		return _registry.on_source_updated(cb, opts)
+	end,
 
---- Get a list of currently registered media sources.
----@return MediaSource[]
-function media.sources()
-	if not _registry then
-		return {}
-	end
-	return _registry.sources()
-end
+	on_removed = function(cb)
+		assert(_registry, "media.sources.on_removed() called before media.setup()")
+		return _registry.on_source_removed(cb)
+	end,
+
+	all = function()
+		if not _registry then
+			return {}
+		end
+		return _registry.sources()
+	end,
+}
 
 --- Toggle playback of the most recently registered media source.
 function media.play_pause()
-	local sources = media.sources()
+	local sources = media.sources.all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -155,7 +149,7 @@ end
 
 --- Stop playback of the most recently registered media source.
 function media.stop()
-	local sources = media.sources()
+	local sources = media.sources.all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -167,7 +161,7 @@ end
 
 --- Go to the next track of the most recently registered media source.
 function media.next()
-	local sources = media.sources()
+	local sources = media.sources.all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -179,7 +173,7 @@ end
 
 --- Go to the previous track of the most recently registered media source.
 function media.previous()
-	local sources = media.sources()
+	local sources = media.sources.all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then

@@ -127,23 +127,23 @@ function inputs.new(backend)
 
 	local inst = {}
 
-	function inst:on_input_added(cb)
+	function inst.on_added(cb)
 		state.on_added_cbs[#state.on_added_cbs + 1] = cb
 		return make_unsub(state.on_added_cbs, cb)
 	end
 
-	function inst:on_input_updated(cb)
+	function inst.on_updated(cb)
 		state.on_updated_cbs[#state.on_updated_cbs + 1] = cb
 		return make_unsub(state.on_updated_cbs, cb)
 	end
 
-	function inst:on_input_removed(cb)
+	function inst.on_removed(cb)
 		state.on_removed_cbs[#state.on_removed_cbs + 1] = cb
 		return make_unsub(state.on_removed_cbs, cb)
 	end
 
 	---@return SinkInputHandle[]
-	function inst:all()
+	function inst.all()
 		local list = {}
 		for _, h in pairs(state.inputs) do
 			list[#list + 1] = h

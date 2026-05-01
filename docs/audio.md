@@ -66,8 +66,9 @@ end)
 
 ### Subscribing to Changes
 
-`subscribe` fires whenever a material change occurs, either from the module's
-API or another application, default device switch.
+`subscribe` fires only when at least one state field has changed (`level`,
+`muted`, `port`, `port_type`, or `connection`). Backend events that repeat the
+same state do not trigger subscribers.
 
 ```lua
 volume:subscribe(function(state)
@@ -175,4 +176,80 @@ awful.keyboard.append_global_keybindings({
     awful.key({}, "XF86AudioMute",        function() audio.Volume:toggle_mute()   end),
     awful.key({}, "XF86AudioMicMute",     function() audio.Capture:toggle_mute()  end),
 })
+```
+
+## Inputs
+
+`audio.inputs` provides a collection API for sink inputs — individual application
+streams routed to any sink (e.g. a browser, a music player).
+
+> **Note:** Sink inputs are only available when the PulseAudio/PipeWire backend
+> is in use. The ALSA backend does not support sink input enumeration;
+> `audio.inputs.all()` will always return an empty array with that backend.
+
+### Lifecycle
+
+```lua
+local audio = require("continuity.audio")
+
+audio.inputs.on_added(function(handle)
+    print("input added:", handle.id, handle.app_name)
+end)
+
+audio.inputs.on_updated(function(handle)
+    print("input updated:", handle.id, handle.state.level)
+end)
+
+audio.inputs.on_removed(function(id)
+    print("input removed:", id)
+end)
+
+-- Snapshot of all currently active inputs.
+local inputs = audio.inputs.all()
+for _, handle in ipairs(inputs) do
+    print(handle.id, handle.state.level, handle.state.muted)
+end
+```
+
+All three registration functions return an unsubscribe function.
+
+### Input Handle Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Sink input index (as string) |
+| `app_name` | `string?` | Application name, if reported by the backend |
+| `icon_name` | `string?` | Icon name, if reported by the backend |
+| `state.level` | `integer` | Volume 0–100 |
+| `state.muted` | `boolean` | Mute state |
+| `state.name` | `string?` | Stream name |
+| `state.sink` | `integer?` | Sink index this input is routed to |
+
+### Per-Handle Subscriptions and Control
+
+Individual input handles expose the same subscription and control API as the
+module-level handles:
+
+```lua
+audio.inputs.on_added(function(handle)
+    -- Subscribe to state changes for this input.
+    handle:subscribe(function(state)
+        print("level:", state.level, "muted:", state.muted)
+    end)
+
+    -- Fires on every control call, regardless of change.
+    handle:on_control(function(state)
+        show_input_popup(state)
+    end)
+
+    -- Fires when this input is removed.
+    handle:on_removed(function(id)
+        print("removed:", id)
+    end)
+
+    -- Control methods.
+    handle:adjust_perc(5)
+    handle:set_perc(80)
+    handle:toggle_mute()
+end)
 ```

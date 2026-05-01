@@ -7,16 +7,20 @@ local gears = require("gears")
 ---@field kind       BacklightKind
 ---@field brightness number
 
+---@class BacklightUpdate
+---@field brightness number
+---@field raw        integer|nil
+
 ---@class BacklightHandle
 ---@field id          string|nil
 ---@field kind        BacklightKind
 ---@field brightness  number
 ---@field steps       integer|nil
 ---@field raw         integer|nil
----@field on_ready    fun(self: BacklightHandle, fn: fun(brightness: number, raw: integer|nil))
----@field on_control  fun(self: BacklightHandle, fn: fun(brightness: number, raw: integer|nil)): fun()
----@field subscribe   fun(self: BacklightHandle, fn: fun(brightness: number, raw: integer|nil)): fun()
----@field unsubscribe fun(self: BacklightHandle, fn: fun(brightness: number, raw: integer|nil))
+---@field on_ready    fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
+---@field on_control  fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
+---@field subscribe   fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
+---@field unsubscribe fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
 ---@field set_perc    fun(self: BacklightHandle, value: number)
 ---@field adjust_perc fun(self: BacklightHandle, delta: integer)
 ---@field set         fun(self: BacklightHandle, step: integer)
@@ -55,15 +59,16 @@ local function _on_control(handle, brightness, raw)
 	local changed = handle.brightness ~= brightness
 	handle.brightness = brightness
 	handle.raw = raw
+	local update = { brightness = brightness, raw = raw }
 	if changed then
 		---@diagnostic disable-next-line: undefined-field
 		for _, sub in ipairs(handle._private.subscribers) do
-			sub(brightness, raw)
+			sub(update)
 		end
 	end
 	---@diagnostic disable-next-line: undefined-field
 	for _, cb in ipairs(handle._private.on_control_cbs) do
-		cb(brightness, raw)
+		cb(update)
 	end
 end
 
@@ -71,7 +76,7 @@ local HandleMeta = {
 	__index = {
 		on_ready = function(self, fn)
 			if self._private.initialized then
-				fn(self.brightness)
+				fn({ brightness = self.brightness, raw = self.raw })
 			else
 				self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = fn
 			end
@@ -182,8 +187,9 @@ local function _on_device_added(info)
 	handle.steps = info.steps
 	handle.raw = info.raw
 	private.initialized = true
+	local ready_update = { brightness = info.brightness, raw = info.raw }
 	for _, cb in ipairs(private.on_ready_cbs) do
-		cb(info.brightness, info.raw)
+		cb(ready_update)
 	end
 	private.on_ready_cbs = nil
 	_handles[info.id] = handle
@@ -219,9 +225,10 @@ local function _on_change(id, brightness, raw)
 		end
 		handle.brightness = brightness
 		handle.raw = raw
+		local update = { brightness = brightness, raw = raw }
 		---@diagnostic disable-next-line: undefined-field
 		for _, sub in ipairs(handle._private.subscribers) do
-			sub(brightness, raw)
+			sub(update)
 		end
 	end
 end
@@ -242,11 +249,11 @@ function backlight.setup(opts)
 	})
 end
 
----@return table<string, BacklightHandle>
+---@return BacklightHandle[]
 function backlight.all()
 	local result = {}
-	for id, handle in pairs(_handles) do
-		result[id] = handle
+	for _, handle in pairs(_handles) do
+		result[#result + 1] = handle
 	end
 	return result
 end

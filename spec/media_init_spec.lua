@@ -67,16 +67,15 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		media.on_source_added(function(s)
+		media.sources.on_added(function(s)
 			added = s
 		end)
-		-- on_source_added fires retroactively for already-known sources? No —
-		-- sources() provides the snapshot; callbacks are for future events.
-		-- Test that a second backend add fires the callback:
+		-- sources.on_added fires retroactively for already-known sources? No —
+		-- sources.all() provides the snapshot; callbacks are for future events.
 		assert.is_nil(added) -- callback registered after setup; prior add not replayed
 	end)
 
-	it("sources() returns already-registered sources", function()
+	it("sources.all() returns already-registered sources", function()
 		local media = fresh_media()
 		local fake_backend = {
 			name = "fake",
@@ -86,7 +85,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local sources = media.sources()
+		local sources = media.sources.all()
 		assert.equals(1, #sources)
 		assert.equals("fake:1", sources[1].id)
 	end)
@@ -104,24 +103,24 @@ describe("media module", function()
 		assert.equals(1, #notifications_fired)
 	end)
 
-	it("on_source_added returns an unsubscribe function", function()
+	it("sources.on_added returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.on_source_added(function() end)
+		local unsub = media.sources.on_added(function() end)
 		assert.is_function(unsub)
 	end)
 
-	it("on_source_updated returns an unsubscribe function", function()
+	it("sources.on_updated returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.on_source_updated(function() end)
+		local unsub = media.sources.on_updated(function() end)
 		assert.is_function(unsub)
 	end)
 
-	it("on_source_removed returns an unsubscribe function", function()
+	it("sources.on_removed returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.on_source_removed(function() end)
+		local unsub = media.sources.on_removed(function() end)
 		assert.is_function(unsub)
 	end)
 
@@ -170,7 +169,7 @@ describe("media module", function()
 			},
 		})
 		local added_id
-		media.on_source_added(function(s)
+		media.sources.on_added(function(s)
 			added_id = s.id
 		end)
 		reg_seen.add("raw:1", "raw", { title = "T" })
@@ -204,7 +203,7 @@ describe("media module", function()
 			sources = { { id = "unified", backends = { "fake:1" } } },
 		})
 
-		local src = media.sources()[1]
+		local src = media.sources.all()[1]
 		assert.is_not_nil(src)
 		local received = {}
 		src.position:subscribe(function(p)
@@ -230,7 +229,7 @@ describe("media module", function()
 			backends = { fake_backend },
 			sources = { { id = "unified", backends = { "fake:1" } } },
 		})
-		local src = media.sources()[1]
+		local src = media.sources.all()[1]
 		local result = "not_called"
 		src.position:get(function(p)
 			result = p
@@ -265,7 +264,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local src = media.sources()[1]
+		local src = media.sources.all()[1]
 		assert.is_table(src.playback)
 		assert.is_function(src.playback.play)
 		src.playback:play()
@@ -284,7 +283,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		assert.is_nil(media.sources()[1].playback)
+		assert.is_nil(media.sources.all()[1].playback)
 	end)
 
 	it("exports PlaybackAction enum", function()
@@ -316,7 +315,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local src = media.sources()[1]
+		local src = media.sources.all()[1]
 		local received_pos
 		src.position:subscribe(function(p)
 			received_pos = p
