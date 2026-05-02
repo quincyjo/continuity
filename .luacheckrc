@@ -1,3 +1,5 @@
+exclude_files = { ".luarocks/**" }
+
 read_globals = {
 	"awesome",
 	"screen",
