@@ -20,7 +20,7 @@ local naughty = require("naughty")
 
 local M = {}
 
-local is_new_api = type(naughty.notification) == "function"
+local is_new_api = naughty.notification ~= nil
 
 if is_new_api then
 	-- ── git HEAD (naughty.notification OOP API) ───────────────────────────────
