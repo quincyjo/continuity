@@ -3,9 +3,8 @@ local gears = require("gears")
 ---@alias BacklightKind "display"|"keyboard"
 
 ---@class BacklightState
----@field id         string
----@field kind       BacklightKind
 ---@field brightness number
+---@field raw        integer|nil
 
 ---@class BacklightUpdate
 ---@field brightness number
@@ -14,9 +13,8 @@ local gears = require("gears")
 ---@class BacklightHandle
 ---@field id          string|nil
 ---@field kind        BacklightKind
----@field brightness  number
+---@field state       BacklightState
 ---@field steps       integer|nil
----@field raw         integer|nil
 ---@field on_ready    fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
 ---@field on_control  fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
 ---@field subscribe   fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
@@ -49,26 +47,30 @@ local gears = require("gears")
 ---@class BacklightOpts
 ---@field backend? BacklightBackend
 
+---@class BacklightDevicesLifecycle
+---@field on_added   fun(cb: fun(handle: BacklightHandle)): fun()
+---@field on_removed fun(cb: fun(id: string)): fun()
+---@field all        fun(): BacklightHandle[]
+
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
 local _handles = {} ---@type table<string, BacklightHandle>
-local _device_added_subs = {}
-local _device_removed_subs = {}
+local _devices_added_subs = {}
+local _devices_removed_subs = {}
 
 local function _on_control(handle, brightness, raw)
-	local changed = handle.brightness ~= brightness
-	handle.brightness = brightness
-	handle.raw = raw
-	local update = { brightness = brightness, raw = raw }
+	local changed = handle.state.brightness ~= brightness
+	handle.state.brightness = brightness
+	handle.state.raw = raw
 	if changed then
 		---@diagnostic disable-next-line: undefined-field
 		for _, sub in ipairs(handle._private.subscribers) do
-			sub(update)
+			sub(handle.state)
 		end
 	end
 	---@diagnostic disable-next-line: undefined-field
 	for _, cb in ipairs(handle._private.on_control_cbs) do
-		cb(update)
+		cb(handle.state)
 	end
 end
 
@@ -76,7 +78,7 @@ local HandleMeta = {
 	__index = {
 		on_ready = function(self, fn)
 			if self._private.initialized then
-				fn({ brightness = self.brightness, raw = self.raw })
+				fn(self.state)
 			else
 				self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = fn
 			end
@@ -153,7 +155,7 @@ local function make_handle(kind)
 	local handle = {
 		id = nil,
 		kind = kind,
-		brightness = 0,
+		state = { brightness = 0, raw = nil },
 		steps = nil,
 		_private = {
 			initialized = false,
@@ -170,7 +172,6 @@ local backlight = {}
 
 ---@type BacklightHandle
 backlight.primary_display = make_handle("display")
-backlight.displays = {}
 
 ---@param info BacklightDeviceInfo
 local function _on_device_added(info)
@@ -183,36 +184,23 @@ local function _on_device_added(info)
 	---@diagnostic disable-next-line: undefined-field
 	local private = handle._private
 	handle.id = info.id
-	handle.brightness = info.brightness
+	handle.state.brightness = info.brightness
+	handle.state.raw = info.raw
 	handle.steps = info.steps
-	handle.raw = info.raw
 	private.initialized = true
-	local ready_update = { brightness = info.brightness, raw = info.raw }
 	for _, cb in ipairs(private.on_ready_cbs) do
-		cb(ready_update)
+		cb(handle.state)
 	end
 	private.on_ready_cbs = nil
 	_handles[info.id] = handle
-	if info.kind == "display" then
-		backlight.displays[#backlight.displays + 1] = handle
-	end
-	for _, sub in ipairs(_device_added_subs) do
+	for _, sub in ipairs(_devices_added_subs) do
 		sub(handle)
 	end
 end
 
 local function _on_device_removed(id)
-	local handle = _handles[id]
 	_handles[id] = nil
-	if handle then
-		for i, h in ipairs(backlight.displays) do
-			if h == handle then
-				table.remove(backlight.displays, i)
-				break
-			end
-		end
-	end
-	for _, sub in ipairs(_device_removed_subs) do
+	for _, sub in ipairs(_devices_removed_subs) do
 		sub(id)
 	end
 end
@@ -220,15 +208,14 @@ end
 local function _on_change(id, brightness, raw)
 	local handle = _handles[id]
 	if handle then
-		if handle.brightness == brightness then
+		if handle.state.brightness == brightness then
 			return
 		end
-		handle.brightness = brightness
-		handle.raw = raw
-		local update = { brightness = brightness, raw = raw }
+		handle.state.brightness = brightness
+		handle.state.raw = raw
 		---@diagnostic disable-next-line: undefined-field
 		for _, sub in ipairs(handle._private.subscribers) do
-			sub(update)
+			sub(handle.state)
 		end
 	end
 end
@@ -249,42 +236,40 @@ function backlight.setup(opts)
 	})
 end
 
----@return BacklightHandle[]
-function backlight.all()
-	local result = {}
-	for _, handle in pairs(_handles) do
-		result[#result + 1] = handle
-	end
-	return result
-end
-
----@param fn fun(handle: BacklightHandle)
----@return fun()
-function backlight.on_device_added(fn)
-	_device_added_subs[#_device_added_subs + 1] = fn
-	return function()
-		for i, sub in ipairs(_device_added_subs) do
-			if sub == fn then
-				table.remove(_device_added_subs, i)
-				return
+---@type BacklightDevicesLifecycle
+backlight.devices = {
+	on_added = function(cb)
+		_devices_added_subs[#_devices_added_subs + 1] = cb
+		return function()
+			for i, sub in ipairs(_devices_added_subs) do
+				if sub == cb then
+					table.remove(_devices_added_subs, i)
+					return
+				end
 			end
 		end
-	end
-end
+	end,
 
----@param fn fun(id: string)
----@return fun()
-function backlight.on_device_removed(fn)
-	_device_removed_subs[#_device_removed_subs + 1] = fn
-	return function()
-		for i, sub in ipairs(_device_removed_subs) do
-			if sub == fn then
-				table.remove(_device_removed_subs, i)
-				return
+	on_removed = function(cb)
+		_devices_removed_subs[#_devices_removed_subs + 1] = cb
+		return function()
+			for i, sub in ipairs(_devices_removed_subs) do
+				if sub == cb then
+					table.remove(_devices_removed_subs, i)
+					return
+				end
 			end
 		end
-	end
-end
+	end,
+
+	all = function()
+		local result = {}
+		for _, handle in pairs(_handles) do
+			result[#result + 1] = handle
+		end
+		return result
+	end,
+}
 
 function backlight.stop()
 	if _backend then
@@ -292,11 +277,10 @@ function backlight.stop()
 		_backend = nil
 	end
 	_handles = {}
-	_device_added_subs = {}
-	_device_removed_subs = {}
+	_devices_added_subs = {}
+	_devices_removed_subs = {}
 	_setup_called = false
 	backlight.primary_display = make_handle("display")
-	backlight.displays = {}
 end
 
 return backlight

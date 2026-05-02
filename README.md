@@ -258,22 +258,22 @@ backlight.setup({
 })
 
 -- Current readable state. May be 0 until first discovery poll completes.
-local current = backlight.primary_display.brightness
+local current = backlight.primary_display.state.brightness
 
 -- Fires once when state is first known or immediately if already known.
-backlight.primary_display:on_ready(function(update)
-    current = update.brightness
+backlight.primary_display:on_ready(function(state)
+    current = state.brightness
 end)
 
 -- Fires on every change (e.g. control API, hardware key, another application).
-backlight.primary_display:subscribe(function(update)
-    print("brightness changed:", update.brightness)
+backlight.primary_display:subscribe(function(state)
+    print("brightness changed:", state.brightness)
 end)
 
 -- Fires on every control call, even when value is unchanged.
 -- Use this for transient UI such as a popup.
-backlight.primary_display:on_control(function(update)
-    show_brightness_popup(update.brightness)
+backlight.primary_display:on_control(function(state)
+    show_brightness_popup(state.brightness)
 end)
 
 backlight.primary_display:adjust_perc(10)   -- +10%

@@ -40,14 +40,10 @@ A pre-created handle wired to the first display device discovered. Available
 immediately after `require` — before `setup` is called. Use `on_ready` if you
 need to read state before the first discovery poll completes.
 
-### `backlight.displays`
+### `backlight.devices`
 
-Array of handles for all discovered display devices, in discovery order.
-
-### `backlight.all()`
-
-Returns an array of all known handles, including keyboard backlights. Each
-handle carries its own `id` field.
+Lifecycle table for all discovered devices (displays and keyboards). See
+[Device Lifecycle](#device-lifecycle).
 
 ## Handle Fields
 
@@ -55,11 +51,23 @@ handle carries its own `id` field.
 |---|---|---|
 | `id` | `string?` | Device id, e.g. `"intel_backlight"`. `nil` until wired. |
 | `kind` | `BacklightKind` | `"display"` or `"keyboard"` |
-| `brightness` | `number` | Current brightness 0–100 |
+| `state` | `BacklightState` | Current mutable state — see below |
 | `steps` | `integer?` | Total step count; `nil` for backends without step control |
+
+### `BacklightState` fields
+
+| Field | Type | Description |
+|---|---|---|
+| `brightness` | `number` | Current brightness 0–100 |
 | `raw` | `integer?` | Raw brightness value; `nil` for backends without raw values |
 
+```lua
+local b = backlight.primary_display.state.brightness
+```
+
 ## Handle Callbacks
+
+All callbacks receive a `BacklightState` (`{ brightness, raw }`).
 
 ### `on_ready`
 
@@ -67,8 +75,8 @@ Fires once when the device's first state is known, or immediately if already
 initialized. Use this to seed UI state on startup.
 
 ```lua
-backlight.primary_display:on_ready(function(update)
-    print("initial:", update.brightness, update.raw)
+backlight.primary_display:on_ready(function(state)
+    print("initial:", state.brightness, state.raw)
 end)
 ```
 
@@ -76,12 +84,12 @@ end)
 
 Fires when a material change is observed, regardless of whether the change
 originated from the module or another application. Does not fire on initial
-discovery or changes that result in no change, EG brightness is at 100% and
-adjust(1) is called.
+discovery or changes that result in no change, e.g. brightness is at 100% and
+`adjust(1)` is called.
 
 ```lua
-local unsub = backlight.primary_display:subscribe(function(update)
-    print("brightness changed:", update.brightness)
+local unsub = backlight.primary_display:subscribe(function(state)
+    print("brightness changed:", state.brightness)
 end)
 unsub()  -- stop receiving updates
 ```
@@ -94,8 +102,8 @@ a brightness popup that should appear on every keypress even when already at
 maximum.
 
 ```lua
-backlight.primary_display:on_control(function(update)
-    show_brightness_popup(update.brightness)
+backlight.primary_display:on_control(function(state)
+    show_brightness_popup(state.brightness)
 end)
 ```
 
@@ -125,15 +133,28 @@ d:adjust(-2)        -- decrease by 2 raw steps
 
 ## Device Lifecycle
 
+`backlight.devices` mirrors the `media.sources` and `audio.inputs` lifecycle
+table pattern.
+
 ```lua
-local unsub = backlight.on_device_added(function(handle)
+local unsub = backlight.devices.on_added(function(handle)
     print("device added:", handle.id, handle.kind)
 end)
 unsub()
 
-backlight.on_device_removed(function(id)
+backlight.devices.on_removed(function(id)
     print("device removed:", id)
 end)
+
+-- All currently known handles (displays and keyboards):
+local all = backlight.devices.all()
+
+-- Filter by kind if needed:
+for _, h in ipairs(backlight.devices.all()) do
+    if h.kind == "display" then
+        print(h.id, h.state.brightness)
+    end
+end
 ```
 
 ## Wibox Widget
@@ -149,8 +170,8 @@ local brightness_widget = wibox.widget({
     widget = wibox.widget.textbox,
 })
 
-local function on_update(update)
-    brightness_widget:set_markup(string.format("🔆 %3d%%", update.brightness))
+local function on_update(state)
+    brightness_widget:set_markup(string.format("🔆 %3d%%", state.brightness))
 end
 
 backlight.primary_display:on_ready(on_update)
