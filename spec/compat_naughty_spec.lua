@@ -5,8 +5,8 @@ local naughty = require("naughty")
 -- Helper: force a fresh load of compat.naughty (load-time detection requires this when
 -- switching between API path simulations within the same process).
 local function reload_compat()
-	package.loaded["compat.naughty"] = nil
-	return require("compat.naughty")
+	package.loaded["continuity.compat.naughty"] = nil
+	return require("continuity.compat.naughty")
 end
 
 -- ─── New API (git HEAD) ───────────────────────────────────────────────────────

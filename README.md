@@ -21,10 +21,11 @@ please open an issue.
 
 ## Installation
 
-Clone the repo into your `~/.config/awesome` directory:
+Clone the repo and symlink the `lua/continuity/` subtree into your AwesomeWM config directory:
 
 ```bash
-git clone https://github.com/quincyjo/continuity.git ~/.config/awesome
+git clone https://github.com/quincyjo/continuity.git ~/path/to/continuity
+ln -s ~/path/to/continuity/lua/continuity ~/.config/awesome/continuity
 ```
 
 ## Conventions
