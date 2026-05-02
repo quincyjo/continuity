@@ -71,7 +71,19 @@ that matrix.
 
 ## Installation
 
-Clone the repo and symlink the `lua/continuity/` subtree into your AwesomeWM config directory:
+**Via LuaRocks:**
+
+```bash
+luarocks install continuity
+```
+
+Then add the LuaRocks loader at the top of your `rc.lua`:
+
+```lua
+require("luarocks.loader")
+```
+
+**Via git:**
 
 ```bash
 git clone https://github.com/quincyjo/continuity.git

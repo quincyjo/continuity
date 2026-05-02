@@ -10,7 +10,11 @@ labels: bug
 
 **OS / distro:**
 
+**Installation method:** git clone / luarocks
+
 **continuity version / commit** (`git rev-parse --short HEAD`):
+
+**LuaRocks version** (if installed via LuaRocks — `luarocks show continuity`):
 
 ## Steps to Reproduce
 
