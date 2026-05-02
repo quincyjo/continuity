@@ -44,7 +44,7 @@ describe("sysinfo.cpu module", function()
 
 	it("state delivers nil before any backend push", function()
 		cpu.setup({ backend = mock_backend })
-		assert.is_nil(cpu.state())
+		assert.is_nil(cpu.state)
 	end)
 
 	it("subscriber is called when backend pushes state", function()
@@ -61,7 +61,7 @@ describe("sysinfo.cpu module", function()
 		cpu.setup({ backend = mock_backend })
 		push(state(42))
 		local result
-		result = cpu.state()
+		result = cpu.state
 		assert.equals(42, result.usage)
 	end)
 
@@ -110,7 +110,7 @@ describe("sysinfo.cpu module", function()
 		cpu.setup({ backend = mock_backend })
 		push(state(50))
 		cpu.stop()
-		assert.is_nil(cpu.state())
+		assert.is_nil(cpu.state)
 		-- re-setup works
 		local new_cb
 		local new_backend = {

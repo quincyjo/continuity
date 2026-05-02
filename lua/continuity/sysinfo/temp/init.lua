@@ -12,19 +12,21 @@ local sysfs = require("continuity.sysinfo.temp.backends.sysfs")
 ---@class TempOptions
 ---@field backend? TempBackend  The backend to provide memory monitoring, defaults to sysfs backend.
 
-local _state = nil ---@type TempState|nil
 local _subscribers = {}
 local _backend = nil
 local _setup_called = false
 
+local temp = {}
+
+---@type TempState|nil
+temp.state = nil
+
 local function _on_update(data)
-	_state = data
+	temp.state = data
 	for _, sub in ipairs(_subscribers) do
-		sub(_state)
+		sub(temp.state)
 	end
 end
-
-local temp = {}
 
 --- Initiate temp monitoring.
 ---@param opts? TempOptions
@@ -44,8 +46,8 @@ end
 ---@return fun()                   Unsubscribe function.
 function temp:subscribe(fn)
 	_subscribers[#_subscribers + 1] = fn
-	if _state ~= nil then
-		fn(_state)
+	if temp.state ~= nil then
+		fn(temp.state)
 	end
 	return function()
 		for i, sub in ipairs(_subscribers) do
@@ -57,19 +59,13 @@ function temp:subscribe(fn)
 	end
 end
 
---- Get the temp state if available.
----@return TempState|nil
-function temp.state()
-	return _state
-end
-
 function temp.stop()
 	if _backend then
 		_backend:stop()
 		_backend = nil
 	end
 	_subscribers = {}
-	_state = nil
+	temp.state = nil
 	_setup_called = false
 end
 

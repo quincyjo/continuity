@@ -29,21 +29,23 @@ local DeviceState = {
 ---@class NetOptions
 ---@field backend? NetBackend  The backend to provide network monitoring, defaults to ipmonitor backend.
 
-local _state = nil ---@type NetState|nil
 local _subscribers = {}
 local _backend = nil
 local _setup_called = false
 
-local function _on_update(data)
-	_state = data
-	for _, sub in ipairs(_subscribers) do
-		sub(_state)
-	end
-end
-
 local net = {}
 
 net.DeviceState = DeviceState
+
+---@type NetState|nil
+net.state = nil
+
+local function _on_update(data)
+	net.state = data
+	for _, sub in ipairs(_subscribers) do
+		sub(net.state)
+	end
+end
 
 --- Initiate network monitoring.
 ---@param opts? NetOptions
@@ -63,8 +65,8 @@ end
 ---@return fun()                   Unsubscribe function.
 function net:subscribe(fn)
 	_subscribers[#_subscribers + 1] = fn
-	if _state ~= nil then
-		fn(_state)
+	if net.state ~= nil then
+		fn(net.state)
 	end
 	return function()
 		for i, sub in ipairs(_subscribers) do
@@ -76,12 +78,6 @@ function net:subscribe(fn)
 	end
 end
 
---- Get the network state if available.
----@return NetState|nil
-function net.state()
-	return _state
-end
-
 --- Stop network monitoring.
 function net.stop()
 	if _backend then
@@ -89,7 +85,7 @@ function net.stop()
 		_backend = nil
 	end
 	_subscribers = {}
-	_state = nil
+	net.state = nil
 	_setup_called = false
 end
 

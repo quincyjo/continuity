@@ -94,11 +94,11 @@ end)
 
 ## Synchronous Access
 
-`net.state()` returns the most recent `NetState`, or `nil` if no update has
+`net.state` holds the most recent `NetState`, or `nil` if no update has
 been received yet.
 
 ```lua
-local state = require("continuity.sysinfo.net").state()
+local state = require("continuity.sysinfo.net").state
 if state then
     print("TX:", state.tx_rate, "RX:", state.rx_rate)
 end

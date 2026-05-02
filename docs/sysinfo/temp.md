@@ -72,11 +72,11 @@ end)
 
 ## Synchronous Access
 
-`temp.state()` returns the most recent `TempState`, or `nil` if no update has
+`temp.state` holds the most recent `TempState`, or `nil` if no update has
 been received yet.
 
 ```lua
-local state = require("continuity.sysinfo.temp").state()
+local state = require("continuity.sysinfo.temp").state
 if state then
     print(string.format("avg: %.1f°C", state.avg))
 end

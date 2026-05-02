@@ -1,36 +1,86 @@
 # continuity
 
-A collection of AwesomeWM modules providing system monitoring, media integration,
-audio control, client switching, and async CLI tool wrappers. Modules use a
-declarative configuration setup and provide lifecycle subscription callbacks to
-monitor system state.
+An event-driven and performance oriented library to power your AwesomeWM
+configuration.
 
-Provided UI is minimalistic, as this is meant to provide an event driven
-interface for building your own UIs. Check out the docs for each module for
-some examples.
+Includes system monitoring, media integration, audio and backlight control,
+client switching, and async CLI tool wrappers. Modules use a declarative
+configuration setup and provide lifecycle subscription callbacks to keep
+consumers up to date.
+
+This is a backend library that provides an event driven interface for building
+your own UIs. Check out the docs for each module for some examples.
+
+## Contents
+
+- [Principles](#principles)
+- [Compatibility](#compatibility)
+- [Installation](#installation)
+- [Conventions](#conventions)
+- [sysinfo](#sysinfo)
+  - [bat](#bat--battery)
+  - [cpu](#cpu--cpu)
+  - [mem](#mem--memory)
+  - [net](#net--network)
+  - [temp](#temp--temperature)
+- [media](#media)
+- [audio](#audio)
+- [backlight](#backlight)
+- [alttab](#alttab)
+- [tools](#tools)
+  - [find](#find)
+  - [grep](#grep)
+- [Contributing](#contributing)
+- [Notes](#notes)
+
+## Principles
+
+- **Event Driven**: Asynchronous, push-based updates, no polling for
+  consumers. This carries all the way down to the underlying CLI commands
+  wherever possible.
+- **Performance Oriented**: Built to be fast and efficient, minimizing
+  interruptions to the glib loop and focused lifecycle callbacks allowing
+  targeted updates.
+- **Consistent**: Modules share a uniform interface across their categories;
+  streamed data (sysinfo), control oriented (audio), and transient resources
+  (media).
+- **Pluggable**: Every module can be given a target backend at `setup` time.
+  Want to use a different backend than is provided? Implement the backend
+  and provide it to the module, or open a PR to add it to the library.
+- **Non-Prescriptive**: No pre-defined widgets or UI. Built to drive your UI
+  with a consistent, intuitive, and a functionally pure interface.
 
 ## Compatibility
 
-This module is built to run on AwesomeWM 4.3 and later (git master). It may not
-work with earlier versions, and there is currently no plan to support older
-versions.
+This library **is built for**:
+- AwesomeWM 4.3 and later (git master).
+- Lua 5.3 and LuaJIT 2.1.
 
-This module is meant to be runnable in Lua 5.1+ and LuaJIT. My personal runtime
-is LuaJIT 2.1. If you encounter issues with compatibility on any of these,
-please open an issue.
+This library **should** work with:
+- Lua 5.1+.
+
+This library does **not** support:
+- AwesomeWM 4.2 and earlier, but your mileage may vary.
+
+The unit test matrix is lua5.3 and luajit2.1. My personal runtime is luajit2.1
+and awesome git master.
+
+If you encounter any issues with lua5.1+/luajit2.1 and awesome 4.3+, please
+open an issue. There is currently no plan to support environments outside of
+that matrix.
 
 ## Installation
 
 Clone the repo and symlink the `lua/continuity/` subtree into your AwesomeWM config directory:
 
 ```bash
-git clone https://github.com/quincyjo/continuity.git ~/path/to/continuity
-ln -s ~/path/to/continuity/lua/continuity ~/.config/awesome/continuity
+git clone https://github.com/quincyjo/continuity.git
+ln -s continuity/lua/continuity ~/.config/awesome/continuity
 ```
 
 ## Conventions
 
-**sysinfo modules** (`bat`, `cpu`, `mem`, `net`, `temp`) share a uniform interface:
+**Streamed modules** (`bat`, `cpu`, `mem`, `net`, `temp`) provide a uniform interface:
 
 ```lua
 module.setup(opts)              -- call once in rc.lua; opts.backend overrides default
@@ -38,8 +88,43 @@ local unsub = module:subscribe( -- push-based updates; fires immediately if stat
   function(state) ... end
 )
 unsub()                         -- stop receiving updates
-module.state()                  -- synchronous read of last-known state (may be nil)
+module.state                    -- last-known state (may be nil)
 module.stop()                   -- tear down backend and clear subscribers
+```
+
+**Control modules** (`audio`, `backlight`) provide a uniform interface:
+
+```lua
+audio.Volume.state                      -- last-known state (may be placeholder values)
+audio.Volume:on_ready(                  -- fires exactly once when state is first known or immediately.
+  function(state) ... end
+)
+local unsub1 = audio.Volume:subscribe(  -- push-based updates; only fires when state changes
+  function(state) ... end
+)
+local unsub2 = audio.Volume:on_control( -- fires on every control call, regardless of state change
+  function(state) ... end
+)
+unsub1()                                -- stop receiving updates
+unsub2()
+audio.Volume:adjust_perc(-5)            -- relative
+audio.Volume:set_perc(50)               -- absolute
+audio.Volume:toggle_mute()
+```
+
+**Transient resources** (`media.sources`, `audio.inputs`) provide a uniform interface:
+
+```lua
+media.sources.all()                     -- snapshot of all sources
+media.sources.on_added(                 -- fires when a new source is added
+    function(source) ... end
+)
+media.sources.on_updated(               -- fires when a source is updated
+    function(source) ... end
+)
+media.sources.on_removed(               -- fires when a source is removed
+    function(id) ... end
+)
 ```
 
 ---
@@ -297,7 +382,7 @@ off to a `keygrabber` during an active switch session. The UI is provided by the
 caller via an `AlttabUI` callback table; a notification-based fallback is used if
 none is supplied.
 
-All keybinds require `held_key` (default "Mod1") to be held. Releasing the held key 
+All keybinds require `held_key` (default "Mod1") to be held. Releasing the held key
 focuses the selected client's screen, switches to that client's tag, and focuses
 and raises the client. Using the `pull_key` also closes the session.
 
@@ -386,7 +471,14 @@ end)
 
 [Full documentation](docs/tools/grep.md)
 
-### Notes
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, branching
+conventions, and the local verification checklist.
+
+## Notes
 
 You will likely see some Awesome warning pairs when reloading like this:
 

@@ -62,11 +62,11 @@ end)
 
 ## Synchronous Access
 
-`mem.state()` returns the most recent `MemState`, or `nil` if no update has
+`mem.state` holds the most recent `MemState`, or `nil` if no update has
 been received yet.
 
 ```lua
-local state = require("continuity.sysinfo.mem").state()
+local state = require("continuity.sysinfo.mem").state
 if state then
     print(string.format("%.0f%% of %d MiB used", state.perc, state.total))
 end

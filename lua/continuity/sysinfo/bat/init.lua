@@ -40,16 +40,20 @@ local BatteryStatus = {
 ---@field backend?     BatteryBackend  The backend to provide battery monitoring, defaults to udevadm backend.
 ---@field power_alpha? number          EMA Alpha, 0-1, default is 0.1 (10 samples)
 
-local _state = nil ---@type BatState|nil
-local _subscribers = {} ---@type fun(state: BatteryState)[]
+local _subscribers = {} ---@type fun(state: BatState)[]
 local _backend = nil ---@type BatteryBackend|nil
 local _setup_called = false
 local _power_average = nil ---@type number|nil
 local _power_alpha = 0.1 -- EMA weight for the newest sample
 
+local bat = {}
+
+---@type BatState|nil
+bat.state = nil
+
 local function _on_update(data)
 	-- Reset EMA when power flow direction changes
-	if _state and _state.status ~= data.status then
+	if bat.state and bat.state.status ~= data.status then
 		_power_average = nil
 	end
 	if _power_average == nil then
@@ -59,13 +63,11 @@ local function _on_update(data)
 	end
 	data.power_average = _power_average
 
-	_state = data
+	bat.state = data
 	for _, sub in ipairs(_subscribers) do
-		sub(_state)
+		sub(bat.state)
 	end
 end
-
-local bat = {}
 
 --- Initiates battery monitoring.
 ---@param opts? BatteryOptions
@@ -88,8 +90,8 @@ end
 ---@return fun()                   Unsubscribe function.
 function bat:subscribe(fn)
 	_subscribers[#_subscribers + 1] = fn
-	if _state ~= nil then
-		fn(_state)
+	if bat.state ~= nil then
+		fn(bat.state)
 	end
 	return function()
 		for i, sub in ipairs(_subscribers) do
@@ -105,25 +107,20 @@ end
 --- If the state is not Discharging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_remaining()
-	if not _state or _state.status ~= BatteryStatus.Discharging or _state.power_now == 0 then
+	if not bat.state or bat.state.status ~= BatteryStatus.Discharging or bat.state.power_now == 0 then
 		return
 	end
-	return (_state.energy_now / _state.power_average) * 3600
+	return (bat.state.energy_now / bat.state.power_average) * 3600
 end
 
 --- Calculate the until fully charged based of the rolling average power.
 --- If the state is not Charging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_until_full()
-	if not _state or _state.status ~= BatteryStatus.Charging or _state.power_now == 0 then
+	if not bat.state or bat.state.status ~= BatteryStatus.Charging or bat.state.power_now == 0 then
 		return
 	end
-	return ((_state.energy_full - _state.energy_now) / _state.power_average) * 3600
-end
-
----@return BatState|nil
-function bat.state()
-	return _state
+	return ((bat.state.energy_full - bat.state.energy_now) / bat.state.power_average) * 3600
 end
 
 --- Stop the battery monitoring.
@@ -133,7 +130,7 @@ function bat.stop()
 		_backend = nil
 	end
 	_subscribers = {}
-	_state = nil
+	bat.state = nil
 	_setup_called = false
 	_power_average = nil
 	_power_alpha = 0.3

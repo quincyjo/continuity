@@ -19,19 +19,21 @@ local procmeminfo = require("continuity.sysinfo.mem.backends.procmeminfo")
 ---@class MemOptions
 ---@field backend? MemBackend  The backend to provide memory monitoring, defaults to sysfs backend.
 
-local _state = nil ---@type MemState|nil
 local _subscribers = {}
 local _backend = nil
 local _setup_called = false
 
+local mem = {}
+
+---@type MemState|nil
+mem.state = nil
+
 local function _on_update(data)
-	_state = data
+	mem.state = data
 	for _, sub in ipairs(_subscribers) do
-		sub(_state)
+		sub(mem.state)
 	end
 end
-
-local mem = {}
 
 --- Initiate memory monitoring.
 ---@param opts? MemOptions
@@ -51,8 +53,8 @@ end
 ---@return fun()                   Unsubscribe function.
 function mem:subscribe(fn)
 	_subscribers[#_subscribers + 1] = fn
-	if _state ~= nil then
-		fn(_state)
+	if mem.state ~= nil then
+		fn(mem.state)
 	end
 	return function()
 		for i, sub in ipairs(_subscribers) do
@@ -64,12 +66,6 @@ function mem:subscribe(fn)
 	end
 end
 
---- Get the memory state if available.
----@return MemState|nil
-function mem.state()
-	return _state
-end
-
 --- Stop memory monitoring.
 function mem.stop()
 	if _backend then
@@ -77,7 +73,7 @@ function mem.stop()
 		_backend = nil
 	end
 	_subscribers = {}
-	_state = nil
+	mem.state = nil
 	_setup_called = false
 end
 

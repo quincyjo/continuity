@@ -25,19 +25,21 @@ local procstat = require("continuity.sysinfo.cpu.backends.procstat")
 ---@class CpuOptions
 ---@field backend? CpuBackend  The backend to provide CPU monitoring, defaults to procstat backend.
 
-local _state = nil ---@type CpuState|nil
 local _subscribers = {}
 local _backend = nil
 local _setup_called = false
 
+local cpu = {}
+
+---@type CpuState|nil
+cpu.state = nil
+
 local function _on_update(data)
-	_state = data
+	cpu.state = data
 	for _, sub in ipairs(_subscribers) do
-		sub(_state)
+		sub(cpu.state)
 	end
 end
-
-local cpu = {}
 
 --- Initiates CPU monitoring.
 ---@param opts? CpuOptions
@@ -57,8 +59,8 @@ end
 ---@return fun()                   Unsubscribe function.
 function cpu:subscribe(fn)
 	_subscribers[#_subscribers + 1] = fn
-	if _state ~= nil then
-		fn(_state)
+	if cpu.state ~= nil then
+		fn(cpu.state)
 	end
 	return function()
 		for i, sub in ipairs(_subscribers) do
@@ -70,12 +72,6 @@ function cpu:subscribe(fn)
 	end
 end
 
---- Get the current state, if available.
----@return CpuState|nil
-function cpu.state()
-	return _state
-end
-
 --- Stop CPU monitoring.
 function cpu.stop()
 	if _backend then
@@ -83,7 +79,7 @@ function cpu.stop()
 		_backend = nil
 	end
 	_subscribers = {}
-	_state = nil
+	cpu.state = nil
 	_setup_called = false
 end
 

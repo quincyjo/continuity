@@ -41,7 +41,7 @@ describe("sysinfo.net module", function()
 
 	it("state delivers nil before any push", function()
 		net.setup({ backend = mock_backend })
-		local r = net.state()
+		local r = net.state
 		assert.is_nil(r)
 	end)
 
@@ -83,7 +83,7 @@ describe("sysinfo.net module", function()
 		net.setup({ backend = mock_backend })
 		push(state(100, 200))
 		net.stop()
-		local r = net.state()
+		local r = net.state
 		assert.is_nil(r)
 		local new_cb
 		net.setup({ backend = {
@@ -120,7 +120,7 @@ describe("sysinfo.net module", function()
 	it("state delivers state after a backend push", function()
 		net.setup({ backend = mock_backend })
 		push(state(1024, 2048))
-		local r = net.state()
+		local r = net.state
 		assert.equals(1024, r.tx_rate)
 	end)
 

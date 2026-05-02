@@ -46,7 +46,7 @@ describe("sysinfo.bat module", function()
 
 	it("state delivers nil before any push", function()
 		bat.setup({ backend = mock_backend })
-		local r = bat.state()
+		local r = bat.state
 		assert.is_nil(r)
 	end)
 
@@ -86,7 +86,7 @@ describe("sysinfo.bat module", function()
 		bat.setup({ backend = mock_backend })
 		push(state(80))
 		bat.stop()
-		local r = bat.state()
+		local r = bat.state
 		assert.is_nil(r)
 		local new_cb
 		bat.setup({ backend = {
@@ -123,7 +123,7 @@ describe("sysinfo.bat module", function()
 	it("state delivers state after a backend push", function()
 		bat.setup({ backend = mock_backend })
 		push(state(80))
-		local r = bat.state()
+		local r = bat.state
 		assert.equals(80, r.perc)
 	end)
 

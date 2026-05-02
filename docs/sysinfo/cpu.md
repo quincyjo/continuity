@@ -78,11 +78,11 @@ end)
 
 ## Synchronous Access
 
-`cpu.state()` returns the most recent `CpuState`, or `nil` if no update has
+`cpu.state` holds the most recent `CpuState`, or `nil` if no update has
 been received yet.
 
 ```lua
-local state = require("continuity.sysinfo.cpu").state()
+local state = require("continuity.sysinfo.cpu").state
 if state then
     print("CPU usage:", state.usage)
 end

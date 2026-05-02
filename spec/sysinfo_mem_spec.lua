@@ -36,7 +36,7 @@ describe("sysinfo.mem module", function()
 
 	it("state delivers nil before any push", function()
 		mem.setup({ backend = mock_backend })
-		local r = mem.state()
+		local r = mem.state
 		assert.is_nil(r)
 	end)
 
@@ -54,7 +54,7 @@ describe("sysinfo.mem module", function()
 		mem.setup({ backend = mock_backend })
 		push(state(4000))
 		mem.stop()
-		local r = mem.state()
+		local r = mem.state
 		assert.is_nil(r)
 		local new_cb
 		mem.setup({ backend = {
@@ -101,7 +101,7 @@ describe("sysinfo.mem module", function()
 	it("state delivers state after a backend push", function()
 		mem.setup({ backend = mock_backend })
 		push(state(4000))
-		local r = mem.state()
+		local r = mem.state
 		assert.equals(4000, r.used)
 	end)
 

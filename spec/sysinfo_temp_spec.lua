@@ -25,7 +25,7 @@ describe("sysinfo.temp module", function()
 
 	it("state delivers nil before any push", function()
 		temp.setup({ backend = mock_backend })
-		local r = temp.state()
+		local r = temp.state
 		assert.is_nil(r)
 	end)
 
@@ -65,7 +65,7 @@ describe("sysinfo.temp module", function()
 		temp.setup({ backend = mock_backend })
 		push(state(55))
 		temp.stop()
-		local r = temp.state()
+		local r = temp.state
 		assert.is_nil(r)
 		local new_cb
 		temp.setup({ backend = {
@@ -102,7 +102,7 @@ describe("sysinfo.temp module", function()
 	it("state delivers state after a backend push", function()
 		temp.setup({ backend = mock_backend })
 		push(state(55))
-		local r = temp.state()
+		local r = temp.state
 		assert.equals(55, r.avg)
 	end)
 
