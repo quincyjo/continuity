@@ -7,17 +7,19 @@ local function make_mock_backend()
 		adjust_input_perc = function() end,
 		set_input_perc = function() end,
 		toggle_input = function() end,
+		move_sink_input = function() end,
 	}
 end
 
 describe("audio.inputs registry", function()
-	local inst, handles, backend
+	local inst, handles, backend, bind
 
 	before_each(function()
 		package.loaded["continuity.audio.inputs"] = nil
 		inputs_mod = require("continuity.audio.inputs")
 		backend = make_mock_backend()
-		inst, handles = inputs_mod.new(backend)
+		inst, bind = inputs_mod.new()
+		handles = bind(backend)
 	end)
 
 	describe("handles.add", function()
@@ -241,10 +243,14 @@ describe("audio.inputs registry", function()
 				toggle_input = function(_, id, cb)
 					calls[#calls + 1] = { method = "toggle", id = id, cb = cb }
 				end,
+				move_sink_input = function(_, input_id, sink_id, cb)
+					calls[#calls + 1] = { method = "move", input_id = input_id, sink_id = sink_id, cb = cb }
+				end,
 			}
 			package.loaded["continuity.audio.inputs"] = nil
 			inputs_mod = require("continuity.audio.inputs")
-			inst, handles = inputs_mod.new(backend)
+			inst, bind = inputs_mod.new()
+			handles = bind(backend)
 			handles.add("263", { level = 50, muted = false })
 		end)
 
@@ -332,6 +338,37 @@ describe("audio.inputs registry", function()
 			unsub()
 			handle():adjust_perc(5)
 			calls[2].cb(60, false) -- should not fire since unsubscribed
+			assert.equals(1, count)
+		end)
+
+		it("move_to with a handle target calls backend:move_sink_input with handle id", function()
+			local sink_handle = { id = "alsa_output.usb" }
+			handle():move_to(sink_handle)
+			assert.equals(1, #calls)
+			assert.equals("move", calls[1].method)
+			assert.equals("263", calls[1].input_id)
+			assert.equals("alsa_output.usb", calls[1].sink_id)
+		end)
+
+		it("move_to with a string target passes it through directly", function()
+			handle():move_to("alsa_output.pci")
+			assert.equals("263", calls[1].input_id)
+			assert.equals("alsa_output.pci", calls[1].sink_id)
+		end)
+
+		it("move_to with an integer target passes it through directly", function()
+			handle():move_to(57)
+			assert.equals("263", calls[1].input_id)
+			assert.equals(57, calls[1].sink_id)
+		end)
+
+		it("move_to fires on_control in the callback", function()
+			local count = 0
+			handle():on_control(function()
+				count = count + 1
+			end)
+			handle():move_to("alsa_output.pci")
+			calls[1].cb()
 			assert.equals(1, count)
 		end)
 	end)
