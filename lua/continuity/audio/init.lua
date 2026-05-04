@@ -17,6 +17,7 @@ local devices_mod = require("continuity.audio.devices")
 
 ---@class AudioHandle
 ---@field id          string
+---@field name        string?
 ---@field description string?
 ---@field state       AudioState
 ---@field on_ready    fun(self: AudioHandle, cb: AudioCallback)

@@ -52,12 +52,12 @@ describe("audio.devices registry", function()
 				received = h
 			end)
 			handles.add(
-				"alsa_output.pci",
+				"57",
 				{ level = 50, muted = false, is_default = true },
-				{ description = "Built-in Audio" }
+				{ name = "alsa_output.pci", description = "Built-in Audio" }
 			)
 			assert.is_not_nil(received)
-			assert.equals("alsa_output.pci", received.id)
+			assert.equals("57", received.id)
 		end)
 
 		it("handle has correct initial state", function()
@@ -79,17 +79,31 @@ describe("audio.devices registry", function()
 			assert.equals("analog", h.state.connection)
 		end)
 
+		it("handle.name is set from meta", function()
+			handles.add(
+				"57",
+				{ level = 50, muted = false, is_default = true },
+				{ name = "alsa_output.pci", description = "Built-in Audio" }
+			)
+			assert.equals("alsa_output.pci", inst.all()[1].name)
+		end)
+
 		it("handle.description is set from meta", function()
 			handles.add(
-				"alsa_output.pci",
+				"57",
 				{ level = 50, muted = false, is_default = true },
-				{ description = "Built-in Audio" }
+				{ name = "alsa_output.pci", description = "Built-in Audio" }
 			)
 			assert.equals("Built-in Audio", inst.all()[1].description)
 		end)
 
+		it("handle.name is nil when meta is absent", function()
+			handles.add("57", { level = 50, muted = false, is_default = true })
+			assert.is_nil(inst.all()[1].name)
+		end)
+
 		it("handle.description is nil when meta is absent", function()
-			handles.add("alsa_output.pci", { level = 50, muted = false, is_default = true })
+			handles.add("57", { level = 50, muted = false, is_default = true })
 			assert.is_nil(inst.all()[1].description)
 		end)
 

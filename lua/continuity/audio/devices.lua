@@ -5,7 +5,7 @@
 ---@field all        fun(): AudioHandle[]
 
 ---@class DeviceHandles
----@field add    fun(id: string, state: AudioState, meta: { description: string? }?)
+---@field add    fun(id: string, state: AudioState, meta: { name: string?, description: string? }?)
 ---@field update fun(id: string, state: AudioState)
 ---@field remove fun(id: string)
 
@@ -106,6 +106,7 @@ function devices.new(kind)
 	function device_handles.add(id, initial_state, meta)
 		local handle = setmetatable({
 			id = id,
+			name = meta and meta.name,
 			description = meta and meta.description,
 			state = initial_state or {},
 		}, HandleMT)
