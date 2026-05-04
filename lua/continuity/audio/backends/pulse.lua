@@ -333,17 +333,18 @@ local function create(_) -- luacheck: ignore
 				return
 			end
 			local entries = parse_all_devices(stdout)
-			local default_state = nil
+			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				sink_handles.add(entry.id, entry.state, entry.meta)
 				if entry.state.is_default then
 					current_default_sink = entry.meta.name
 					current_default_sink_idx = entry.id
 					default_state = entry.state
+					default_meta = entry.meta
 				end
 			end
 			if on_sink and default_state then
-				on_sink(current_default_sink_idx, default_state)
+				on_sink(current_default_sink_idx, default_state, default_meta)
 			end
 		end)
 	end
@@ -354,17 +355,18 @@ local function create(_) -- luacheck: ignore
 				return
 			end
 			local entries = parse_all_devices(stdout)
-			local default_state = nil
+			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				source_handles.add(entry.id, entry.state, entry.meta)
 				if entry.state.is_default then
 					current_default_source = entry.meta.name
 					current_default_source_idx = entry.id
 					default_state = entry.state
+					default_meta = entry.meta
 				end
 			end
 			if on_source and default_state then
-				on_source(current_default_source_idx, default_state)
+				on_source(current_default_source_idx, default_state, default_meta)
 			end
 		end)
 	end
@@ -423,7 +425,7 @@ local function create(_) -- luacheck: ignore
 								local parsed = parse_device_block(block, default_name)
 								sink_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_sink then
-									on_sink(current_default_sink_idx, parsed.state)
+									on_sink(current_default_sink_idx, parsed.state, parsed.meta)
 								end
 							end
 						end)
@@ -478,7 +480,7 @@ local function create(_) -- luacheck: ignore
 								local parsed = parse_device_block(block, default_name)
 								source_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_source then
-									on_source(current_default_source_idx, parsed.state)
+									on_source(current_default_source_idx, parsed.state, parsed.meta)
 								end
 							end
 						end)
@@ -507,7 +509,7 @@ local function create(_) -- luacheck: ignore
 									if entry.state.is_default then
 										current_default_sink_idx = entry.id
 										if on_sink then
-											on_sink(current_default_sink_idx, entry.state)
+											on_sink(current_default_sink_idx, entry.state, entry.meta)
 										end
 									end
 								end
@@ -530,7 +532,7 @@ local function create(_) -- luacheck: ignore
 									if entry.state.is_default then
 										current_default_source_idx = entry.id
 										if on_source then
-											on_source(current_default_source_idx, entry.state)
+											on_source(current_default_source_idx, entry.state, entry.meta)
 										end
 									end
 								end

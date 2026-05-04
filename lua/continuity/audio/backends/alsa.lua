@@ -43,9 +43,9 @@ local function create(_) -- luacheck: ignore
 			if level == nil then
 				return
 			end
-			local state = { level = level, muted = muted }
+			local state = { level = level, muted = muted, is_default = true }
 			if on_sink then
-				on_sink(SINK_ID, state)
+				on_sink(SINK_ID, state, { name = SINK_ID, description = SINK_ID })
 			end
 			if sink_handles then
 				sink_handles.update(SINK_ID, state)
@@ -62,9 +62,9 @@ local function create(_) -- luacheck: ignore
 			if level == nil then
 				return
 			end
-			local state = { level = level, muted = muted }
+			local state = { level = level, muted = muted, is_default = true }
 			if on_source then
-				on_source(SOURCE_ID, state)
+				on_source(SOURCE_ID, state, { name = SOURCE_ID, description = SOURCE_ID })
 			end
 			if source_handles then
 				source_handles.update(SOURCE_ID, state)
@@ -171,10 +171,18 @@ local function create(_) -- luacheck: ignore
 		sink_handles = callbacks.sinks or nil
 		source_handles = callbacks.sources or nil
 		if sink_handles then
-			sink_handles.add(SINK_ID, { level = 0, muted = false, is_default = true })
+			sink_handles.add(
+				SINK_ID,
+				{ level = 0, muted = false, is_default = true },
+				{ name = SINK_ID, description = SINK_ID }
+			)
 		end
 		if source_handles then
-			source_handles.add(SOURCE_ID, { level = 0, muted = false, is_default = true })
+			source_handles.add(
+				SOURCE_ID,
+				{ level = 0, muted = false, is_default = true },
+				{ name = SOURCE_ID, description = SOURCE_ID }
+			)
 		end
 		proc:start()
 	end

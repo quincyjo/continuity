@@ -50,9 +50,13 @@ local devices_mod = require("continuity.audio.devices")
 ---@field source     SourceApi
 ---@field sink_input SinkInputApi
 
+---@class AudioDeviceMeta
+---@field name        string?
+---@field description string?
+
 ---@class AudioBackendOpts
----@field on_sink   fun(id: string, state: AudioState)
----@field on_source fun(id: string, state: AudioState)
+---@field on_sink   fun(id: string, state: AudioState, meta: AudioDeviceMeta)
+---@field on_source fun(id: string, state: AudioState, meta: AudioDeviceMeta)
 ---@field inputs    InputHandles?
 ---@field sinks     DeviceHandles?
 ---@field sources   DeviceHandles?
@@ -143,13 +147,15 @@ Audio.inputs, bind_inputs = inputs_mod.new()
 Audio.sinks, bind_sinks = devices_mod.new()
 Audio.sources, bind_sources = devices_mod.new()
 
-local function refresh(handle, id, state)
+---@param id string
+---@param state AudioState
+---@param meta AudioDeviceMeta
+local function refresh(handle, id, state, meta)
 	handle.id = id
-	if state.description ~= nil then
-		handle.description = state.description
-	end
 	if not handle._private.initialized then
 		handle.state = state
+		handle.name = meta.name
+		handle.description = meta.description
 		handle._private.initialized = true
 		for _, cb in ipairs(handle._private.on_ready_cbs) do
 			cb(handle.state)
@@ -163,8 +169,12 @@ local function refresh(handle, id, state)
 			or prev.port ~= state.port
 			or prev.port_type ~= state.port_type
 			or prev.connection ~= state.connection
+			or handle.name ~= meta.name
+			or handle.description ~= meta.description
 		then
 			handle.state = state
+			handle.name = meta.name
+			handle.description = meta.description
 			for _, cb in ipairs(handle._private.subscribers) do
 				cb(handle.state)
 			end
@@ -224,11 +234,11 @@ function Audio.setup(opts)
 	end
 
 	backend:start({
-		on_sink = function(id, state)
-			refresh(Audio.Volume, id, state)
+		on_sink = function(id, state, meta)
+			refresh(Audio.Volume, id, state, meta)
 		end,
-		on_source = function(id, state)
-			refresh(Audio.Capture, id, state)
+		on_source = function(id, state, meta)
+			refresh(Audio.Capture, id, state, meta)
 		end,
 		inputs = input_handles,
 		sinks = sink_handles,

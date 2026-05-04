@@ -252,8 +252,8 @@ describe("audio.backends.alsa (instance)", function()
 			local results = {}
 			local backend = alsa()
 			backend:start({
-				on_sink = function(id, s)
-					results[#results + 1] = { id = id, state = s }
+				on_sink = function(id, s, m)
+					results[#results + 1] = { id = id, state = s, meta = m }
 				end,
 			})
 			wlc_cbs.stdout("event value: 'Master',0")
@@ -262,14 +262,16 @@ describe("audio.backends.alsa (instance)", function()
 			assert.equals("Master", results[1].id)
 			assert.equals(50, results[1].state.level)
 			assert.is_false(results[1].state.muted)
+			assert.equals("Master", results[1].meta.name)
+			assert.equals("Master", results[1].meta.description)
 		end)
 
 		it("delivers parsed state to on_source callback from poll", function()
 			local results = {}
 			local backend = alsa()
 			backend:start({
-				on_source = function(id, s)
-					results[#results + 1] = { id = id, state = s }
+				on_source = function(id, s, m)
+					results[#results + 1] = { id = id, state = s, meta = m }
 				end,
 			})
 			wlc_cbs.stdout("event value: 'Capture',0")
@@ -277,6 +279,8 @@ describe("audio.backends.alsa (instance)", function()
 			assert.equals(1, #results)
 			assert.equals("Capture", results[1].id)
 			assert.equals(72, results[1].state.level)
+			assert.equals("Capture", results[1].meta.name)
+			assert.equals("Capture", results[1].meta.description)
 		end)
 
 		it("does not deliver to on_sink when poll exits non-zero", function()

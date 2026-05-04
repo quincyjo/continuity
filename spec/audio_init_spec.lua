@@ -142,18 +142,18 @@ describe("audio (init)", function()
 		end)
 
 		it("Audio.Volume.id is updated to the idx from on_sink", function()
-			on_sink("57", { level = 40, muted = false })
+			on_sink("57", { level = 40, muted = false }, {})
 			assert.equals("57", Audio.Volume.id)
 		end)
 
 		it("Audio.Volume.id updates when default sink changes", function()
-			on_sink("57", { level = 40, muted = false })
-			on_sink("55", { level = 20, muted = false })
+			on_sink("57", { level = 40, muted = false }, {})
+			on_sink("55", { level = 20, muted = false }, {})
 			assert.equals("55", Audio.Volume.id)
 		end)
 
 		it("Audio.Capture.id is updated to the idx from on_source", function()
-			on_source("12", { level = 80, muted = false })
+			on_source("12", { level = 80, muted = false }, {})
 			assert.equals("12", Audio.Capture.id)
 		end)
 	end)
@@ -161,7 +161,7 @@ describe("audio (init)", function()
 	describe("Audio.Volume control methods use api.sink with real idx", function()
 		before_each(function()
 			Audio.setup({ backend = make_backend() })
-			on_sink("57", { level = 40, muted = false })
+			on_sink("57", { level = 40, muted = false }, {})
 		end)
 
 		it("adjust_perc calls backend.api.sink.adjust_perc with real idx", function()
@@ -193,7 +193,7 @@ describe("audio (init)", function()
 	describe("Audio.Capture control methods use api.source with real idx", function()
 		before_each(function()
 			Audio.setup({ backend = make_backend() })
-			on_source("12", { level = 80, muted = false })
+			on_source("12", { level = 80, muted = false }, {})
 		end)
 
 		it("toggle_mute calls backend.api.source.toggle with real idx", function()
@@ -222,12 +222,12 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("57", s)
+			on_sink("57", s, {})
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("57", s)
+			on_sink("57", s, {})
 			assert.equals(0, count)
 		end)
 
@@ -239,7 +239,7 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("57", s)
+			on_sink("57", s, {})
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
@@ -250,18 +250,18 @@ describe("audio (init)", function()
 				port = "analog-output-speaker",
 				port_type = "speaker",
 				connection = "analog",
-			})
+			}, {})
 			assert.equals(1, count)
 		end)
 
 		it("fires subscribers when muted changes", function()
 			local s = { level = 50, muted = false, port = nil, port_type = nil, connection = nil }
-			on_sink("57", s)
+			on_sink("57", s, {})
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("57", { level = 50, muted = true, port = nil, port_type = nil, connection = nil })
+			on_sink("57", { level = 50, muted = true, port = nil, port_type = nil, connection = nil }, {})
 			assert.equals(1, count)
 		end)
 
@@ -273,7 +273,7 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("57", s)
+			on_sink("57", s, {})
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
@@ -284,24 +284,66 @@ describe("audio (init)", function()
 				port = "analog-output-headphones",
 				port_type = "headphones",
 				connection = "analog",
-			})
+			}, {})
 			assert.equals(1, count)
 		end)
 
 		it("does not fire on_control on backend re-event (only update() fires on_control)", function()
 			local s = { level = 50, muted = false, port = nil, port_type = nil, connection = nil }
-			on_sink("57", s)
+			on_sink("57", s, {})
 			local count = 0
 			Audio.Volume:on_control(function()
 				count = count + 1
 			end)
-			on_sink("57", s)
+			on_sink("57", s, {})
 			assert.equals(0, count)
 		end)
 
-		it("refresh() updates Audio.Volume.description from state meta", function()
-			on_sink("57", { level = 50, muted = false, description = "Built-in Audio" })
+		it("refresh() sets name and description from meta", function()
+			on_sink("57", { level = 50, muted = false }, { name = "alsa_output.pci", description = "Built-in Audio" })
+			assert.equals("alsa_output.pci", Audio.Volume.name)
 			assert.equals("Built-in Audio", Audio.Volume.description)
+		end)
+
+		it("refresh() clears name and description when meta omits them", function()
+			on_sink("57", { level = 50, muted = false }, { name = "alsa_output.pci", description = "Built-in Audio" })
+			on_sink("57", { level = 50, muted = false }, { name = nil, description = nil })
+			assert.is_nil(Audio.Volume.name)
+			assert.is_nil(Audio.Volume.description)
+		end)
+
+		it("fires subscribers when description changes", function()
+			local s = { level = 50, muted = false }
+			on_sink("57", s, { name = "dev", description = "Old" })
+			local count = 0
+			Audio.Volume:subscribe(function()
+				count = count + 1
+			end)
+			on_sink("57", s, { name = "dev", description = "New" })
+			assert.equals(1, count)
+		end)
+
+		it("fires subscribers when name changes", function()
+			local s = { level = 50, muted = false }
+			on_sink("57", s, { name = "dev.a", description = "Audio" })
+			local count = 0
+			Audio.Volume:subscribe(function()
+				count = count + 1
+			end)
+			on_sink("57", s, { name = "dev.b", description = "Audio" })
+			assert.equals(1, count)
+		end)
+
+		it("does not fire subscribers when meta is repeated unchanged", function()
+			local s = { level = 50, muted = false }
+			local meta = { name = "dev", description = "Audio" }
+			on_sink("57", s, meta)
+			local count = 0
+			Audio.Volume:subscribe(function()
+				count = count + 1
+			end)
+			on_sink("57", s, meta)
+			assert.equals(0, count)
 		end)
 	end)
 end)
