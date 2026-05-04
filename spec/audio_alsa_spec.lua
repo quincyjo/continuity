@@ -112,6 +112,72 @@ describe("audio.backends.alsa (instance)", function()
 				alsa():start({})
 			end)
 		end)
+
+		it("calls sinks.add with Master and is_default=true when sinks handle provided", function()
+			local added = {}
+			alsa():start({
+				sinks = {
+					add = function(id, state)
+						added[#added + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			assert.equals(1, #added)
+			assert.equals("Master", added[1].id)
+			assert.is_true(added[1].state.is_default)
+		end)
+
+		it("calls sources.add with Capture and is_default=true when sources handle provided", function()
+			local added = {}
+			alsa():start({
+				sources = {
+					add = function(id, state)
+						added[#added + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			assert.equals(1, #added)
+			assert.equals("Capture", added[1].id)
+			assert.is_true(added[1].state.is_default)
+		end)
+	end)
+
+	describe("device handle updates", function()
+		it("calls sinks.update with fresh state when Master event fires", function()
+			local updated = {}
+			alsa():start({
+				on_sink = function() end,
+				sinks = {
+					add = function() end,
+					update = function(id, state)
+						updated[#updated + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			wlc_cbs.stdout("event value: 'Master',0")
+			easy_cmds[1].cb(SGET_MASTER_OUTPUT, "", "", 0)
+			assert.equals(1, #updated)
+			assert.equals("Master", updated[1].id)
+			assert.equals(50, updated[1].state.level)
+		end)
+
+		it("calls sources.update with fresh state when Capture event fires", function()
+			local updated = {}
+			alsa():start({
+				on_source = function() end,
+				sources = {
+					add = function() end,
+					update = function(id, state)
+						updated[#updated + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			wlc_cbs.stdout("event value: 'Capture',0")
+			easy_cmds[1].cb(SGET_CAPTURE_OUTPUT, "", "", 0)
+			assert.equals(1, #updated)
+			assert.equals("Capture", updated[1].id)
+			assert.equals(72, updated[1].state.level)
+		end)
 	end)
 
 	describe("stop", function()

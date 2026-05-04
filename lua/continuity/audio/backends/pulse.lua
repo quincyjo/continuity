@@ -81,6 +81,49 @@ end
 -- Parse poll list output
 -- ----------------------------------------------------------------------------
 
+--- Finds the tab-indented block for device index `index_str` in a `pactl list` output.
+--- `list` is the portion of output after the "---\n" sentinel (i.e. the raw list output).
+---@param list string
+---@param index_str string  e.g. "57"
+---@return string?
+local function find_device_block_by_index(list, index_str)
+	local header = "#" .. index_str .. "\n"
+	local _, header_end = list:find(header, 1, true)
+	if not header_end then
+		return nil
+	end
+	local block_start = header_end + 1
+	local block_end = list:find("\n%S", block_start)
+	if block_end then
+		return list:sub(block_start, block_end - 1)
+	end
+	return list:sub(block_start)
+end
+
+--- Parses a single device block into state and metadata.
+--- `default_name` is the device name of the current default (first line of combined output).
+---@param block string
+---@param default_name string
+---@return { state: AudioState, meta: { name: string?, description: string? } }
+local function parse_device_block(block, default_name)
+	local name = block:match("\tName: ([^\n]+)")
+	local description = block:match("\tDescription: ([^\n]+)")
+	local level = tonumber(block:match("/%s+(%d+)%%"))
+	local muted = block:match("\tMute: (%a+)") == "yes"
+	local port = block:match("\tActive Port: ([^\n]+)")
+	return {
+		state = {
+			level = level or 0,
+			muted = muted or false,
+			port = port,
+			port_type = port and derive_port_type(port) or nil,
+			connection = name and derive_connection(name) or nil,
+			is_default = name == default_name,
+		},
+		meta = { name = name, description = description },
+	}
+end
+
 --- Finds the block in `list` whose content contains `device_name`.
 --- Blocks start at unindented "Sink #N" / "Source #N" lines.
 --- Returns the block content (tab-indented lines) as a string, or nil.
@@ -150,6 +193,49 @@ local function parse_list(stdout)
 		port_type = port and derive_port_type(port) or nil,
 		connection = device_name and derive_connection(device_name) or nil,
 	}
+end
+
+-- ----------------------------------------------------------------------------
+-- Parse all devices
+-- ----------------------------------------------------------------------------
+
+--- Parses combined output of:
+---   pactl get-default-sink; echo "---"; pactl list sinks
+--- (or the source equivalent). Returns one entry per device.
+---@param stdout string
+---@return { id: string, state: AudioState, meta: { name: string?, description: string? } }[]
+local function parse_all_devices(stdout)
+	local default_name = stdout:match("^([^\n]+)")
+	local sentinel = stdout:find("\n---\n", 1, true)
+	if not default_name or not sentinel then
+		return {}
+	end
+	local list = stdout:sub(sentinel + 5)
+
+	local entries = {}
+	local idx_str, block_start
+	local pos = 1
+
+	while true do
+		local header_start, header_end, captured_idx = list:find("%u%l+ #(%d+)\n", pos)
+		if not header_start then
+			break
+		end
+		if idx_str then
+			local parsed = parse_device_block(list:sub(block_start, header_start - 1), default_name)
+			entries[#entries + 1] = { id = idx_str, state = parsed.state, meta = parsed.meta }
+		end
+		idx_str = captured_idx
+		block_start = header_end + 1
+		pos = header_end + 1
+	end
+
+	if idx_str then
+		local parsed = parse_device_block(list:sub(block_start), default_name)
+		entries[#entries + 1] = { id = idx_str, state = parsed.state, meta = parsed.meta }
+	end
+
+	return entries
 end
 
 -- ----------------------------------------------------------------------------
@@ -226,8 +312,16 @@ local ENTITY = { [SINK_ID] = "sink", [SOURCE_ID] = "source" }
 local function create(_) -- luacheck: ignore
 	local on_sink = nil
 	local on_source = nil
-	local pending = { sink = 0, source = 0 }
+	local pending = { sink = 0, source = 0, server = 0 }
 	local input_handles = nil
+	local sink_handles = nil
+	local source_handles = nil
+	local current_default_sink = nil
+	local current_default_source = nil
+	local current_default_sink_idx = nil
+	local current_default_source_idx = nil
+	local pending_sinks = {}
+	local pending_sources = {}
 	local pending_inputs = {}
 
 	local function poll_inputs()
@@ -275,32 +369,232 @@ local function create(_) -- luacheck: ignore
 		end)
 	end
 
+	local function poll_sinks()
+		awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
+			if exitcode ~= 0 or not sink_handles then
+				return
+			end
+			local entries = parse_all_devices(stdout)
+			local default_state = nil
+			for _, entry in ipairs(entries) do
+				sink_handles.add(entry.id, entry.state, entry.meta)
+				if entry.state.is_default then
+					current_default_sink = entry.meta.name
+					current_default_sink_idx = entry.id
+					default_state = entry.state
+				end
+			end
+			if on_sink and default_state then
+				on_sink(SINK_ID, default_state)
+			end
+		end)
+	end
+
+	local function poll_sources()
+		awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
+			if exitcode ~= 0 or not source_handles then
+				return
+			end
+			local entries = parse_all_devices(stdout)
+			local default_state = nil
+			for _, entry in ipairs(entries) do
+				source_handles.add(entry.id, entry.state, entry.meta)
+				if entry.state.is_default then
+					current_default_source = entry.meta.name
+					current_default_source_idx = entry.id
+					default_state = entry.state
+				end
+			end
+			if on_source and default_state then
+				on_source(SOURCE_ID, default_state)
+			end
+		end)
+	end
+
 	local proc = Process({
 		name = "audio.pulse.subscribe",
 		cmd = {
 			"sh",
 			"-c",
-			[[pactl subscribe | grep --line-buffered -E "(Event 'change'|Event '(new|remove)' on sink-input)"]],
+			[[pactl subscribe | grep --line-buffered -E "(Event 'change'|Event '(new|remove)' on (sink-input|sink|source))"]],
 		},
 		stdout = function(line)
 			local entity = line:match("on ([%a%-]+) #")
 			if entity == "sink" then
-				if pending.sink > 0 then
-					pending.sink = pending.sink - 1
+				local event_type = line:match("Event '(%a+)'")
+				local idx_str = line:match("#(%d+)")
+				if not idx_str then
+					return
+				end
+				if event_type == "new" then
+					if not sink_handles then
+						return
+					end
+					awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
+						if exitcode ~= 0 or not sink_handles then
+							return
+						end
+						local default_name = stdout:match("^([^\n]+)")
+						local sentinel = stdout:find("\n---\n", 1, true)
+						if not default_name or not sentinel then
+							return
+						end
+						local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
+						if block then
+							local parsed = parse_device_block(block, default_name)
+							sink_handles.add(idx_str, parsed.state, parsed.meta)
+						end
+					end)
+				elseif event_type == "change" then
+					if sink_handles then
+						if pending_sinks[idx_str] and pending_sinks[idx_str] > 0 then
+							pending_sinks[idx_str] = pending_sinks[idx_str] - 1
+							return
+						end
+						awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
+							if exitcode ~= 0 or not sink_handles then
+								return
+							end
+							local default_name = stdout:match("^([^\n]+)")
+							local sentinel = stdout:find("\n---\n", 1, true)
+							if not default_name or not sentinel then
+								return
+							end
+							local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
+							if block then
+								local parsed = parse_device_block(block, default_name)
+								sink_handles.update(idx_str, parsed.state)
+								if parsed.state.is_default and on_sink then
+									on_sink(SINK_ID, parsed.state)
+								end
+							end
+						end)
+					elseif on_sink then
+						if pending.sink > 0 then
+							pending.sink = pending.sink - 1
+							return
+						end
+						poll_sink()
+					end
+				elseif event_type == "remove" then
+					if sink_handles then
+						sink_handles.remove(idx_str)
+					end
+				end
+			elseif entity == "source" then
+				local event_type = line:match("Event '(%a+)'")
+				local idx_str = line:match("#(%d+)")
+				if not idx_str then
+					return
+				end
+				if event_type == "new" then
+					if not source_handles then
+						return
+					end
+					awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
+						if exitcode ~= 0 or not source_handles then
+							return
+						end
+						local default_name = stdout:match("^([^\n]+)")
+						local sentinel = stdout:find("\n---\n", 1, true)
+						if not default_name or not sentinel then
+							return
+						end
+						local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
+						if block then
+							local parsed = parse_device_block(block, default_name)
+							source_handles.add(idx_str, parsed.state, parsed.meta)
+						end
+					end)
+				elseif event_type == "change" then
+					if source_handles then
+						if pending_sources[idx_str] and pending_sources[idx_str] > 0 then
+							pending_sources[idx_str] = pending_sources[idx_str] - 1
+							return
+						end
+						awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
+							if exitcode ~= 0 or not source_handles then
+								return
+							end
+							local default_name = stdout:match("^([^\n]+)")
+							local sentinel = stdout:find("\n---\n", 1, true)
+							if not default_name or not sentinel then
+								return
+							end
+							local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
+							if block then
+								local parsed = parse_device_block(block, default_name)
+								source_handles.update(idx_str, parsed.state)
+								if parsed.state.is_default and on_source then
+									on_source(SOURCE_ID, parsed.state)
+								end
+							end
+						end)
+					elseif on_source then
+						if pending.source > 0 then
+							pending.source = pending.source - 1
+							return
+						end
+						poll_source()
+					end
+				elseif event_type == "remove" then
+					if source_handles then
+						source_handles.remove(idx_str)
+					end
+				end
+			elseif entity == "server" then
+				if pending.server > 0 then
+					pending.server = pending.server - 1
+					return
+				end
+				if sink_handles then
+					awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
+						if exitcode ~= 0 then
+							return
+						end
+						local new_default = stdout:match("^([^\n]+)")
+						if new_default and new_default ~= current_default_sink then
+							local entries = parse_all_devices(stdout)
+							for _, entry in ipairs(entries) do
+								if entry.meta.name == current_default_sink or entry.meta.name == new_default then
+									sink_handles.update(entry.id, entry.state)
+									if entry.state.is_default then
+										current_default_sink_idx = entry.id
+										if on_sink then
+											on_sink(SINK_ID, entry.state)
+										end
+									end
+								end
+							end
+							current_default_sink = new_default
+						end
+					end)
 				elseif on_sink then
 					poll_sink()
 				end
-			elseif entity == "source" then
-				if pending.source > 0 then
-					pending.source = pending.source - 1
+				if source_handles then
+					awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
+						if exitcode ~= 0 then
+							return
+						end
+						local new_default = stdout:match("^([^\n]+)")
+						if new_default and new_default ~= current_default_source then
+							local entries = parse_all_devices(stdout)
+							for _, entry in ipairs(entries) do
+								if entry.meta.name == current_default_source or entry.meta.name == new_default then
+									source_handles.update(entry.id, entry.state)
+									if entry.state.is_default then
+										current_default_source_idx = entry.id
+										if on_source then
+											on_source(SOURCE_ID, entry.state)
+										end
+									end
+								end
+							end
+							current_default_source = new_default
+						end
+					end)
 				elseif on_source then
-					poll_source()
-				end
-			elseif entity == "server" then
-				if on_sink then
-					poll_sink()
-				end
-				if on_source then
 					poll_source()
 				end
 			elseif entity == "sink-input" then
@@ -356,10 +650,16 @@ local function create(_) -- luacheck: ignore
 		on_sink = callbacks.on_sink
 		on_source = callbacks.on_source
 		input_handles = callbacks.inputs or nil
-		if on_sink then
+		sink_handles = callbacks.sinks or nil
+		source_handles = callbacks.sources or nil
+		if sink_handles then
+			poll_sinks()
+		elseif on_sink then
 			poll_sink()
 		end
-		if on_source then
+		if source_handles then
+			poll_sources()
+		elseif on_source then
 			poll_source()
 		end
 		if input_handles then
@@ -373,9 +673,55 @@ local function create(_) -- luacheck: ignore
 		on_sink = nil
 		on_source = nil
 		input_handles = nil
+		sink_handles = nil
+		source_handles = nil
+		current_default_sink = nil
+		current_default_source = nil
+		current_default_sink_idx = nil
+		current_default_source_idx = nil
+		pending_sinks = {}
+		pending_sources = {}
 		pending_inputs = {}
 		pending.sink = 0
 		pending.source = 0
+		pending.server = 0
+	end
+
+	function backend:set_default_sink(id, cb) -- luacheck: ignore self
+		pending.server = pending.server + 1
+		awful.spawn.easy_async({ "pactl", "set-default-sink", id }, function(_, _, _, exitcode)
+			if exitcode ~= 0 then
+				pending.server = pending.server - 1
+				return
+			end
+			if cb then
+				cb()
+			end
+		end)
+	end
+
+	function backend:set_default_source(id, cb) -- luacheck: ignore self
+		pending.server = pending.server + 1
+		awful.spawn.easy_async({ "pactl", "set-default-source", id }, function(_, _, _, exitcode)
+			if exitcode ~= 0 then
+				pending.server = pending.server - 1
+				return
+			end
+			if cb then
+				cb()
+			end
+		end)
+	end
+
+	function backend:move_sink_input(input_id, sink_id, cb) -- luacheck: ignore self
+		awful.spawn.easy_async(
+			{ "pactl", "move-sink-input", tostring(input_id), tostring(sink_id) },
+			function(_, _, _, exitcode)
+				if exitcode == 0 and cb then
+					cb()
+				end
+			end
+		)
 	end
 
 	local function after_set(id, cb)
@@ -390,16 +736,27 @@ local function create(_) -- luacheck: ignore
 		end)
 	end
 
+	local function inc_device_pending(ent)
+		local idx = ent == "sink" and current_default_sink_idx or current_default_source_idx
+		if idx then
+			local tbl = ent == "sink" and pending_sinks or pending_sources
+			tbl[idx] = (tbl[idx] or 0) + 1
+			return tbl, idx
+		end
+		pending[ent] = pending[ent] + 1
+		return pending, ent
+	end
+
 	function backend:adjust_perc(id, delta, cb) -- luacheck: ignore self
 		local ent = ENTITY[id]
-		pending[ent] = pending[ent] + 1
+		local tbl, key = inc_device_pending(ent)
 		local sign = delta >= 0 and "+" or ""
 		awful.spawn.easy_async(
 			{ "pactl", SET_VOLUME[id], id, sign .. tostring(delta) .. "%" },
 			function(_, _, _, exitcode)
 				if exitcode ~= 0 then
-					if pending[ent] > 0 then
-						pending[ent] = pending[ent] - 1
+					if tbl[key] and tbl[key] > 0 then
+						tbl[key] = tbl[key] - 1
 					end
 					return
 				end
@@ -410,13 +767,13 @@ local function create(_) -- luacheck: ignore
 
 	function backend:set_perc(id, value, cb) -- luacheck: ignore self
 		local ent = ENTITY[id]
-		pending[ent] = pending[ent] + 1
+		local tbl, key = inc_device_pending(ent)
 		awful.spawn.easy_async(
 			{ "pactl", SET_VOLUME[id], id, tostring(math.floor(value)) .. "%" },
 			function(_, _, _, exitcode)
 				if exitcode ~= 0 then
-					if pending[ent] > 0 then
-						pending[ent] = pending[ent] - 1
+					if tbl[key] and tbl[key] > 0 then
+						tbl[key] = tbl[key] - 1
 					end
 					return
 				end
@@ -427,11 +784,11 @@ local function create(_) -- luacheck: ignore
 
 	function backend:toggle(id, cb) -- luacheck: ignore self
 		local ent = ENTITY[id]
-		pending[ent] = pending[ent] + 1
+		local tbl, key = inc_device_pending(ent)
 		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "toggle" }, function(_, _, _, exitcode)
 			if exitcode ~= 0 then
-				if pending[ent] > 0 then
-					pending[ent] = pending[ent] - 1
+				if tbl[key] and tbl[key] > 0 then
+					tbl[key] = tbl[key] - 1
 				end
 				return
 			end
@@ -441,11 +798,11 @@ local function create(_) -- luacheck: ignore
 
 	function backend:mute(id, cb) -- luacheck: ignore self
 		local ent = ENTITY[id]
-		pending[ent] = pending[ent] + 1
+		local tbl, key = inc_device_pending(ent)
 		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "1" }, function(_, _, _, exitcode)
 			if exitcode ~= 0 then
-				if pending[ent] > 0 then
-					pending[ent] = pending[ent] - 1
+				if tbl[key] and tbl[key] > 0 then
+					tbl[key] = tbl[key] - 1
 				end
 				return
 			end
@@ -455,11 +812,11 @@ local function create(_) -- luacheck: ignore
 
 	function backend:unmute(id, cb) -- luacheck: ignore self
 		local ent = ENTITY[id]
-		pending[ent] = pending[ent] + 1
+		local tbl, key = inc_device_pending(ent)
 		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "0" }, function(_, _, _, exitcode)
 			if exitcode ~= 0 then
-				if pending[ent] > 0 then
-					pending[ent] = pending[ent] - 1
+				if tbl[key] and tbl[key] > 0 then
+					tbl[key] = tbl[key] - 1
 				end
 				return
 			end
@@ -534,6 +891,9 @@ Pulse._private = {
 	derive_connection = derive_connection,
 	parse_volume_mute = parse_volume_mute,
 	parse_list = parse_list,
+	parse_all_devices = parse_all_devices,
+	find_device_block_by_index = find_device_block_by_index,
+	parse_device_block = parse_device_block,
 	find_sink_input_block = find_sink_input_block,
 	parse_sink_input_block = parse_sink_input_block,
 }

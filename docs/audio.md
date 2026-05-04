@@ -42,8 +42,8 @@ local capture = audio.Capture  -- default source
 
 ### Reading State
 
-The handle exposes a `state` table with at minimum `level` (0–100) and `muted`
-(boolean). With the PulseAudio backend, `port`, `port_type`, and `connection` are
+The handle exposes a `state` table. See [Device Handle](#device-handle) for all
+fields. With the PulseAudio backend, `port`, `port_type`, and `connection` are
 also populated when the device reports them.
 
 ```lua
@@ -124,18 +124,46 @@ volume:toggle_mute()     -- toggle mute state
 `adjust_perc` clamps the delta to keep the result in [0, 100]. If the clamped
 delta is 0, `on_control` is still fired with the current state.
 
-## State Fields
+## Handle Types
+
+### Device Handle
+
+`Audio.Volume`, `Audio.Capture`, and every handle returned by `audio.sinks` and
+`audio.sources` share the same `state` table:
 
 | Field | Type | Description | Backends |
 |---|---|---|---|
-| `level` | `integer` | Volume 0–100 | all |
-| `muted` | `boolean` | Mute state | all |
-| `port` | `string?` | Raw active port name | PulseAudio |
-| `port_type` | `string?` | `"speaker"`, `"headphones"`, `"headset"`, `"hdmi"`, `"mic"`, `"headset-mic"` | PulseAudio |
-| `connection` | `string?` | `"analog"`, `"bluetooth"`, `"hdmi"`, `"usb"` | PulseAudio |
+| `state.level` | `integer` | Volume 0–100 | all |
+| `state.muted` | `boolean` | Mute state | all |
+| `state.is_default` | `boolean` | Whether this is the current default device | all |
+| `state.port` | `string?` | Raw active port name | PulseAudio |
+| `state.port_type` | `string?` | `"speaker"`, `"headphones"`, `"headset"`, `"hdmi"`, `"mic"`, `"headset-mic"` | PulseAudio |
+| `state.connection` | `string?` | `"analog"`, `"bluetooth"`, `"hdmi"`, `"usb"` | PulseAudio |
 
-ALSA state contains only `level` and `muted`; `port`, `port_type`, and
+ALSA state contains only `level`, `muted`, and `is_default`; `port`, `port_type`, and
 `connection` are `nil`.
+
+Handles returned by `audio.sinks` and `audio.sources` additionally carry:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Numeric device index (as string, e.g. `"57"`) |
+| `name` | `string?` | Internal device name (e.g. `"alsa_output.pci-..."`) |
+| `description` | `string?` | Human-readable label (e.g. `"Built-in Audio Analog Stereo"`) |
+
+### Sink Input Handle
+
+Handles returned by `audio.inputs` expose:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Sink input index (as string) |
+| `app_name` | `string?` | Application name, if reported by the backend |
+| `icon_name` | `string?` | Icon name, if reported by the backend |
+| `state.level` | `integer` | Volume 0–100 |
+| `state.muted` | `boolean` | Mute state |
+| `state.name` | `string?` | Stream name |
+| `state.sink` | `integer?` | Sink index this input is routed to |
 
 ## Wibox Widget
 
@@ -211,19 +239,8 @@ for _, handle in ipairs(inputs) do
 end
 ```
 
-All three registration functions return an unsubscribe function.
-
-### Input Handle Fields
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `string` | Sink input index (as string) |
-| `app_name` | `string?` | Application name, if reported by the backend |
-| `icon_name` | `string?` | Icon name, if reported by the backend |
-| `state.level` | `integer` | Volume 0–100 |
-| `state.muted` | `boolean` | Mute state |
-| `state.name` | `string?` | Stream name |
-| `state.sink` | `integer?` | Sink index this input is routed to |
+All three registration functions return an unsubscribe function. See
+[Sink Input Handle](#sink-input-handle) for fields.
 
 ### Per-Handle Subscriptions and Control
 
@@ -251,5 +268,121 @@ audio.inputs.on_added(function(handle)
     handle:adjust_perc(5)
     handle:set_perc(80)
     handle:toggle_mute()
+
+    -- Route this stream to a different output device.
+    local target = audio.sinks.all()[1]
+    if target then
+        handle:move_to(target)
+    end
+end)
+```
+
+## Sinks
+
+`audio.sinks` enumerates all active output devices and tracks their lifecycle.
+
+> **Note:** Sink enumeration is only available with the PulseAudio/PipeWire backend.
+> The ALSA backend registers a single pseudo-device (`"Master"`) with `is_default=true`.
+
+### Lifecycle
+
+```lua
+local audio = require("continuity.audio")
+
+audio.sinks.on_added(function(handle)
+    print("sink added:", handle.id, handle.description)
+end)
+
+audio.sinks.on_updated(function(handle)
+    print("sink updated:", handle.id, "default:", handle.state.is_default)
+end)
+
+audio.sinks.on_removed(function(id)
+    print("sink removed:", id)
+end)
+
+local sinks = audio.sinks.all()
+for _, handle in ipairs(sinks) do
+    print(handle.id, handle.description, handle.state.is_default)
+end
+```
+
+All three registration functions return an unsubscribe function. See
+[Device Handle](#device-handle) for fields.
+
+### Per-Handle Subscriptions and Control
+
+Individual sink handles expose the same subscription API as `Audio.Volume`:
+
+```lua
+audio.sinks.on_added(function(handle)
+    handle:subscribe(function(state)
+        print("sink", handle.id, "level:", state.level, "default:", state.is_default)
+    end)
+end)
+```
+
+### Changing the Default Sink
+
+```lua
+audio.sinks.on_added(function(handle)
+    -- Make this sink the default output.
+    handle:set_default()
+end)
+```
+
+`set_default` fires asynchronously. The backend updates `state.is_default` on both the
+old and new default handles when the change takes effect.
+
+## Sources
+
+`audio.sources` enumerates all active input devices and tracks their lifecycle.
+
+> **Note:** Source enumeration is only available with the PulseAudio/PipeWire backend.
+> The ALSA backend registers a single pseudo-device (`"Capture"`) with `is_default=true`.
+
+### Lifecycle
+
+```lua
+local audio = require("continuity.audio")
+
+audio.sources.on_added(function(handle)
+    print("source added:", handle.id, handle.description)
+end)
+
+audio.sources.on_updated(function(handle)
+    print("source updated:", handle.id, "default:", handle.state.is_default)
+end)
+
+audio.sources.on_removed(function(id)
+    print("source removed:", id)
+end)
+
+local sources = audio.sources.all()
+for _, handle in ipairs(sources) do
+    print(handle.id, handle.description, handle.state.is_default)
+end
+```
+
+All three registration functions return an unsubscribe function. See
+[Device Handle](#device-handle) for fields.
+
+### Per-Handle Subscriptions and Control
+
+Individual source handles expose the same subscription API as `Audio.Capture`:
+
+```lua
+audio.sources.on_added(function(handle)
+    handle:subscribe(function(state)
+        print("source", handle.id, "level:", state.level, "default:", state.is_default)
+    end)
+end)
+```
+
+### Changing the Default Source
+
+```lua
+audio.sources.on_added(function(handle)
+    handle:set_default()
 end)
 ```

@@ -47,28 +47,44 @@ local UNMUTE_CMD = {
 local function create(_) -- luacheck: ignore
 	local on_sink = nil
 	local on_source = nil
+	local sink_handles = nil
+	local source_handles = nil
 	local pending = { [SINK_ID] = 0, [SOURCE_ID] = 0 }
 
 	local function poll_sink()
 		awful.spawn.easy_async(POLL_CMD[SINK_ID], function(stdout, _, _, exitcode)
-			if exitcode ~= 0 or not on_sink then
+			if exitcode ~= 0 then
 				return
 			end
 			local level, muted = parse_channel(stdout)
-			if level ~= nil then
-				on_sink(SINK_ID, { level = level, muted = muted })
+			if level == nil then
+				return
+			end
+			local state = { level = level, muted = muted }
+			if on_sink then
+				on_sink(SINK_ID, state)
+			end
+			if sink_handles then
+				sink_handles.update(SINK_ID, state)
 			end
 		end)
 	end
 
 	local function poll_source()
 		awful.spawn.easy_async(POLL_CMD[SOURCE_ID], function(stdout, _, _, exitcode)
-			if exitcode ~= 0 or not on_source then
+			if exitcode ~= 0 then
 				return
 			end
 			local level, muted = parse_channel(stdout)
-			if level ~= nil then
-				on_source(SOURCE_ID, { level = level, muted = muted })
+			if level == nil then
+				return
+			end
+			local state = { level = level, muted = muted }
+			if on_source then
+				on_source(SOURCE_ID, state)
+			end
+			if source_handles then
+				source_handles.update(SOURCE_ID, state)
 			end
 		end)
 	end
@@ -98,6 +114,14 @@ local function create(_) -- luacheck: ignore
 		callbacks = callbacks or {}
 		on_sink = callbacks.on_sink
 		on_source = callbacks.on_source
+		sink_handles = callbacks.sinks or nil
+		source_handles = callbacks.sources or nil
+		if sink_handles then
+			sink_handles.add(SINK_ID, { level = 0, muted = false, is_default = true })
+		end
+		if source_handles then
+			source_handles.add(SOURCE_ID, { level = 0, muted = false, is_default = true })
+		end
 		proc:start()
 	end
 
@@ -105,6 +129,8 @@ local function create(_) -- luacheck: ignore
 		proc:stop()
 		on_sink = nil
 		on_source = nil
+		sink_handles = nil
+		source_handles = nil
 		pending[SINK_ID] = 0
 		pending[SOURCE_ID] = 0
 	end

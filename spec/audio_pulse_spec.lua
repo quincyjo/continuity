@@ -201,6 +201,214 @@ describe("audio.backends.pulse", function()
 			assert.is_nil(pulse._private.parse_list(output))
 		end)
 	end)
+
+	describe("parse_all_devices", function()
+		local SINGLE_SINK_OUTPUT = table.concat({
+			"alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"---",
+			"Sink #57",
+			"\tState: SUSPENDED",
+			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"\tDescription: Built-in Audio Analog Stereo",
+			"\tMute: no",
+			"\tVolume: front-left: 26216 /  40% / -23.87 dB,   front-right: 26216 /  40% / -23.87 dB",
+			"\tActive Port: analog-output-speaker",
+		}, "\n") .. "\n"
+
+		local MULTI_SINK_OUTPUT = table.concat({
+			"alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"---",
+			"Sink #55",
+			"\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo",
+			"\tDescription: Built-in Audio HDMI",
+			"\tMute: no",
+			"\tVolume: front-left: 65536 / 100% / 0.00 dB",
+			"\tActive Port: hdmi-output-0",
+			"Sink #57",
+			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"\tDescription: Built-in Audio Analog Stereo",
+			"\tMute: yes",
+			"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+			"\tActive Port: analog-output-headphones",
+		}, "\n") .. "\n"
+
+		it("returns one entry for a single sink", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			assert.equals(1, #entries)
+		end)
+
+		it("entry id is the numeric index string", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			assert.equals("57", entries[1].id)
+		end)
+
+		it("entry meta.name is the Name: field", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", entries[1].meta.name)
+		end)
+
+		it("entry meta.description is the Description: field", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			assert.equals("Built-in Audio Analog Stereo", entries[1].meta.description)
+		end)
+
+		it("entry state has correct level, muted, port, port_type, connection", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			local s = entries[1].state
+			assert.equals(40, s.level)
+			assert.is_false(s.muted)
+			assert.equals("analog-output-speaker", s.port)
+			assert.equals("speaker", s.port_type)
+			assert.equals("analog", s.connection)
+		end)
+
+		it("is_default is true for the default device", function()
+			local entries = pulse._private.parse_all_devices(SINGLE_SINK_OUTPUT)
+			assert.is_true(entries[1].state.is_default)
+		end)
+
+		it("returns one entry per sink when multiple sinks are present", function()
+			local entries = pulse._private.parse_all_devices(MULTI_SINK_OUTPUT)
+			assert.equals(2, #entries)
+		end)
+
+		it("assigns correct ids and names for multiple sinks", function()
+			local entries = pulse._private.parse_all_devices(MULTI_SINK_OUTPUT)
+			local by_id = {}
+			for _, e in ipairs(entries) do
+				by_id[e.id] = e
+			end
+			assert.is_not_nil(by_id["55"])
+			assert.equals("alsa_output.pci-0000_00_1f.3.hdmi-stereo", by_id["55"].meta.name)
+			assert.is_not_nil(by_id["57"])
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", by_id["57"].meta.name)
+		end)
+
+		it("is_default is true only for the default sink", function()
+			local entries = pulse._private.parse_all_devices(MULTI_SINK_OUTPUT)
+			local by_id = {}
+			for _, e in ipairs(entries) do
+				by_id[e.id] = e
+			end
+			assert.is_false(by_id["55"].state.is_default)
+			assert.is_true(by_id["57"].state.is_default)
+		end)
+
+		it("returns empty table when no devices are present", function()
+			local entries = pulse._private.parse_all_devices("alsa_output.pci\n---\n")
+			assert.equals(0, #entries)
+		end)
+
+		it("meta.description is nil when Description: is absent", function()
+			local output = table.concat({
+				"bluez_output.AA_BB_CC_DD_EE_FF.1",
+				"---",
+				"Sink #60",
+				"\tName: bluez_output.AA_BB_CC_DD_EE_FF.1",
+				"\tMute: no",
+				"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+			}, "\n") .. "\n"
+			local entries = pulse._private.parse_all_devices(output)
+			assert.equals(1, #entries)
+			assert.is_nil(entries[1].meta.description)
+		end)
+	end)
+
+	describe("find_device_block_by_index", function()
+		local LIST = table.concat({
+			"Sink #55",
+			"\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo",
+			"\tDescription: Built-in HDMI",
+			"\tMute: no",
+			"\tVolume: front-left: 65536 / 100% / 0.00 dB",
+			"\tActive Port: hdmi-output-0",
+			"Sink #57",
+			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"\tDescription: Built-in Analog",
+			"\tMute: yes",
+			"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+			"\tActive Port: analog-output-speaker",
+		}, "\n") .. "\n"
+
+		it("returns the block for the first device", function()
+			local block = pulse._private.find_device_block_by_index(LIST, "55")
+			assert.is_not_nil(block)
+			assert.truthy(block:find("hdmi-stereo", 1, true))
+		end)
+
+		it("returns the block for the second device", function()
+			local block = pulse._private.find_device_block_by_index(LIST, "57")
+			assert.is_not_nil(block)
+			assert.truthy(block:find("analog-stereo", 1, true))
+		end)
+
+		it("returns nil for an unknown index", function()
+			assert.is_nil(pulse._private.find_device_block_by_index(LIST, "99"))
+		end)
+
+		it("block contains the Name: line for the matched device only", function()
+			local block = pulse._private.find_device_block_by_index(LIST, "55")
+			assert.truthy(block:find("alsa_output.pci-0000_00_1f.3.hdmi-stereo", 1, true))
+			assert.falsy(block:find("analog-stereo", 1, true))
+		end)
+	end)
+
+	describe("parse_device_block", function()
+		local BLOCK = table.concat({
+			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+			"\tDescription: Built-in Audio Analog Stereo",
+			"\tMute: no",
+			"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+			"\tActive Port: analog-output-speaker",
+		}, "\n") .. "\n"
+
+		local DEFAULT_NAME = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+
+		it("parses level, muted, port, port_type, connection", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, DEFAULT_NAME)
+			assert.equals(40, parsed.state.level)
+			assert.is_false(parsed.state.muted)
+			assert.equals("analog-output-speaker", parsed.state.port)
+			assert.equals("speaker", parsed.state.port_type)
+			assert.equals("analog", parsed.state.connection)
+		end)
+
+		it("is_default is true when name matches default_name", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, DEFAULT_NAME)
+			assert.is_true(parsed.state.is_default)
+		end)
+
+		it("is_default is false when name does not match default_name", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, "alsa_output.pci-0000_00_1f.3.hdmi-stereo")
+			assert.is_false(parsed.state.is_default)
+		end)
+
+		it("meta.name is the Name: field", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, DEFAULT_NAME)
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", parsed.meta.name)
+		end)
+
+		it("meta.description is the Description: field", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, DEFAULT_NAME)
+			assert.equals("Built-in Audio Analog Stereo", parsed.meta.description)
+		end)
+
+		it("meta.description is nil when Description: is absent", function()
+			local block_no_desc = table.concat({
+				"\tName: bluez_output.AA_BB_CC_DD_EE_FF.1",
+				"\tMute: no",
+				"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+			}, "\n") .. "\n"
+			local parsed = pulse._private.parse_device_block(block_no_desc, "bluez_output.AA_BB_CC_DD_EE_FF.1")
+			assert.is_nil(parsed.meta.description)
+		end)
+
+		it("level defaults to 0 when Volume: is absent", function()
+			local block_no_vol = "\tName: alsa_output.pci\n\tMute: no\n"
+			local parsed = pulse._private.parse_device_block(block_no_vol, "other")
+			assert.equals(0, parsed.state.level)
+		end)
+	end)
 end)
 
 describe("audio.backends.pulse (instance)", function()
