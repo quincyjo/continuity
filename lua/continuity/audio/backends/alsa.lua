@@ -25,9 +25,8 @@ end
 local SINK_ID = "Master"
 local SOURCE_ID = "Capture"
 
----@param opts? table  Reserved for future use.
 ---@return AudioBackend
-local function create(_) -- luacheck: ignore
+local function create()
 	local on_sink = nil
 	local on_source = nil
 	local sink_handles = nil

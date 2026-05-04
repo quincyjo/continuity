@@ -289,9 +289,8 @@ end
 local SINK_POLL_CMD = { "sh", "-c", [[pactl get-default-sink; echo "---"; pactl list sinks]] }
 local SOURCE_POLL_CMD = { "sh", "-c", [[pactl get-default-source; echo "---"; pactl list sources]] }
 
----@param opts? table  Reserved for future use.
 ---@return AudioBackend
-local function create(_) -- luacheck: ignore
+local function create()
 	local on_sink = nil
 	local on_source = nil
 	local pending = { server = 0 }
