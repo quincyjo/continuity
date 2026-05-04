@@ -19,7 +19,7 @@
 ---@field adjust_perc fun(self: SinkInputHandle, delta: integer)
 ---@field set_perc    fun(self: SinkInputHandle, value: number)
 ---@field toggle_mute fun(self: SinkInputHandle)
----@field move_to     fun(self: SinkInputHandle, target: SinkInputHandle|integer|string)
+---@field move_to     fun(self: SinkInputHandle, target: AudioHandle|integer|string)
 
 ---@class InputHandles
 ---@field add    fun(id: string, state: SinkInputState, meta: SinkInputMeta?)
