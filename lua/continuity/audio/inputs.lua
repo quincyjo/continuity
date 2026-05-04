@@ -34,7 +34,7 @@
 
 local inputs = {}
 
----@return InputCollection, fun(backend: AudioBackend): InputHandles
+---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
 function inputs.new()
 	---@type { inputs: table<string, SinkInputHandle>, subscribers: table<string, fun(state: SinkInputState)[]>, on_control_cbs: table<string, fun(state: SinkInputState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: SinkInputHandle)[], on_updated_cbs: fun(handle: SinkInputHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
@@ -163,7 +163,7 @@ function inputs.new()
 		fire(state.on_removed_cbs, id)
 	end
 
-	local function bind(backend)
+	local function bind(api_sub)
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted
 			handle.state.level = level
@@ -184,31 +184,27 @@ function inputs.new()
 				fire(state.on_control_cbs[self.id] or {}, self.state)
 				return
 			end
-			backend:adjust_input_perc(self.id, delta, function(level, muted)
+			api_sub.adjust_perc(self.id, delta, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.set_perc = function(self, value)
 			value = math.max(0, math.min(100, math.floor(value + 0.5)))
-			backend:set_input_perc(self.id, value, function(level, muted)
+			api_sub.set_perc(self.id, value, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.toggle_mute = function(self)
-			backend:toggle_input(self.id, function(level, muted)
+			api_sub.toggle(self.id, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.move_to = function(self, target)
 			local sink_id = type(target) == "table" and target.id or target
-			local fn = backend.move_sink_input
-			if not fn then
-				return
-			end
-			fn(backend, self.id, sink_id, function()
+			api_sub.move(self.id, sink_id, function()
 				fire(state.on_control_cbs[self.id] or {}, self.state)
 			end)
 		end

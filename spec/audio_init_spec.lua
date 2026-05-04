@@ -2,20 +2,58 @@ require("spec.support.awesome_mocks")
 
 describe("audio (init)", function()
 	local Audio
-	local on_sink
+	local on_sink, on_source
 	local start_cbs
+	local sink_api_calls, source_api_calls
 
 	local function make_backend()
+		sink_api_calls = {}
+		source_api_calls = {}
 		return {
+			api = {
+				sink = {
+					adjust_perc = function(idx, delta, cb)
+						sink_api_calls[#sink_api_calls + 1] =
+							{ method = "adjust_perc", idx = idx, delta = delta, cb = cb }
+					end,
+					set_perc = function(idx, value, cb)
+						sink_api_calls[#sink_api_calls + 1] = { method = "set_perc", idx = idx, value = value, cb = cb }
+					end,
+					toggle = function(idx, cb)
+						sink_api_calls[#sink_api_calls + 1] = { method = "toggle", idx = idx, cb = cb }
+					end,
+					mute = function() end,
+					unmute = function() end,
+					set_default = function() end,
+				},
+				source = {
+					adjust_perc = function(idx, delta, cb)
+						source_api_calls[#source_api_calls + 1] =
+							{ method = "adjust_perc", idx = idx, delta = delta, cb = cb }
+					end,
+					set_perc = function(idx, value, cb)
+						source_api_calls[#source_api_calls + 1] =
+							{ method = "set_perc", idx = idx, value = value, cb = cb }
+					end,
+					toggle = function(idx, cb)
+						source_api_calls[#source_api_calls + 1] = { method = "toggle", idx = idx, cb = cb }
+					end,
+					mute = function() end,
+					unmute = function() end,
+					set_default = function() end,
+				},
+				sink_input = {
+					adjust_perc = function() end,
+					set_perc = function() end,
+					toggle = function() end,
+					move = function() end,
+				},
+			},
 			start = function(_self, cbs)
 				start_cbs = cbs
 				on_sink = cbs.on_sink
+				on_source = cbs.on_source
 			end,
-			adjust_perc = function() end,
-			set_perc = function() end,
-			toggle = function() end,
-			set_default_sink = function() end,
-			set_default_source = function() end,
 		}
 	end
 
@@ -24,6 +62,7 @@ describe("audio (init)", function()
 		package.loaded["continuity.audio.inputs"] = nil
 		package.loaded["continuity.audio.devices"] = nil
 		on_sink = nil
+		on_source = nil
 		start_cbs = nil
 		Audio = require("continuity.audio")
 	end)
@@ -97,6 +136,79 @@ describe("audio (init)", function()
 		end)
 	end)
 
+	describe("Audio.Volume.id and Audio.Capture.id reflect real backend idx", function()
+		before_each(function()
+			Audio.setup({ backend = make_backend() })
+		end)
+
+		it("Audio.Volume.id is updated to the idx from on_sink", function()
+			on_sink("57", { level = 40, muted = false })
+			assert.equals("57", Audio.Volume.id)
+		end)
+
+		it("Audio.Volume.id updates when default sink changes", function()
+			on_sink("57", { level = 40, muted = false })
+			on_sink("55", { level = 20, muted = false })
+			assert.equals("55", Audio.Volume.id)
+		end)
+
+		it("Audio.Capture.id is updated to the idx from on_source", function()
+			on_source("12", { level = 80, muted = false })
+			assert.equals("12", Audio.Capture.id)
+		end)
+	end)
+
+	describe("Audio.Volume control methods use api.sink with real idx", function()
+		before_each(function()
+			Audio.setup({ backend = make_backend() })
+			on_sink("57", { level = 40, muted = false })
+		end)
+
+		it("adjust_perc calls backend.api.sink.adjust_perc with real idx", function()
+			Audio.Volume:adjust_perc(5)
+			assert.equals(1, #sink_api_calls)
+			assert.equals("adjust_perc", sink_api_calls[1].method)
+			assert.equals("57", sink_api_calls[1].idx)
+			assert.equals(5, sink_api_calls[1].delta)
+		end)
+
+		it("set_perc calls backend.api.sink.set_perc with real idx", function()
+			Audio.Volume:set_perc(50)
+			assert.equals("set_perc", sink_api_calls[1].method)
+			assert.equals("57", sink_api_calls[1].idx)
+		end)
+
+		it("toggle_mute calls backend.api.sink.toggle with real idx", function()
+			Audio.Volume:toggle_mute()
+			assert.equals("toggle", sink_api_calls[1].method)
+			assert.equals("57", sink_api_calls[1].idx)
+		end)
+
+		it("adjust_perc does NOT call source api", function()
+			Audio.Volume:adjust_perc(5)
+			assert.equals(0, #source_api_calls)
+		end)
+	end)
+
+	describe("Audio.Capture control methods use api.source with real idx", function()
+		before_each(function()
+			Audio.setup({ backend = make_backend() })
+			on_source("12", { level = 80, muted = false })
+		end)
+
+		it("toggle_mute calls backend.api.source.toggle with real idx", function()
+			Audio.Capture:toggle_mute()
+			assert.equals(1, #source_api_calls)
+			assert.equals("toggle", source_api_calls[1].method)
+			assert.equals("12", source_api_calls[1].idx)
+		end)
+
+		it("toggle_mute does NOT call sink api", function()
+			Audio.Capture:toggle_mute()
+			assert.equals(0, #sink_api_calls)
+		end)
+	end)
+
 	describe("Audio.Volume refresh (post-init change detection)", function()
 		before_each(function()
 			Audio.setup({ backend = make_backend() })
@@ -110,12 +222,12 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("Master", s)
+			on_sink("57", s)
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("Master", s)
+			on_sink("57", s)
 			assert.equals(0, count)
 		end)
 
@@ -127,12 +239,12 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("Master", s)
+			on_sink("57", s)
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("Master", {
+			on_sink("57", {
 				level = 60,
 				muted = false,
 				port = "analog-output-speaker",
@@ -144,12 +256,12 @@ describe("audio (init)", function()
 
 		it("fires subscribers when muted changes", function()
 			local s = { level = 50, muted = false, port = nil, port_type = nil, connection = nil }
-			on_sink("Master", s)
+			on_sink("57", s)
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("Master", { level = 50, muted = true, port = nil, port_type = nil, connection = nil })
+			on_sink("57", { level = 50, muted = true, port = nil, port_type = nil, connection = nil })
 			assert.equals(1, count)
 		end)
 
@@ -161,12 +273,12 @@ describe("audio (init)", function()
 				port_type = "speaker",
 				connection = "analog",
 			}
-			on_sink("Master", s)
+			on_sink("57", s)
 			local count = 0
 			Audio.Volume:subscribe(function()
 				count = count + 1
 			end)
-			on_sink("Master", {
+			on_sink("57", {
 				level = 50,
 				muted = false,
 				port = "analog-output-headphones",
@@ -178,17 +290,17 @@ describe("audio (init)", function()
 
 		it("does not fire on_control on backend re-event (only update() fires on_control)", function()
 			local s = { level = 50, muted = false, port = nil, port_type = nil, connection = nil }
-			on_sink("Master", s)
+			on_sink("57", s)
 			local count = 0
 			Audio.Volume:on_control(function()
 				count = count + 1
 			end)
-			on_sink("Master", s)
+			on_sink("57", s)
 			assert.equals(0, count)
 		end)
 
 		it("refresh() updates Audio.Volume.description from state meta", function()
-			on_sink("Master", { level = 50, muted = false, description = "Built-in Audio" })
+			on_sink("57", { level = 50, muted = false, description = "Built-in Audio" })
 			assert.equals("Built-in Audio", Audio.Volume.description)
 		end)
 	end)

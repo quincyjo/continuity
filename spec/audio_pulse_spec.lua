@@ -414,7 +414,6 @@ end)
 describe("audio.backends.pulse (instance)", function()
 	local pulse, awful, wlc_cbs, easy_cmds
 
-	-- Minimal output of: pactl get-default-sink; echo "---"; pactl list sinks
 	local SINK_POLL_OUTPUT = table.concat({
 		"alsa_output.pci-0000_00_1f.3.analog-stereo",
 		"---",
@@ -425,15 +424,13 @@ describe("audio.backends.pulse (instance)", function()
 		"\tActive Port: analog-output-speaker",
 	}, "\n") .. "\n"
 
-	local SOURCE_POLL_OUTPUT = table.concat({
-		"alsa_input.pci-0000_00_1f.3.analog-stereo",
-		"---",
-		"Source #58",
-		"\tName: alsa_input.pci-0000_00_1f.3.analog-stereo",
-		"\tMute: no",
-		"\tVolume: front-left: 11796 /  18% / -44.68 dB",
-		"\tActive Port: analog-input-internal-mic",
-	}, "\n") .. "\n"
+	local function make_sink_handles()
+		return { add = function() end, update = function() end, remove = function() end }
+	end
+
+	local function make_source_handles()
+		return { add = function() end, update = function() end, remove = function() end }
+	end
 
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
@@ -451,73 +448,81 @@ describe("audio.backends.pulse (instance)", function()
 	end)
 
 	describe("start", function()
-		it("polls sink on start when on_sink is provided", function()
-			local results = {}
-			pulse():start({
-				on_sink = function(id, s)
-					results[#results + 1] = { id = id, state = s }
+		it("polls sinks on start when sinks handle is provided", function()
+			local added = {}
+			local sh = {
+				add = function(id)
+					added[#added + 1] = { id = id }
 				end,
-			})
+				update = function() end,
+				remove = function() end,
+			}
+			pulse():start({ sinks = sh })
 			assert.equals(1, #easy_cmds)
 			assert.equals("sh", easy_cmds[1].cmd[1])
 			assert.truthy(easy_cmds[1].cmd[3]:find("list sinks"))
 			easy_cmds[1].cb(SINK_POLL_OUTPUT, "", "", 0)
-			assert.equals(1, #results)
-			assert.equals("@DEFAULT_SINK@", results[1].id)
-			assert.equals(40, results[1].state.level)
-			assert.is_false(results[1].state.muted)
+			assert.equals(1, #added)
+			assert.equals("57", added[1].id)
 		end)
 
-		it("polls source on start when on_source is provided", function()
-			local results = {}
-			pulse():start({
-				on_source = function(id, s)
-					results[#results + 1] = { id = id, state = s }
-				end,
-			})
+		it("polls sources on start when sources handle is provided", function()
+			pulse():start({ sources = make_source_handles() })
 			assert.equals(1, #easy_cmds)
 			assert.truthy(easy_cmds[1].cmd[3]:find("list sources"))
-			easy_cmds[1].cb(SOURCE_POLL_OUTPUT, "", "", 0)
-			assert.equals(1, #results)
-			assert.equals("@DEFAULT_SOURCE@", results[1].id)
-			assert.equals(18, results[1].state.level)
 		end)
 
-		it("polls both when both callbacks are provided", function()
-			pulse():start({
-				on_sink = function() end,
-				on_source = function() end,
-			})
+		it("polls both when both handles are provided", function()
+			pulse():start({ sinks = make_sink_handles(), sources = make_source_handles() })
 			assert.equals(2, #easy_cmds)
 		end)
 
-		it("polls neither when no callbacks are provided", function()
+		it("polls neither when no handles are provided", function()
 			pulse():start({})
 			assert.equals(0, #easy_cmds)
 		end)
 
 		it("starts the subscribe process", function()
-			pulse():start({ on_sink = function() end })
+			pulse():start({})
 			assert.not_nil(wlc_cbs)
 			assert.is_function(wlc_cbs.stdout)
 		end)
 
-		it("does not call callback when poll exits with non-zero", function()
-			local called = false
+		it("calls on_sink with the real numeric sink idx", function()
+			local results = {}
 			pulse():start({
-				on_sink = function()
-					called = true
+				on_sink = function(id, s)
+					results[#results + 1] = { id = id, state = s }
 				end,
+				sinks = make_sink_handles(),
 			})
+			easy_cmds[1].cb(SINK_POLL_OUTPUT, "", "", 0)
+			assert.equals(1, #results)
+			assert.equals("57", results[1].id)
+			assert.equals(40, results[1].state.level)
+			assert.is_false(results[1].state.muted)
+		end)
+
+		it("does not call sinks.add when poll exits with non-zero", function()
+			local added = {}
+			local sh = {
+				add = function(id)
+					added[#added + 1] = id
+				end,
+				update = function() end,
+				remove = function() end,
+			}
+			pulse():start({ sinks = sh })
 			easy_cmds[1].cb("", "", "", 1)
-			assert.is_false(called)
+			assert.equals(0, #added)
 		end)
 	end)
 
 	describe("stop", function()
 		it("clears callbacks so events after stop do not trigger polls", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end })
+			backend:start({ sinks = make_sink_handles() })
+			easy_cmds[1].cb(SINK_POLL_OUTPUT, "", "", 0)
 			local count_after_start = #easy_cmds
 			backend:stop()
 			wlc_cbs.stdout("Event 'change' on sink #57")
@@ -526,45 +531,35 @@ describe("audio.backends.pulse (instance)", function()
 	end)
 
 	describe("event dispatch", function()
-		it("polls sink on sink change event when pending_sink is zero", function()
+		it("polls sinks on sink change event when sink handles are registered", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end })
+			backend:start({ sinks = make_sink_handles() })
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count + 1, #easy_cmds)
 			assert.truthy(easy_cmds[#easy_cmds].cmd[3]:find("list sinks"))
 		end)
 
-		it("polls source on source change event when pending_source is zero", function()
+		it("polls sources on source change event when source handles are registered", function()
 			local backend = pulse()
-			backend:start({ on_source = function() end })
+			backend:start({ sources = make_source_handles() })
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on source #58")
 			assert.equals(count + 1, #easy_cmds)
 			assert.truthy(easy_cmds[#easy_cmds].cmd[3]:find("list sources"))
 		end)
 
-		it("polls both on server change event regardless of pending", function()
+		it("polls both sinks and sources on server change event", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end, on_source = function() end })
+			backend:start({ sinks = make_sink_handles(), sources = make_source_handles() })
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on server #0")
 			assert.equals(count + 2, #easy_cmds)
 		end)
 
-		it("skips poll and decrements pending_sink when pending > 0 on sink event", function()
+		it("does not poll sink on sink event when no sink handles are registered", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end })
-			-- Two consecutive events when pending=0: both poll
-			local count = #easy_cmds
-			wlc_cbs.stdout("Event 'change' on sink #57")
-			wlc_cbs.stdout("Event 'change' on sink #57")
-			assert.equals(count + 2, #easy_cmds)
-		end)
-
-		it("does not poll sink on sink event when on_sink is nil", function()
-			local backend = pulse()
-			backend:start({ on_source = function() end })
+			backend:start({})
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count, #easy_cmds)
@@ -582,18 +577,21 @@ describe("audio.backends.pulse (instance)", function()
 			easy_cmds[n].cb(stdout or "", "", "", 0)
 		end
 
-		it("adjust_perc increments pending_sink and calls cb with parsed state", function()
+		local function cs(cmd)
+			return type(cmd) == "table" and table.concat(cmd, " ") or cmd
+		end
+
+		it("api.sink.adjust_perc calls set-sink-volume and returns parsed volume via cb", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end })
+			backend:start({ sinks = make_sink_handles() })
 			local count = #easy_cmds
 			local cb_result = nil
-			backend:adjust_perc("@DEFAULT_SINK@", 10, function(level, muted)
+			backend.api.sink.adjust_perc("57", 10, function(level, muted)
 				cb_result = { level = level, muted = muted }
 			end)
 			assert.equals(count + 1, #easy_cmds)
-			local set_cmd = easy_cmds[#easy_cmds].cmd
-			local cmd_str = type(set_cmd) == "table" and table.concat(set_cmd, " ") or set_cmd
-			assert.truthy(cmd_str:find("set%-sink%-volume"))
+			assert.truthy(cs(easy_cmds[#easy_cmds].cmd):find("set%-sink%-volume"))
+			assert.truthy(cs(easy_cmds[#easy_cmds].cmd):find("57"))
 			fire(#easy_cmds, "")
 			assert.equals(count + 2, #easy_cmds)
 			fire(#easy_cmds, VOLUME_MUTE_OUTPUT)
@@ -602,66 +600,58 @@ describe("audio.backends.pulse (instance)", function()
 			assert.is_false(cb_result.muted)
 		end)
 
-		it("pending_sink is decremented by subscribe event, not the cb", function()
+		it("api.sink.adjust_perc increments pending_sinks[idx] so sink event is suppressed", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end })
-			backend:adjust_perc("@DEFAULT_SINK@", 5, function() end)
+			backend:start({ sinks = make_sink_handles() })
+			backend.api.sink.adjust_perc("57", 5, function() end)
 			local count = #easy_cmds
-			-- First sink event: pending > 0, should decrement and NOT poll
+			-- First sink event: pending_sinks["57"] > 0, should decrement and NOT poll
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count, #easy_cmds)
-			-- Second sink event: pending == 0, should poll
+			-- Second sink event: pending_sinks["57"] == 0, SHOULD poll
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count + 1, #easy_cmds)
 		end)
 
-		it("set_perc calls pactl set-sink-volume with absolute percent", function()
+		it("api.sink.set_perc calls pactl set-sink-volume with absolute percent", function()
 			local backend = pulse()
 			backend:start({})
-			backend:set_perc("@DEFAULT_SINK@", 75, function() end)
+			backend.api.sink.set_perc("57", 75, function() end)
 			assert.equals(1, #easy_cmds)
-			local cmd = easy_cmds[1].cmd
-			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
-			assert.truthy(cmd_str:find("75%%"))
+			assert.truthy(cs(easy_cmds[1].cmd):find("75%%"))
 		end)
 
-		it("toggle calls pactl set-sink-mute with toggle", function()
+		it("api.sink.toggle calls pactl set-sink-mute with toggle", function()
 			local backend = pulse()
 			backend:start({})
-			backend:toggle("@DEFAULT_SINK@", function() end)
+			backend.api.sink.toggle("57", function() end)
 			assert.equals(1, #easy_cmds)
-			local cmd = easy_cmds[1].cmd
-			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
-			assert.truthy(cmd_str:find("toggle"))
+			assert.truthy(cs(easy_cmds[1].cmd):find("toggle"))
 		end)
 
-		it("mute calls pactl set-sink-mute with 1", function()
+		it("api.sink.mute calls pactl set-sink-mute with 1", function()
 			local backend = pulse()
 			backend:start({})
-			backend:mute("@DEFAULT_SINK@", function() end)
-			local cmd = easy_cmds[1].cmd
-			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
-			assert.truthy(cmd_str:find("set%-sink%-mute") and cmd_str:find(" 1"))
+			backend.api.sink.mute("57", function() end)
+			assert.truthy(cs(easy_cmds[1].cmd):find("set%-sink%-mute") and cs(easy_cmds[1].cmd):find(" 1"))
 		end)
 
-		it("unmute calls pactl set-sink-mute with 0", function()
+		it("api.sink.unmute calls pactl set-sink-mute with 0", function()
 			local backend = pulse()
 			backend:start({})
-			backend:unmute("@DEFAULT_SINK@", function() end)
-			local cmd = easy_cmds[1].cmd
-			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
-			assert.truthy(cmd_str:find("mute") and cmd_str:find(" 0"))
+			backend.api.sink.unmute("57", function() end)
+			assert.truthy(cs(easy_cmds[1].cmd):find("mute") and cs(easy_cmds[1].cmd):find(" 0"))
 		end)
 
-		it("source control increments pending_source not pending_sink", function()
+		it("api.source.adjust_perc increments pending_sources not pending_sinks", function()
 			local backend = pulse()
-			backend:start({ on_sink = function() end, on_source = function() end })
-			backend:adjust_perc("@DEFAULT_SOURCE@", 5, function() end)
+			backend:start({ sinks = make_sink_handles(), sources = make_source_handles() })
+			backend.api.source.adjust_perc("58", 5, function() end)
 			local count = #easy_cmds
-			-- Sink event: pending_sink == 0, SHOULD poll
+			-- Sink event for #57: pending_sinks["57"] == nil/0, SHOULD poll
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count + 1, #easy_cmds)
-			-- Source event: pending_source == 1, should NOT poll
+			-- Source event for #58: pending_sources["58"] > 0, should NOT poll
 			wlc_cbs.stdout("Event 'change' on source #58")
 			assert.equals(count + 1, #easy_cmds)
 		end)

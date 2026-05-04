@@ -25,23 +25,6 @@ end
 local SINK_ID = "Master"
 local SOURCE_ID = "Capture"
 
-local POLL_CMD = {
-	[SINK_ID] = { "amixer", "sget", "Master" },
-	[SOURCE_ID] = { "amixer", "sget", "Capture" },
-}
-local TOGGLE_CMD = {
-	[SINK_ID] = { "amixer", "set", "Master", "toggle" },
-	[SOURCE_ID] = { "amixer", "set", "Capture", "toggle" },
-}
-local MUTE_CMD = {
-	[SINK_ID] = { "amixer", "set", "Master", "off" },
-	[SOURCE_ID] = { "amixer", "set", "Capture", "off" },
-}
-local UNMUTE_CMD = {
-	[SINK_ID] = { "amixer", "set", "Master", "on" },
-	[SOURCE_ID] = { "amixer", "set", "Capture", "on" },
-}
-
 ---@param opts? table  Reserved for future use.
 ---@return AudioBackend
 local function create(_) -- luacheck: ignore
@@ -49,10 +32,10 @@ local function create(_) -- luacheck: ignore
 	local on_source = nil
 	local sink_handles = nil
 	local source_handles = nil
-	local pending = { [SINK_ID] = 0, [SOURCE_ID] = 0 }
+	local pending = {}
 
 	local function poll_sink()
-		awful.spawn.easy_async(POLL_CMD[SINK_ID], function(stdout, _, _, exitcode)
+		awful.spawn.easy_async({ "amixer", "sget", SINK_ID }, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 then
 				return
 			end
@@ -71,7 +54,7 @@ local function create(_) -- luacheck: ignore
 	end
 
 	local function poll_source()
-		awful.spawn.easy_async(POLL_CMD[SOURCE_ID], function(stdout, _, _, exitcode)
+		awful.spawn.easy_async({ "amixer", "sget", SOURCE_ID }, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 then
 				return
 			end
@@ -107,7 +90,78 @@ local function create(_) -- luacheck: ignore
 		end,
 	})
 
+	local function after_set(idx, stdout, exitcode, cb)
+		if exitcode ~= 0 then
+			if pending[idx] and pending[idx] > 0 then
+				pending[idx] = pending[idx] - 1
+			end
+			return
+		end
+		local level, muted = parse_channel(stdout)
+		if level ~= nil and cb then
+			cb(level, muted)
+		end
+	end
+
+	local alsa_api = {
+		adjust_perc = function(idx, delta, cb)
+			pending[idx] = (pending[idx] or 0) + 1
+			local cmd
+			if delta >= 0 then
+				cmd = { "amixer", "set", idx, tostring(delta) .. "%+", "on" }
+			else
+				cmd = { "amixer", "set", idx, tostring(-delta) .. "%-" }
+			end
+			awful.spawn.easy_async(cmd, function(stdout, _, _, exitcode)
+				after_set(idx, stdout, exitcode, cb)
+			end)
+		end,
+		set_perc = function(idx, value, cb)
+			pending[idx] = (pending[idx] or 0) + 1
+			awful.spawn.easy_async(
+				{ "amixer", "set", idx, tostring(math.floor(value)) .. "%" },
+				function(stdout, _, _, exitcode)
+					after_set(idx, stdout, exitcode, cb)
+				end
+			)
+		end,
+		toggle = function(idx, cb)
+			pending[idx] = (pending[idx] or 0) + 1
+			awful.spawn.easy_async({ "amixer", "set", idx, "toggle" }, function(stdout, _, _, exitcode)
+				after_set(idx, stdout, exitcode, cb)
+			end)
+		end,
+		mute = function(idx, cb)
+			pending[idx] = (pending[idx] or 0) + 1
+			awful.spawn.easy_async({ "amixer", "set", idx, "off" }, function(stdout, _, _, exitcode)
+				after_set(idx, stdout, exitcode, cb)
+			end)
+		end,
+		unmute = function(idx, cb)
+			pending[idx] = (pending[idx] or 0) + 1
+			awful.spawn.easy_async({ "amixer", "set", idx, "on" }, function(stdout, _, _, exitcode)
+				after_set(idx, stdout, exitcode, cb)
+			end)
+		end,
+		set_default = function(_, cb)
+			if cb then
+				cb()
+			end
+		end,
+	}
+
 	local backend = {}
+
+	backend.api = {
+		sink = alsa_api,
+		source = alsa_api,
+		sink_input = {
+			adjust_perc = function() end,
+			set_perc = function() end,
+			toggle = function() end,
+			move = function() end,
+		},
+	}
 
 	---@param callbacks AudioBackendOpts
 	function backend:start(callbacks) -- luacheck: ignore self
@@ -131,63 +185,7 @@ local function create(_) -- luacheck: ignore
 		on_source = nil
 		sink_handles = nil
 		source_handles = nil
-		pending[SINK_ID] = 0
-		pending[SOURCE_ID] = 0
-	end
-
-	local function after_set(id, stdout, exitcode, cb)
-		if exitcode ~= 0 then
-			if pending[id] > 0 then
-				pending[id] = pending[id] - 1
-			end
-			return
-		end
-		local level, muted = parse_channel(stdout)
-		if level ~= nil and cb then
-			cb(level, muted)
-		end
-	end
-
-	function backend:adjust_perc(id, delta, cb) -- luacheck: ignore self
-		pending[id] = pending[id] + 1
-		local cmd
-		if delta >= 0 then
-			cmd = { "amixer", "set", id, tostring(delta) .. "%+", "on" }
-		else
-			cmd = { "amixer", "set", id, tostring(-delta) .. "%-" }
-		end
-		awful.spawn.easy_async(cmd, function(stdout, _, _, exitcode)
-			after_set(id, stdout, exitcode, cb)
-		end)
-	end
-
-	function backend:set_perc(id, value, cb) -- luacheck: ignore self
-		pending[id] = pending[id] + 1
-		local cmd = { "amixer", "set", id, tostring(math.floor(value)) .. "%" }
-		awful.spawn.easy_async(cmd, function(stdout, _, _, exitcode)
-			after_set(id, stdout, exitcode, cb)
-		end)
-	end
-
-	function backend:toggle(id, cb) -- luacheck: ignore self
-		pending[id] = pending[id] + 1
-		awful.spawn.easy_async(TOGGLE_CMD[id], function(stdout, _, _, exitcode)
-			after_set(id, stdout, exitcode, cb)
-		end)
-	end
-
-	function backend:mute(id, cb) -- luacheck: ignore self
-		pending[id] = pending[id] + 1
-		awful.spawn.easy_async(MUTE_CMD[id], function(stdout, _, _, exitcode)
-			after_set(id, stdout, exitcode, cb)
-		end)
-	end
-
-	function backend:unmute(id, cb) -- luacheck: ignore self
-		pending[id] = pending[id] + 1
-		awful.spawn.easy_async(UNMUTE_CMD[id], function(stdout, _, _, exitcode)
-			after_set(id, stdout, exitcode, cb)
-		end)
+		pending = {}
 	end
 
 	return backend

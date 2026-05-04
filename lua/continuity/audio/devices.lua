@@ -11,9 +11,8 @@
 
 local devices = {}
 
----@param kind DeviceKind
----@return DeviceCollection, fun(backend: AudioBackend): DeviceHandles
-function devices.new(kind)
+---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
+function devices.new()
 	---@type { handles: table<string, AudioHandle>, subscribers: table<string, fun(state: AudioState)[]>, on_control_cbs: table<string, fun(state: AudioState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
 		handles = {},
@@ -141,9 +140,7 @@ function devices.new(kind)
 		fire(state.on_removed_cbs, id)
 	end
 
-	local function bind(backend)
-		local set_default_method = kind == "sink" and "set_default_sink" or "set_default_source"
-
+	local function bind(api_sub)
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted
 			handle.state.level = level
@@ -164,30 +161,26 @@ function devices.new(kind)
 				fire(state.on_control_cbs[self.id] or {}, self.state)
 				return
 			end
-			backend:adjust_perc(self.id, delta, function(level, muted)
+			api_sub.adjust_perc(self.id, delta, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.set_perc = function(self, value)
 			value = math.max(0, math.min(100, math.floor(value + 0.5)))
-			backend:set_perc(self.id, value, function(level, muted)
+			api_sub.set_perc(self.id, value, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.toggle_mute = function(self)
-			backend:toggle(self.id, function(level, muted)
+			api_sub.toggle(self.id, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
 		HandleMT.__index.set_default = function(self)
-			local fn = backend[set_default_method]
-			if not fn then
-				return
-			end
-			fn(backend, self.id, function()
+			api_sub.set_default(self.id, function()
 				fire(state.on_control_cbs[self.id] or {}, self.state)
 			end)
 		end

@@ -157,7 +157,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			assert.is_false(by_id["55"].state.is_default)
 		end)
 
-		it("calls on_sink with SINK_ID and default state", function()
+		it("calls on_sink with the real numeric sink idx", function()
 			local on_sink_calls = {}
 			pulse():start({
 				on_sink = function(id, state)
@@ -167,7 +167,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			})
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
 			assert.equals(1, #on_sink_calls)
-			assert.equals("@DEFAULT_SINK@", on_sink_calls[1].id)
+			assert.equals("57", on_sink_calls[1].id)
 			assert.equals(40, on_sink_calls[1].state.level)
 		end)
 	end)
@@ -204,12 +204,12 @@ describe("audio.backends.pulse (device dispatch)", function()
 			assert.equals("57", updated[1].id)
 		end)
 
-		it("is suppressed when pending.sink > 0", function()
+		it("is suppressed when pending_sinks[idx] > 0", function()
 			local updated = {}
 			local b = pulse()
 			b:start({ sinks = make_sink_handles(nil, updated) })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:adjust_perc("@DEFAULT_SINK@", 5, function() end)
+			b.api.sink.adjust_perc("57", 5, function() end)
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			assert.equals(count, #easy_cmds)
@@ -221,7 +221,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			local b = pulse()
 			b:start({ sinks = make_sink_handles(nil, updated) })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0) -- default is #57
-			b:adjust_perc("@DEFAULT_SINK@", 5, function() end)
+			b.api.sink.adjust_perc("57", 5, function() end)
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on sink #55") -- non-default sink
 			assert.equals(count + 1, #easy_cmds) -- poll was triggered
@@ -241,7 +241,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			wlc_cbs.stdout("Event 'change' on sink #57")
 			easy_cmds[#easy_cmds].cb(SINKS_ALSA_DEFAULT, "", "", 0)
 			assert.equals(1, #on_sink_calls)
-			assert.equals("@DEFAULT_SINK@", on_sink_calls[1].id)
+			assert.equals("57", on_sink_calls[1].id)
 		end)
 
 		it("does not call on_sink when the changed sink is not the default", function()
@@ -292,7 +292,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			assert.is_true(by_id["55"].state.is_default)
 		end)
 
-		it("calls on_sink with the new default's state", function()
+		it("calls on_sink with the new default's numeric idx", function()
 			local on_sink_calls = {}
 			pulse():start({
 				on_sink = function(id, state)
@@ -305,7 +305,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
 			easy_cmds[#easy_cmds].cb(SINKS_HDMI_DEFAULT, "", "", 0)
 			assert.equals(1, #on_sink_calls)
-			assert.equals("@DEFAULT_SINK@", on_sink_calls[1].id)
+			assert.equals("55", on_sink_calls[1].id)
 			assert.is_true(on_sink_calls[1].state.is_default)
 		end)
 
@@ -325,19 +325,19 @@ describe("audio.backends.pulse (device dispatch)", function()
 				sinks = make_sink_handles(),
 			})
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:set_default_sink("55", function() end)
-			local count = #easy_cmds -- startup poll + set_default_sink cmd
+			b.api.sink.set_default("55", function() end)
+			local count = #easy_cmds -- startup poll + set_default cmd
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
 			assert.equals(count, #easy_cmds)
 		end)
 	end)
 
-	describe("set_default_sink", function()
+	describe("api.sink.set_default", function()
 		it("issues pactl set-default-sink command", function()
 			local b = pulse()
 			b:start({ on_sink = function() end, sinks = make_sink_handles() })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:set_default_sink("alsa_output.pci", function() end)
+			b.api.sink.set_default("alsa_output.pci", function() end)
 			assert.truthy(cmd_str(easy_cmds[#easy_cmds].cmd):find("set%-default%-sink"))
 			assert.truthy(cmd_str(easy_cmds[#easy_cmds].cmd):find("alsa_output.pci"))
 		end)
@@ -347,7 +347,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			local b = pulse()
 			b:start({ on_sink = function() end, sinks = make_sink_handles() })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:set_default_sink("55", function()
+			b.api.sink.set_default("55", function()
 				called = true
 			end)
 			easy_cmds[#easy_cmds].cb("", "", "", 0)
@@ -359,7 +359,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			local b = pulse()
 			b:start({ on_sink = function() end, sinks = make_sink_handles() })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:set_default_sink("55", function()
+			b.api.sink.set_default("55", function()
 				called = true
 			end)
 			easy_cmds[#easy_cmds].cb("", "", "", 1)
@@ -370,7 +370,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			local b = pulse()
 			b:start({ on_sink = function() end, sinks = make_sink_handles() })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			b:set_default_sink("55", function() end)
+			b.api.sink.set_default("55", function() end)
 			easy_cmds[#easy_cmds].cb("", "", "", 1) -- fail → decrement
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
@@ -405,7 +405,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			assert.truthy(cmd_str(easy_cmds[1].cmd):find("list sources"))
 		end)
 
-		it("calls sources.add for each device and on_source with SOURCE_ID", function()
+		it("calls sources.add for each device and on_source with real numeric idx", function()
 			local added, on_source_calls = {}, {}
 			pulse():start({
 				on_source = function(id, state)
@@ -418,7 +418,7 @@ describe("audio.backends.pulse (device dispatch)", function()
 			assert.equals("6", added[1].id)
 			assert.equals("alsa_input.pci-0000_00_1f.3.analog-stereo", added[1].meta.name)
 			assert.equals(1, #on_source_calls)
-			assert.equals("@DEFAULT_SOURCE@", on_source_calls[1].id)
+			assert.equals("6", on_source_calls[1].id)
 		end)
 
 		it("calls sources.update on 'change' source event", function()

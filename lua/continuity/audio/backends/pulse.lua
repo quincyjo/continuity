@@ -286,33 +286,15 @@ end
 -- Backend
 -- ----------------------------------------------------------------------------
 
-local SINK_ID = "@DEFAULT_SINK@"
-local SOURCE_ID = "@DEFAULT_SOURCE@"
-
 local SINK_POLL_CMD = { "sh", "-c", [[pactl get-default-sink; echo "---"; pactl list sinks]] }
 local SOURCE_POLL_CMD = { "sh", "-c", [[pactl get-default-source; echo "---"; pactl list sources]] }
-
-local SINK_QUERY_CMD = {
-	"sh",
-	"-c",
-	[[pactl get-sink-volume @DEFAULT_SINK@; pactl get-sink-mute @DEFAULT_SINK@]],
-}
-local SOURCE_QUERY_CMD = {
-	"sh",
-	"-c",
-	[[pactl get-source-volume @DEFAULT_SOURCE@; pactl get-source-mute @DEFAULT_SOURCE@]],
-}
-local QUERY_CMD = { [SINK_ID] = SINK_QUERY_CMD, [SOURCE_ID] = SOURCE_QUERY_CMD }
-local SET_VOLUME = { [SINK_ID] = "set-sink-volume", [SOURCE_ID] = "set-source-volume" }
-local SET_MUTE = { [SINK_ID] = "set-sink-mute", [SOURCE_ID] = "set-source-mute" }
-local ENTITY = { [SINK_ID] = "sink", [SOURCE_ID] = "source" }
 
 ---@param opts? table  Reserved for future use.
 ---@return AudioBackend
 local function create(_) -- luacheck: ignore
 	local on_sink = nil
 	local on_source = nil
-	local pending = { sink = 0, source = 0, server = 0 }
+	local pending = { server = 0 }
 	local input_handles = nil
 	local sink_handles = nil
 	local source_handles = nil
@@ -345,30 +327,6 @@ local function create(_) -- luacheck: ignore
 		end)
 	end
 
-	local function poll_sink()
-		awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
-			if exitcode ~= 0 or not on_sink then
-				return
-			end
-			local state = parse_list(stdout)
-			if state then
-				on_sink(SINK_ID, state)
-			end
-		end)
-	end
-
-	local function poll_source()
-		awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
-			if exitcode ~= 0 or not on_source then
-				return
-			end
-			local state = parse_list(stdout)
-			if state then
-				on_source(SOURCE_ID, state)
-			end
-		end)
-	end
-
 	local function poll_sinks()
 		awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 or not sink_handles then
@@ -385,7 +343,7 @@ local function create(_) -- luacheck: ignore
 				end
 			end
 			if on_sink and default_state then
-				on_sink(SINK_ID, default_state)
+				on_sink(current_default_sink_idx, default_state)
 			end
 		end)
 	end
@@ -406,7 +364,7 @@ local function create(_) -- luacheck: ignore
 				end
 			end
 			if on_source and default_state then
-				on_source(SOURCE_ID, default_state)
+				on_source(current_default_source_idx, default_state)
 			end
 		end)
 	end
@@ -465,16 +423,10 @@ local function create(_) -- luacheck: ignore
 								local parsed = parse_device_block(block, default_name)
 								sink_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_sink then
-									on_sink(SINK_ID, parsed.state)
+									on_sink(current_default_sink_idx, parsed.state)
 								end
 							end
 						end)
-					elseif on_sink then
-						if pending.sink > 0 then
-							pending.sink = pending.sink - 1
-							return
-						end
-						poll_sink()
 					end
 				elseif event_type == "remove" then
 					if sink_handles then
@@ -526,16 +478,10 @@ local function create(_) -- luacheck: ignore
 								local parsed = parse_device_block(block, default_name)
 								source_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_source then
-									on_source(SOURCE_ID, parsed.state)
+									on_source(current_default_source_idx, parsed.state)
 								end
 							end
 						end)
-					elseif on_source then
-						if pending.source > 0 then
-							pending.source = pending.source - 1
-							return
-						end
-						poll_source()
 					end
 				elseif event_type == "remove" then
 					if source_handles then
@@ -561,7 +507,7 @@ local function create(_) -- luacheck: ignore
 									if entry.state.is_default then
 										current_default_sink_idx = entry.id
 										if on_sink then
-											on_sink(SINK_ID, entry.state)
+											on_sink(current_default_sink_idx, entry.state)
 										end
 									end
 								end
@@ -569,8 +515,6 @@ local function create(_) -- luacheck: ignore
 							current_default_sink = new_default
 						end
 					end)
-				elseif on_sink then
-					poll_sink()
 				end
 				if source_handles then
 					awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
@@ -586,7 +530,7 @@ local function create(_) -- luacheck: ignore
 									if entry.state.is_default then
 										current_default_source_idx = entry.id
 										if on_source then
-											on_source(SOURCE_ID, entry.state)
+											on_source(current_default_source_idx, entry.state)
 										end
 									end
 								end
@@ -594,8 +538,6 @@ local function create(_) -- luacheck: ignore
 							current_default_source = new_default
 						end
 					end)
-				elseif on_source then
-					poll_source()
 				end
 			elseif entity == "sink-input" then
 				if input_handles then
@@ -654,13 +596,9 @@ local function create(_) -- luacheck: ignore
 		source_handles = callbacks.sources or nil
 		if sink_handles then
 			poll_sinks()
-		elseif on_sink then
-			poll_sink()
 		end
 		if source_handles then
 			poll_sources()
-		elseif on_source then
-			poll_source()
 		end
 		if input_handles then
 			poll_inputs()
@@ -682,14 +620,117 @@ local function create(_) -- luacheck: ignore
 		pending_sinks = {}
 		pending_sources = {}
 		pending_inputs = {}
-		pending.sink = 0
-		pending.source = 0
 		pending.server = 0
 	end
 
-	function backend:set_default_sink(id, cb) -- luacheck: ignore self
+	local function after_set_sink(idx, cb)
+		awful.spawn.easy_async(
+			{ "sh", "-c", "pactl get-sink-volume " .. idx .. "; pactl get-sink-mute " .. idx },
+			function(stdout, _, _, exitcode)
+				if exitcode ~= 0 then
+					return
+				end
+				local level, muted = parse_volume_mute(stdout)
+				if level ~= nil and cb then
+					cb(level, muted)
+				end
+			end
+		)
+	end
+
+	local function after_set_source(idx, cb)
+		awful.spawn.easy_async(
+			{ "sh", "-c", "pactl get-source-volume " .. idx .. "; pactl get-source-mute " .. idx },
+			function(stdout, _, _, exitcode)
+				if exitcode ~= 0 then
+					return
+				end
+				local level, muted = parse_volume_mute(stdout)
+				if level ~= nil and cb then
+					cb(level, muted)
+				end
+			end
+		)
+	end
+
+	local function make_device_api(cmd_volume, cmd_mute, pending_tbl, after_set_fn)
+		return {
+			adjust_perc = function(idx, delta, cb)
+				pending_tbl[idx] = (pending_tbl[idx] or 0) + 1
+				local sign = delta >= 0 and "+" or ""
+				awful.spawn.easy_async(
+					{ "pactl", cmd_volume, idx, sign .. tostring(delta) .. "%" },
+					function(_, _, _, exitcode)
+						if exitcode ~= 0 then
+							if pending_tbl[idx] and pending_tbl[idx] > 0 then
+								pending_tbl[idx] = pending_tbl[idx] - 1
+							end
+							return
+						end
+						after_set_fn(idx, cb)
+					end
+				)
+			end,
+			set_perc = function(idx, value, cb)
+				pending_tbl[idx] = (pending_tbl[idx] or 0) + 1
+				awful.spawn.easy_async(
+					{ "pactl", cmd_volume, idx, tostring(math.floor(value)) .. "%" },
+					function(_, _, _, exitcode)
+						if exitcode ~= 0 then
+							if pending_tbl[idx] and pending_tbl[idx] > 0 then
+								pending_tbl[idx] = pending_tbl[idx] - 1
+							end
+							return
+						end
+						after_set_fn(idx, cb)
+					end
+				)
+			end,
+			toggle = function(idx, cb)
+				pending_tbl[idx] = (pending_tbl[idx] or 0) + 1
+				awful.spawn.easy_async({ "pactl", cmd_mute, idx, "toggle" }, function(_, _, _, exitcode)
+					if exitcode ~= 0 then
+						if pending_tbl[idx] and pending_tbl[idx] > 0 then
+							pending_tbl[idx] = pending_tbl[idx] - 1
+						end
+						return
+					end
+					after_set_fn(idx, cb)
+				end)
+			end,
+			mute = function(idx, cb)
+				pending_tbl[idx] = (pending_tbl[idx] or 0) + 1
+				awful.spawn.easy_async({ "pactl", cmd_mute, idx, "1" }, function(_, _, _, exitcode)
+					if exitcode ~= 0 then
+						if pending_tbl[idx] and pending_tbl[idx] > 0 then
+							pending_tbl[idx] = pending_tbl[idx] - 1
+						end
+						return
+					end
+					after_set_fn(idx, cb)
+				end)
+			end,
+			unmute = function(idx, cb)
+				pending_tbl[idx] = (pending_tbl[idx] or 0) + 1
+				awful.spawn.easy_async({ "pactl", cmd_mute, idx, "0" }, function(_, _, _, exitcode)
+					if exitcode ~= 0 then
+						if pending_tbl[idx] and pending_tbl[idx] > 0 then
+							pending_tbl[idx] = pending_tbl[idx] - 1
+						end
+						return
+					end
+					after_set_fn(idx, cb)
+				end)
+			end,
+		}
+	end
+
+	local sink_api = make_device_api("set-sink-volume", "set-sink-mute", pending_sinks, after_set_sink)
+	local source_api = make_device_api("set-source-volume", "set-source-mute", pending_sources, after_set_source)
+
+	sink_api.set_default = function(idx, cb)
 		pending.server = pending.server + 1
-		awful.spawn.easy_async({ "pactl", "set-default-sink", id }, function(_, _, _, exitcode)
+		awful.spawn.easy_async({ "pactl", "set-default-sink", idx }, function(_, _, _, exitcode)
 			if exitcode ~= 0 then
 				pending.server = pending.server - 1
 				return
@@ -700,9 +741,9 @@ local function create(_) -- luacheck: ignore
 		end)
 	end
 
-	function backend:set_default_source(id, cb) -- luacheck: ignore self
+	source_api.set_default = function(idx, cb)
 		pending.server = pending.server + 1
-		awful.spawn.easy_async({ "pactl", "set-default-source", id }, function(_, _, _, exitcode)
+		awful.spawn.easy_async({ "pactl", "set-default-source", idx }, function(_, _, _, exitcode)
 			if exitcode ~= 0 then
 				pending.server = pending.server - 1
 				return
@@ -710,117 +751,6 @@ local function create(_) -- luacheck: ignore
 			if cb then
 				cb()
 			end
-		end)
-	end
-
-	function backend:move_sink_input(input_id, sink_id, cb) -- luacheck: ignore self
-		awful.spawn.easy_async(
-			{ "pactl", "move-sink-input", tostring(input_id), tostring(sink_id) },
-			function(_, _, _, exitcode)
-				if exitcode == 0 and cb then
-					cb()
-				end
-			end
-		)
-	end
-
-	local function after_set(id, cb)
-		awful.spawn.easy_async(QUERY_CMD[id], function(stdout, _, _, exitcode)
-			if exitcode ~= 0 then
-				return
-			end
-			local level, muted = parse_volume_mute(stdout)
-			if level ~= nil and cb then
-				cb(level, muted)
-			end
-		end)
-	end
-
-	local function inc_device_pending(ent)
-		local idx = ent == "sink" and current_default_sink_idx or current_default_source_idx
-		if idx then
-			local tbl = ent == "sink" and pending_sinks or pending_sources
-			tbl[idx] = (tbl[idx] or 0) + 1
-			return tbl, idx
-		end
-		pending[ent] = pending[ent] + 1
-		return pending, ent
-	end
-
-	function backend:adjust_perc(id, delta, cb) -- luacheck: ignore self
-		local ent = ENTITY[id]
-		local tbl, key = inc_device_pending(ent)
-		local sign = delta >= 0 and "+" or ""
-		awful.spawn.easy_async(
-			{ "pactl", SET_VOLUME[id], id, sign .. tostring(delta) .. "%" },
-			function(_, _, _, exitcode)
-				if exitcode ~= 0 then
-					if tbl[key] and tbl[key] > 0 then
-						tbl[key] = tbl[key] - 1
-					end
-					return
-				end
-				after_set(id, cb)
-			end
-		)
-	end
-
-	function backend:set_perc(id, value, cb) -- luacheck: ignore self
-		local ent = ENTITY[id]
-		local tbl, key = inc_device_pending(ent)
-		awful.spawn.easy_async(
-			{ "pactl", SET_VOLUME[id], id, tostring(math.floor(value)) .. "%" },
-			function(_, _, _, exitcode)
-				if exitcode ~= 0 then
-					if tbl[key] and tbl[key] > 0 then
-						tbl[key] = tbl[key] - 1
-					end
-					return
-				end
-				after_set(id, cb)
-			end
-		)
-	end
-
-	function backend:toggle(id, cb) -- luacheck: ignore self
-		local ent = ENTITY[id]
-		local tbl, key = inc_device_pending(ent)
-		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "toggle" }, function(_, _, _, exitcode)
-			if exitcode ~= 0 then
-				if tbl[key] and tbl[key] > 0 then
-					tbl[key] = tbl[key] - 1
-				end
-				return
-			end
-			after_set(id, cb)
-		end)
-	end
-
-	function backend:mute(id, cb) -- luacheck: ignore self
-		local ent = ENTITY[id]
-		local tbl, key = inc_device_pending(ent)
-		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "1" }, function(_, _, _, exitcode)
-			if exitcode ~= 0 then
-				if tbl[key] and tbl[key] > 0 then
-					tbl[key] = tbl[key] - 1
-				end
-				return
-			end
-			after_set(id, cb)
-		end)
-	end
-
-	function backend:unmute(id, cb) -- luacheck: ignore self
-		local ent = ENTITY[id]
-		local tbl, key = inc_device_pending(ent)
-		awful.spawn.easy_async({ "pactl", SET_MUTE[id], id, "0" }, function(_, _, _, exitcode)
-			if exitcode ~= 0 then
-				if tbl[key] and tbl[key] > 0 then
-					tbl[key] = tbl[key] - 1
-				end
-				return
-			end
-			after_set(id, cb)
 		end)
 	end
 
@@ -837,12 +767,41 @@ local function create(_) -- luacheck: ignore
 		end)
 	end
 
-	function backend:adjust_input_perc(id, delta, cb) -- luacheck: ignore self
-		pending_inputs[id] = (pending_inputs[id] or 0) + 1
-		local sign = delta >= 0 and "+" or ""
-		awful.spawn.easy_async(
-			{ "pactl", "set-sink-input-volume", id, sign .. tostring(delta) .. "%" },
-			function(_, _, _, exitcode)
+	local sink_input_api = {
+		adjust_perc = function(id, delta, cb)
+			pending_inputs[id] = (pending_inputs[id] or 0) + 1
+			local sign = delta >= 0 and "+" or ""
+			awful.spawn.easy_async(
+				{ "pactl", "set-sink-input-volume", id, sign .. tostring(delta) .. "%" },
+				function(_, _, _, exitcode)
+					if exitcode ~= 0 then
+						if pending_inputs[id] and pending_inputs[id] > 0 then
+							pending_inputs[id] = pending_inputs[id] - 1
+						end
+						return
+					end
+					after_set_input(id, cb)
+				end
+			)
+		end,
+		set_perc = function(id, value, cb)
+			pending_inputs[id] = (pending_inputs[id] or 0) + 1
+			awful.spawn.easy_async(
+				{ "pactl", "set-sink-input-volume", id, tostring(math.floor(value)) .. "%" },
+				function(_, _, _, exitcode)
+					if exitcode ~= 0 then
+						if pending_inputs[id] and pending_inputs[id] > 0 then
+							pending_inputs[id] = pending_inputs[id] - 1
+						end
+						return
+					end
+					after_set_input(id, cb)
+				end
+			)
+		end,
+		toggle = function(id, cb)
+			pending_inputs[id] = (pending_inputs[id] or 0) + 1
+			awful.spawn.easy_async({ "pactl", "set-sink-input-mute", id, "toggle" }, function(_, _, _, exitcode)
 				if exitcode ~= 0 then
 					if pending_inputs[id] and pending_inputs[id] > 0 then
 						pending_inputs[id] = pending_inputs[id] - 1
@@ -850,38 +809,25 @@ local function create(_) -- luacheck: ignore
 					return
 				end
 				after_set_input(id, cb)
-			end
-		)
-	end
-
-	function backend:set_input_perc(id, value, cb) -- luacheck: ignore self
-		pending_inputs[id] = (pending_inputs[id] or 0) + 1
-		awful.spawn.easy_async(
-			{ "pactl", "set-sink-input-volume", id, tostring(math.floor(value)) .. "%" },
-			function(_, _, _, exitcode)
-				if exitcode ~= 0 then
-					if pending_inputs[id] and pending_inputs[id] > 0 then
-						pending_inputs[id] = pending_inputs[id] - 1
+			end)
+		end,
+		move = function(input_id, sink_id, cb)
+			awful.spawn.easy_async(
+				{ "pactl", "move-sink-input", tostring(input_id), tostring(sink_id) },
+				function(_, _, _, exitcode)
+					if exitcode == 0 and cb then
+						cb()
 					end
-					return
 				end
-				after_set_input(id, cb)
-			end
-		)
-	end
+			)
+		end,
+	}
 
-	function backend:toggle_input(id, cb) -- luacheck: ignore self
-		pending_inputs[id] = (pending_inputs[id] or 0) + 1
-		awful.spawn.easy_async({ "pactl", "set-sink-input-mute", id, "toggle" }, function(_, _, _, exitcode)
-			if exitcode ~= 0 then
-				if pending_inputs[id] and pending_inputs[id] > 0 then
-					pending_inputs[id] = pending_inputs[id] - 1
-				end
-				return
-			end
-			after_set_input(id, cb)
-		end)
-	end
+	backend.api = {
+		sink = sink_api,
+		source = source_api,
+		sink_input = sink_input_api,
+	}
 
 	return backend
 end

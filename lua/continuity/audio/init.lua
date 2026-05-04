@@ -29,6 +29,27 @@ local devices_mod = require("continuity.audio.devices")
 ---@field toggle_mute fun(self: AudioHandle)
 ---@field set_default fun(self: AudioHandle)
 
+---@class SinkApi
+---@field adjust_perc fun(idx: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field set_perc    fun(idx: string, value: number, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field toggle      fun(idx: string, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field mute        fun(idx: string, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field unmute      fun(idx: string, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field set_default fun(idx: string, cb: fun())
+
+---@alias SourceApi SinkApi
+
+---@class SinkInputApi
+---@field adjust_perc fun(id: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field set_perc    fun(id: string, value: number, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field toggle      fun(id: string, cb: fun(level: AudioLevel, muted: AudioMuted))
+---@field move        fun(input_id: string, sink_id: string|integer, cb: fun())
+
+---@class BackendApi
+---@field sink       SinkApi
+---@field source     SourceApi
+---@field sink_input SinkInputApi
+
 ---@class AudioBackendOpts
 ---@field on_sink   fun(id: string, state: AudioState)
 ---@field on_source fun(id: string, state: AudioState)
@@ -37,18 +58,9 @@ local devices_mod = require("continuity.audio.devices")
 ---@field sources   DeviceHandles?
 
 ---@class AudioBackend
----@field start               fun(self, opts: AudioBackendOpts)
----@field adjust_perc         fun(self, name: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field set_perc            fun(self, name: string, value: number, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field toggle              fun(self, name: string, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field mute                fun(self, name: string, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field unmute              fun(self, name: string, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field adjust_input_perc?  fun(self, id: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field set_input_perc?     fun(self, id: string, value: number, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field toggle_input?       fun(self, id: string, cb: fun(level: AudioLevel, muted: AudioMuted))
----@field move_sink_input?    fun(self, input_id: string, sink_id: string|integer, cb: fun())
----@field set_default_sink?   fun(self, id: string|integer, cb: fun())
----@field set_default_source? fun(self, id: string|integer, cb: fun())
+---@field start fun(self, opts: AudioBackendOpts)
+---@field stop  fun(self)?
+---@field api   BackendApi
 
 ---@class AudioOpts
 ---@field backend? AudioBackend
@@ -106,6 +118,7 @@ Audio.Volume = setmetatable({
 		on_ready_cbs = {},
 		on_control_cbs = {},
 		subscribers = {},
+		api = nil,
 	},
 }, HandleMT)
 
@@ -121,13 +134,14 @@ Audio.Capture = setmetatable({
 		on_ready_cbs = {},
 		on_control_cbs = {},
 		subscribers = {},
+		api = nil,
 	},
 }, HandleMT)
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
-Audio.sinks, bind_sinks = devices_mod.new("sink")
-Audio.sources, bind_sources = devices_mod.new("source")
+Audio.sinks, bind_sinks = devices_mod.new()
+Audio.sources, bind_sources = devices_mod.new()
 
 local function refresh(handle, id, state)
 	handle.id = id
@@ -176,9 +190,12 @@ function Audio.setup(opts)
 	opts = opts or {}
 	local backend = opts.backend or require("continuity.audio.backends.pulse")()
 
-	local input_handles = bind_inputs(backend)
-	local sink_handles = bind_sinks(backend)
-	local source_handles = bind_sources(backend)
+	local input_handles = bind_inputs(backend.api.sink_input)
+	local sink_handles = bind_sinks(backend.api.sink)
+	local source_handles = bind_sources(backend.api.source)
+
+	Audio.Volume._private.api = backend.api.sink
+	Audio.Capture._private.api = backend.api.source
 
 	HandleMT.__index.adjust_perc = function(self, delta)
 		if delta > 0 and delta + self.state.level > 100 then
@@ -189,19 +206,19 @@ function Audio.setup(opts)
 		if delta == 0 then
 			update(self, self.state.level, self.state.muted)
 		else
-			backend:adjust_perc(self.id, delta, function(level, muted)
+			self._private.api.adjust_perc(self.id, delta, function(level, muted)
 				update(self, level, muted)
 			end)
 		end
 	end
 	HandleMT.__index.set_perc = function(self, value)
 		value = math.max(0, math.min(100, math.floor(value + 0.5)))
-		backend:set_perc(self.id, value, function(level, muted)
+		self._private.api.set_perc(self.id, value, function(level, muted)
 			update(self, level, muted)
 		end)
 	end
 	HandleMT.__index.toggle_mute = function(self)
-		backend:toggle(self.id, function(level, muted)
+		self._private.api.toggle(self.id, function(level, muted)
 			update(self, level, muted)
 		end)
 	end

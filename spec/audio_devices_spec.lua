@@ -2,10 +2,9 @@ require("spec.support.awesome_mocks")
 
 local devices_mod
 
-local function make_mock_backend(kind)
-	local method = kind == "sink" and "set_default_sink" or "set_default_source"
+local function make_mock_api_sub()
 	return {
-		[method] = function(_, _, cb)
+		set_default = function(_idx, cb)
 			if cb then
 				cb()
 			end
@@ -17,29 +16,29 @@ local function make_mock_backend(kind)
 end
 
 describe("audio.devices registry", function()
-	local inst, handles, backend, bind
+	local inst, handles, api_sub, bind
 
 	before_each(function()
 		package.loaded["continuity.audio.devices"] = nil
 		devices_mod = require("continuity.audio.devices")
-		backend = make_mock_backend("sink")
-		inst, bind = devices_mod.new("sink")
-		handles = bind(backend)
+		api_sub = make_mock_api_sub()
+		inst, bind = devices_mod.new()
+		handles = bind(api_sub)
 	end)
 
 	describe("pre-instantiation", function()
 		it("inst is non-nil before bind", function()
-			local inst2 = devices_mod.new("sink")
+			local inst2 = devices_mod.new()
 			assert.is_not_nil(inst2)
 		end)
 
 		it("on_added can be registered before bind", function()
-			local inst2, bind2 = devices_mod.new("sink")
+			local inst2, bind2 = devices_mod.new()
 			local called = false
 			inst2.on_added(function()
 				called = true
 			end)
-			local handles2 = bind2(backend)
+			local handles2 = bind2(api_sub)
 			handles2.add("a", { level = 50, muted = false, is_default = true })
 			assert.is_true(called)
 		end)
@@ -296,20 +295,15 @@ describe("audio.devices registry", function()
 
 	describe("control methods pre-bind are no-ops", function()
 		it("calling control methods before bind does not error", function()
-			-- Bind with a no-op backend to get handles, but verify that a second
-			-- independent inst (no bind) has accessible lifecycle methods.
-			local inst2, bind2 = devices_mod.new("sink")
+			local inst2, bind2 = devices_mod.new()
 			local noop = {
-				set_default_sink = function() end,
-				adjust_perc = function() end, -- luacheck: ignore 631
+				set_default = function() end,
+				adjust_perc = function() end,
 				set_perc = function() end,
 				toggle = function() end,
 			}
 			local handles2 = bind2(noop)
 			handles2.add("x", { level = 0, muted = false, is_default = false })
-			-- All control methods on the handle complete without error pre-backend-wiring
-			-- (they are no-ops at definition time; bind overwrites them in the shared HandleMT).
-			-- This test validates the lifecycle API is accessible at construction time.
 			assert.is_not_nil(inst2.on_added)
 			assert.is_not_nil(inst2.on_removed)
 			assert.is_not_nil(inst2.all)
@@ -321,24 +315,24 @@ describe("audio.devices registry", function()
 
 		before_each(function()
 			calls = {}
-			backend = {
-				set_default_sink = function(_, id, cb)
-					calls[#calls + 1] = { method = "set_default_sink", id = id, cb = cb }
+			api_sub = {
+				set_default = function(idx, cb)
+					calls[#calls + 1] = { method = "set_default", idx = idx, cb = cb }
 				end,
-				adjust_perc = function(_, id, delta, cb)
-					calls[#calls + 1] = { method = "adjust_perc", id = id, delta = delta, cb = cb }
+				adjust_perc = function(idx, delta, cb)
+					calls[#calls + 1] = { method = "adjust_perc", idx = idx, delta = delta, cb = cb }
 				end,
-				set_perc = function(_, id, value, cb)
-					calls[#calls + 1] = { method = "set_perc", id = id, value = value, cb = cb }
+				set_perc = function(idx, value, cb)
+					calls[#calls + 1] = { method = "set_perc", idx = idx, value = value, cb = cb }
 				end,
-				toggle = function(_, id, cb)
-					calls[#calls + 1] = { method = "toggle", id = id, cb = cb }
+				toggle = function(idx, cb)
+					calls[#calls + 1] = { method = "toggle", idx = idx, cb = cb }
 				end,
 			}
 			package.loaded["continuity.audio.devices"] = nil
 			devices_mod = require("continuity.audio.devices")
-			inst, bind = devices_mod.new("sink")
-			handles = bind(backend)
+			inst, bind = devices_mod.new()
+			handles = bind(api_sub)
 			handles.add("alsa_output.pci", { level = 50, muted = false, is_default = false })
 		end)
 
@@ -346,11 +340,11 @@ describe("audio.devices registry", function()
 			return inst.all()[1]
 		end
 
-		it("set_default calls backend:set_default_sink with handle id", function()
+		it("set_default calls api_sub.set_default with handle idx", function()
 			handle():set_default()
 			assert.equals(1, #calls)
-			assert.equals("set_default_sink", calls[1].method)
-			assert.equals("alsa_output.pci", calls[1].id)
+			assert.equals("set_default", calls[1].method)
+			assert.equals("alsa_output.pci", calls[1].idx)
 		end)
 
 		it("set_default fires on_control in callback", function()
@@ -363,11 +357,11 @@ describe("audio.devices registry", function()
 			assert.equals(1, #control_states)
 		end)
 
-		it("adjust_perc calls backend:adjust_perc with handle id and delta", function()
+		it("adjust_perc calls api_sub.adjust_perc with handle idx and delta", function()
 			handle():adjust_perc(10)
 			assert.equals(1, #calls)
 			assert.equals("adjust_perc", calls[1].method)
-			assert.equals("alsa_output.pci", calls[1].id)
+			assert.equals("alsa_output.pci", calls[1].idx)
 			assert.equals(10, calls[1].delta)
 		end)
 
@@ -387,16 +381,16 @@ describe("audio.devices registry", function()
 			assert.equals(1, count)
 		end)
 
-		it("set_perc clamps to [0,100] and calls backend", function()
+		it("set_perc clamps to [0,100] and calls api_sub", function()
 			handle():set_perc(150)
 			assert.equals("set_perc", calls[1].method)
 			assert.equals(100, calls[1].value)
 		end)
 
-		it("toggle_mute calls backend:toggle with handle id", function()
+		it("toggle_mute calls api_sub.toggle with handle idx", function()
 			handle():toggle_mute()
 			assert.equals("toggle", calls[1].method)
-			assert.equals("alsa_output.pci", calls[1].id)
+			assert.equals("alsa_output.pci", calls[1].idx)
 		end)
 
 		it("on_control fires after successful adjust_perc callback", function()
@@ -437,12 +431,12 @@ describe("audio.devices registry", function()
 		end)
 	end)
 
-	describe("source kind dispatches set_default_source", function()
-		it("set_default calls backend:set_default_source for source kind", function()
+	describe("set_default uses api_sub regardless of device type", function()
+		it("set_default calls api_sub.set_default with handle idx", function()
 			local calls = {}
-			local source_backend = {
-				set_default_source = function(_, id, cb)
-					calls[#calls + 1] = { id = id, cb = cb }
+			local source_api = {
+				set_default = function(idx, cb)
+					calls[#calls + 1] = { idx = idx, cb = cb }
 				end,
 				adjust_perc = function() end,
 				set_perc = function() end,
@@ -450,12 +444,12 @@ describe("audio.devices registry", function()
 			}
 			package.loaded["continuity.audio.devices"] = nil
 			devices_mod = require("continuity.audio.devices")
-			local sinst, sbind = devices_mod.new("source")
-			local shandles = sbind(source_backend)
+			local sinst, sbind = devices_mod.new()
+			local shandles = sbind(source_api)
 			shandles.add("alsa_input.pci", { level = 80, muted = false, is_default = true })
 			sinst.all()[1]:set_default()
 			assert.equals(1, #calls)
-			assert.equals("alsa_input.pci", calls[1].id)
+			assert.equals("alsa_input.pci", calls[1].idx)
 		end)
 	end)
 end)
