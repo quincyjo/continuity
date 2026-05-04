@@ -1,6 +1,5 @@
 ---@alias AudioLevel    integer   Volume level 0–100.
 ---@alias AudioMuted    boolean   True when the channel is muted.
----@alias DeviceKind    "sink"|"source"
 
 local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
