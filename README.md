@@ -258,7 +258,7 @@ local mpris  = require("continuity.media.backends.mpris")
 media.setup({
     -- backends = { mpris(), mpd { host = "localhost", port = 6600 } }, -- Configure backends. Default is MPRIS only.
     -- notifications = false  -- disable OSD notifications
-    -- notifications = theme.media_notification  -- provide a custom notification handler.
+    -- notifications = { ... }  -- configure and provide a custom notification handler.
 })
 
 -- Each returns an unsub function if used in a temporary context, such as a popup or notification.
@@ -283,15 +283,21 @@ media.previous()   -- skip backward
 ## audio
 
 Tracks volume and mute state for the default output (sink) and input (source)
-devices via push-based event subscription — no polling. Out-of-band changes
-(hardware keys, other applications) are detected immediately via `pactl subscribe`
-or `amixer sevents`. The PulseAudio/PipeWire backend is the default; an ALSA
+devices via push-based event subscription. Out-of-band changes (hardware keys,
+other applications) are detected immediately via `pactl subscribe` or
+`amixer sevents`. The PulseAudio/PipeWire backend is the default; an ALSA
 backend is also provided.
 
 Two pre-created handles, `Audio.Volume` (sink) and `Audio.Capture` (source), are
 available after `setup`. Subscribers receive a full `AudioState` on each change,
 including port type (speaker, headphones, headset, …) and connection type (analog,
 bluetooth, …) when the backend can derive them.
+
+In addition to the default handles, all sinks and sources (devices) as well as
+sink-inputs (applications) are available via `audio.sinks`, `audio.sources`, and
+`audio.inputs`, respectively, allowing device selection, individual device
+control, and stream control and piping. See the [full documentation](docs/audio.md)
+for more information.
 
 ```lua
 local audio = require("continuity.audio")
