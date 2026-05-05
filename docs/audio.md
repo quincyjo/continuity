@@ -1,12 +1,15 @@
 # audio
 
-The audio module provides volume and mute observation and control for the default
-output (sink) and input (source) devices. Change detection is push-based — a
-long-lived subscription process (`pactl subscribe` or `amixer sevents`) delivers
-events immediately rather than polling on a timer.
+The audio module provides lifecycle observation and control for audio devices,
+both sinks (output) and sources (input). Sink inputs (individual applications)
+are supported when using the PulseAudio backend.
+
+Change detection is push-based, a long-lived subscription process
+(`pactl subscribe` or `amixer sevents`) delivers events immediately rather
+than polling on a timer.
 
 Two pre-created handles are exposed as module-level fields: `Audio.Volume` for
-the sink and `Audio.Capture` for the source.
+the default sink and `Audio.Capture` for the default source.
 
 ## Setup
 
@@ -30,9 +33,9 @@ require("continuity.audio").setup({
 
 ### Handles
 
-`Audio.Volume` and `Audio.Capture` are available immediately after `require` —
-before `setup` is called. Callbacks registered before `setup` will be fired once
-the backend delivers its first event.
+`Audio.Volume` and `Audio.Capture` are available immediately immediately with
+`require`. Callbacks registered before `setup` will be fired once the
+backend delivers its first event.
 
 ```lua
 local audio   = require("continuity.audio")
@@ -42,8 +45,8 @@ local capture = audio.Capture  -- default source
 
 ### Reading State
 
-The handle exposes a `state` table with at minimum `level` (0–100) and `muted`
-(boolean). With the PulseAudio backend, `port`, `port_type`, and `connection` are
+The handle exposes a `state` table. See [Device Handle](#device-handle) for all
+fields. With the PulseAudio backend, `port`, `port_type`, and `connection` are
 also populated when the device reports them.
 
 ```lua
@@ -54,8 +57,7 @@ print(volume.state.port_type, volume.state.connection)
 ```
 
 Because the first backend event is asynchronous, `level` and `muted` are `0` /
-`false` until the first event arrives. Use `on_ready` if you need concrete values
-immediately on startup.
+`false` until the first event arrives. Use `on_ready` to seed initial state.
 
 ```lua
 volume:on_ready(function(state)
@@ -91,12 +93,20 @@ volume:subscribe(on_volume)
 volume:unsubscribe(on_volume)
 ```
 
+> **Note**: When using the PulseAudio backend, fields that are normally
+> immutable (such as `audio.Volume.description`) will change when the default
+> device changes. Because of this, `subscribe` behaviour is different from
+> sources or sinks exposed via `audio.sinks` and `audio.sources` and may fire
+> when with the same state if the default device is changed and the state
+> matches the previous device. Consumers should update display of these fields
+> when `subscribe` fires. See [Wibox widget](#wibox-widget)
+
 ### Control Feedback with `on_control`
 
 `on_control` fires on every control call (`adjust_perc`, `set_perc`,
 `toggle_mute`) regardless of whether the resulting value changed. Use this for
-immediate transient UI — a volume popup that should appear on every keypress even
-when the level is already at 100%.
+immediate transient UI, such as a volume popup that should appear on every
+keypress even when the level is already at 100%.
 
 `subscribe` is for persistent state observers; `on_control` is for ephemeral
 feedback.
@@ -124,18 +134,41 @@ volume:toggle_mute()     -- toggle mute state
 `adjust_perc` clamps the delta to keep the result in [0, 100]. If the clamped
 delta is 0, `on_control` is still fired with the current state.
 
-## State Fields
+## Handle Types
+
+### Device Handle
+
+`Audio.Volume`, `Audio.Capture`, and every handle returned by `audio.sinks` and
+`audio.sources` share the same shape:
 
 | Field | Type | Description | Backends |
 |---|---|---|---|
-| `level` | `integer` | Volume 0–100 | all |
-| `muted` | `boolean` | Mute state | all |
-| `port` | `string?` | Raw active port name | PulseAudio |
-| `port_type` | `string?` | `"speaker"`, `"headphones"`, `"headset"`, `"hdmi"`, `"mic"`, `"headset-mic"` | PulseAudio |
-| `connection` | `string?` | `"analog"`, `"bluetooth"`, `"hdmi"`, `"usb"` | PulseAudio |
+| `id` | `string` | Numeric device index (as string, e.g. `"57"`) | all |
+| `name` | `string?` | Internal device name (e.g. `"alsa_output.pci-..."`) | all<sup>1</sup> |
+| `description` | `string?` | Human-readable label (e.g. `"Built-in Audio Analog Stereo"`) | all<sup>1</sup> |
+| `state.level` | `integer` | Volume 0–100 | all |
+| `state.muted` | `boolean` | Mute state | all |
+| `state.is_default` | `boolean` | Whether this is the current default device | all |
+| `state.port` | `string?` | Raw active port name | PulseAudio |
+| `state.port_type` | `string?` | `"speaker"`, `"headphones"`, `"headset"`, `"hdmi"`, `"mic"`, `"headset-mic"` | PulseAudio |
+| `state.connection` | `string?` | `"analog"`, `"bluetooth"`, `"hdmi"`, `"usb"` | PulseAudio |
 
-ALSA state contains only `level` and `muted`; `port`, `port_type`, and
-`connection` are `nil`.
+
+> <sup>1</sup> For ALSA, `name` and `description` are the same as `id`.
+
+### Sink Input Handle
+
+Handles returned by `audio.inputs` expose:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Sink input index (as string) |
+| `app_name` | `string?` | Application name, if reported by the backend |
+| `icon_name` | `string?` | Icon name, if reported by the backend |
+| `state.level` | `integer` | Volume 0–100 |
+| `state.muted` | `boolean` | Mute state |
+| `state.name` | `string?` | Stream name |
+| `state.sink` | `integer?` | Sink index this input is routed to |
 
 ## Wibox Widget
 
@@ -164,6 +197,32 @@ audio.Volume:on_ready(update)
 audio.Volume:subscribe(update)
 ```
 
+A widget showing the volume and description. Note that `description` is re-read
+from the handle when subscribe fires. This is only necessary when using the
+Pulse backend **and** working with `audio.Volume` or `audio.Capture`
+directly, not `audio.sinks` or `audio.sources`.
+
+```lua
+local volume_widget = wibox.widget {
+    text = "..."
+    widget = wibox.widget.textbox,
+}
+audio.Volume:on_ready(function(state)
+    volume_widget.text = string.format(
+        "%s %3d%%",
+        audio.Volume.description or "Volume",
+        state.level
+    )
+end)
+audio.Volume:subscribe(function(state)
+    volume_widget.text = string.format(
+        "%s %3d%%",
+        audio.Volume.description or "Volume",
+        state.level
+    )
+end)
+```
+
 ## Keybindings
 
 ```lua
@@ -178,9 +237,117 @@ awful.keyboard.append_global_keybindings({
 })
 ```
 
+## Sinks
+
+`audio.sinks` enumerates all detected output devices and tracks their lifecycle.
+
+> **Note:** While ALSA does provide sink enumeration, there will only ever be
+> the `Master` channel.
+
+### Lifecycle
+
+```lua
+local audio = require("continuity.audio")
+
+audio.sinks.on_added(function(handle)
+    print("sink added:", handle.id, handle.description)
+end)
+
+audio.sinks.on_updated(function(handle)
+    print("sink updated:", handle.id, "default:", handle.state.is_default)
+end)
+
+audio.sinks.on_removed(function(id)
+    print("sink removed:", id)
+end)
+
+local sinks = audio.sinks.all()
+for _, handle in ipairs(sinks) do
+    print(handle.id, handle.description, handle.state.is_default)
+end
+```
+
+All three registration functions return an unsubscribe function. See
+[Device Handle](#device-handle) for fields.
+
+### Per-Handle Subscriptions and Control
+
+Individual sink handles expose the same subscription API as `Audio.Volume`:
+
+```lua
+audio.sinks.on_added(function(handle)
+    handle:subscribe(function(state)
+        print("sink", handle.id, "level:", state.level, "default:", state.is_default)
+    end)
+end)
+```
+
+### Changing the Default Sink
+
+```lua
+audio.sinks.on_added(function(handle)
+    -- Make this sink the default output.
+    handle:set_default()
+end)
+```
+
+## Sources
+
+`audio.sources` enumerates all detected input devices and tracks their
+lifecycle.
+
+> **Note:** While ALSA does provide source enumeration, there will only ever be
+> the `Capture` channel.
+
+### Lifecycle
+
+```lua
+local audio = require("continuity.audio")
+
+audio.sources.on_added(function(handle)
+    print("source added:", handle.id, handle.description)
+end)
+
+audio.sources.on_updated(function(handle)
+    print("source updated:", handle.id, "default:", handle.state.is_default)
+end)
+
+audio.sources.on_removed(function(id)
+    print("source removed:", id)
+end)
+
+local sources = audio.sources.all()
+for _, handle in ipairs(sources) do
+    print(handle.id, handle.description, handle.state.is_default)
+end
+```
+
+All three registration functions return an unsubscribe function. See
+[Device Handle](#device-handle) for fields.
+
+### Per-Handle Subscriptions and Control
+
+Individual source handles expose the same subscription API as `Audio.Capture`:
+
+```lua
+audio.sources.on_added(function(handle)
+    handle:subscribe(function(state)
+        print("source", handle.id, "level:", state.level, "default:", state.is_default)
+    end)
+end)
+```
+
+### Changing the Default Source
+
+```lua
+audio.sources.on_added(function(handle)
+    handle:set_default()
+end)
+```
+
 ## Inputs
 
-`audio.inputs` provides a collection API for sink inputs — individual application
+`audio.inputs` provides a collection API for sink inputs; individual application
 streams routed to any sink (e.g. a browser, a music player).
 
 > **Note:** Sink inputs are only available when the PulseAudio/PipeWire backend
@@ -211,24 +378,13 @@ for _, handle in ipairs(inputs) do
 end
 ```
 
-All three registration functions return an unsubscribe function.
-
-### Input Handle Fields
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `string` | Sink input index (as string) |
-| `app_name` | `string?` | Application name, if reported by the backend |
-| `icon_name` | `string?` | Icon name, if reported by the backend |
-| `state.level` | `integer` | Volume 0–100 |
-| `state.muted` | `boolean` | Mute state |
-| `state.name` | `string?` | Stream name |
-| `state.sink` | `integer?` | Sink index this input is routed to |
+All three registration functions return an unsubscribe function. See
+[Sink Input Handle](#sink-input-handle) for fields.
 
 ### Per-Handle Subscriptions and Control
 
 Individual input handles expose the same subscription and control API as the
-module-level handles:
+module-level handles except with `move_to` instead of `set_default`:
 
 ```lua
 audio.inputs.on_added(function(handle)
@@ -251,5 +407,11 @@ audio.inputs.on_added(function(handle)
     handle:adjust_perc(5)
     handle:set_perc(80)
     handle:toggle_mute()
+
+    -- Route this stream to a different output device.
+    local target = audio.sinks.all()[1]
+    if target then
+        handle:move_to(target)
+    end
 end)
 ```
