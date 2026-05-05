@@ -1,4 +1,4 @@
-exclude_files = { ".luarocks/**" }
+exclude_files = { ".luarocks/**", "lua/continuity/util/json/json_lua.lua" }
 
 read_globals = {
 	"awesome",
