@@ -1,12 +1,18 @@
 --- If luarocks lua-json c extension is installed and luarocks are loaded, use
 --- it. Otherwise, use json.lua lua module by rxi.
 
-local ok, c_json = pcall(require, "json")
+---@class Json
+---@field is_c_extension boolean
+---@field encode fun(value: any): string
+---@field decode fun(str: string): any
+
+local ok, json = pcall(require, "json")
 if ok then
-	c_json.is_c_extension = true
-	return c_json
+	json.is_c_extension = true
 else
-	local lua_native = require("continuity.util.json.json_lua")
-	lua_native.is_c_extension = false
-	return lua_native
+	json = require("continuity.util.json.json_lua")
+	json.is_c_extension = false
 end
+
+---@type Json
+return json
