@@ -3,7 +3,10 @@
 
 local ok, c_json = pcall(require, "json")
 if ok then
+	c_json.is_c_extension = true
 	return c_json
 else
-	return require("continuity.util.json.json_lua")
+	local lua_native = require("continuity.util.json.json_lua")
+	lua_native.is_c_extension = false
+	return lua_native
 end
