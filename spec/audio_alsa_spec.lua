@@ -112,6 +112,72 @@ describe("audio.backends.alsa (instance)", function()
 				alsa():start({})
 			end)
 		end)
+
+		it("calls sinks.add with Master and is_default=true when sinks handle provided", function()
+			local added = {}
+			alsa():start({
+				sinks = {
+					add = function(id, state)
+						added[#added + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			assert.equals(1, #added)
+			assert.equals("Master", added[1].id)
+			assert.is_true(added[1].state.is_default)
+		end)
+
+		it("calls sources.add with Capture and is_default=true when sources handle provided", function()
+			local added = {}
+			alsa():start({
+				sources = {
+					add = function(id, state)
+						added[#added + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			assert.equals(1, #added)
+			assert.equals("Capture", added[1].id)
+			assert.is_true(added[1].state.is_default)
+		end)
+	end)
+
+	describe("device handle updates", function()
+		it("calls sinks.update with fresh state when Master event fires", function()
+			local updated = {}
+			alsa():start({
+				on_sink = function() end,
+				sinks = {
+					add = function() end,
+					update = function(id, state)
+						updated[#updated + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			wlc_cbs.stdout("event value: 'Master',0")
+			easy_cmds[1].cb(SGET_MASTER_OUTPUT, "", "", 0)
+			assert.equals(1, #updated)
+			assert.equals("Master", updated[1].id)
+			assert.equals(50, updated[1].state.level)
+		end)
+
+		it("calls sources.update with fresh state when Capture event fires", function()
+			local updated = {}
+			alsa():start({
+				on_source = function() end,
+				sources = {
+					add = function() end,
+					update = function(id, state)
+						updated[#updated + 1] = { id = id, state = state }
+					end,
+				},
+			})
+			wlc_cbs.stdout("event value: 'Capture',0")
+			easy_cmds[1].cb(SGET_CAPTURE_OUTPUT, "", "", 0)
+			assert.equals(1, #updated)
+			assert.equals("Capture", updated[1].id)
+			assert.equals(72, updated[1].state.level)
+		end)
 	end)
 
 	describe("stop", function()
@@ -126,7 +192,7 @@ describe("audio.backends.alsa (instance)", function()
 		it("resets pending counters so they do not suppress events after restart", function()
 			local backend = alsa()
 			backend:start({ on_sink = function() end })
-			backend:adjust_perc("Master", 10, function() end)
+			backend.api.sink.adjust_perc("Master", 10, function() end)
 			backend:stop()
 			backend:start({ on_sink = function() end })
 			-- pending was reset; first event should poll
@@ -186,8 +252,8 @@ describe("audio.backends.alsa (instance)", function()
 			local results = {}
 			local backend = alsa()
 			backend:start({
-				on_sink = function(id, s)
-					results[#results + 1] = { id = id, state = s }
+				on_sink = function(id, s, m)
+					results[#results + 1] = { id = id, state = s, meta = m }
 				end,
 			})
 			wlc_cbs.stdout("event value: 'Master',0")
@@ -196,14 +262,16 @@ describe("audio.backends.alsa (instance)", function()
 			assert.equals("Master", results[1].id)
 			assert.equals(50, results[1].state.level)
 			assert.is_false(results[1].state.muted)
+			assert.equals("Master", results[1].meta.name)
+			assert.equals("Master", results[1].meta.description)
 		end)
 
 		it("delivers parsed state to on_source callback from poll", function()
 			local results = {}
 			local backend = alsa()
 			backend:start({
-				on_source = function(id, s)
-					results[#results + 1] = { id = id, state = s }
+				on_source = function(id, s, m)
+					results[#results + 1] = { id = id, state = s, meta = m }
 				end,
 			})
 			wlc_cbs.stdout("event value: 'Capture',0")
@@ -211,6 +279,8 @@ describe("audio.backends.alsa (instance)", function()
 			assert.equals(1, #results)
 			assert.equals("Capture", results[1].id)
 			assert.equals(72, results[1].state.level)
+			assert.equals("Capture", results[1].meta.name)
+			assert.equals("Capture", results[1].meta.description)
 		end)
 
 		it("does not deliver to on_sink when poll exits non-zero", function()
@@ -232,11 +302,11 @@ describe("audio.backends.alsa (instance)", function()
 			easy_cmds[n].cb(stdout or "", "", "", exitcode or 0)
 		end
 
-		describe("adjust_perc", function()
+		describe("api.sink.adjust_perc", function()
 			it("positive delta sends %+ command with 'on' to unmute", function()
 				local backend = alsa()
 				backend:start({})
-				backend:adjust_perc("Master", 10, function() end)
+				backend.api.sink.adjust_perc("Master", 10, function() end)
 				assert.equals(1, #easy_cmds)
 				assert.same({ "amixer", "set", "Master", "10%+", "on" }, easy_cmds[1].cmd)
 			end)
@@ -244,7 +314,7 @@ describe("audio.backends.alsa (instance)", function()
 			it("negative delta sends %- command without mute argument", function()
 				local backend = alsa()
 				backend:start({})
-				backend:adjust_perc("Master", -10, function() end)
+				backend.api.sink.adjust_perc("Master", -10, function() end)
 				assert.equals(1, #easy_cmds)
 				assert.same({ "amixer", "set", "Master", "10%-" }, easy_cmds[1].cmd)
 			end)
@@ -252,7 +322,7 @@ describe("audio.backends.alsa (instance)", function()
 			it("zero delta sends %+ command with 'on'", function()
 				local backend = alsa()
 				backend:start({})
-				backend:adjust_perc("Master", 0, function() end)
+				backend.api.sink.adjust_perc("Master", 0, function() end)
 				assert.same({ "amixer", "set", "Master", "0%+", "on" }, easy_cmds[1].cmd)
 			end)
 
@@ -260,7 +330,7 @@ describe("audio.backends.alsa (instance)", function()
 				local backend = alsa()
 				backend:start({})
 				local result = nil
-				backend:adjust_perc("Master", 10, function(level, muted)
+				backend.api.sink.adjust_perc("Master", 10, function(level, muted)
 					result = { level = level, muted = muted }
 				end)
 				fire(1, SGET_MASTER_OUTPUT)
@@ -273,7 +343,7 @@ describe("audio.backends.alsa (instance)", function()
 				local backend = alsa()
 				backend:start({})
 				local called = false
-				backend:adjust_perc("Master", 10, function()
+				backend.api.sink.adjust_perc("Master", 10, function()
 					called = true
 				end)
 				fire(1, "", 1)
@@ -281,11 +351,11 @@ describe("audio.backends.alsa (instance)", function()
 			end)
 		end)
 
-		describe("set_perc", function()
+		describe("api.sink.set_perc", function()
 			it("sends absolute percent command", function()
 				local backend = alsa()
 				backend:start({})
-				backend:set_perc("Master", 75, function() end)
+				backend.api.sink.set_perc("Master", 75, function() end)
 				assert.equals(1, #easy_cmds)
 				assert.same({ "amixer", "set", "Master", "75%" }, easy_cmds[1].cmd)
 			end)
@@ -293,7 +363,7 @@ describe("audio.backends.alsa (instance)", function()
 			it("floors fractional values", function()
 				local backend = alsa()
 				backend:start({})
-				backend:set_perc("Master", 75.9, function() end)
+				backend.api.sink.set_perc("Master", 75.9, function() end)
 				assert.same({ "amixer", "set", "Master", "75%" }, easy_cmds[1].cmd)
 			end)
 
@@ -301,7 +371,7 @@ describe("audio.backends.alsa (instance)", function()
 				local backend = alsa()
 				backend:start({})
 				local result = nil
-				backend:set_perc("Master", 50, function(level, muted)
+				backend.api.sink.set_perc("Master", 50, function(level, muted)
 					result = { level = level, muted = muted }
 				end)
 				fire(1, SGET_MASTER_OUTPUT)
@@ -310,11 +380,11 @@ describe("audio.backends.alsa (instance)", function()
 			end)
 		end)
 
-		describe("toggle", function()
+		describe("api.sink.toggle", function()
 			it("sends toggle command", function()
 				local backend = alsa()
 				backend:start({})
-				backend:toggle("Master", function() end)
+				backend.api.sink.toggle("Master", function() end)
 				assert.equals(1, #easy_cmds)
 				assert.same({ "amixer", "set", "Master", "toggle" }, easy_cmds[1].cmd)
 			end)
@@ -323,7 +393,7 @@ describe("audio.backends.alsa (instance)", function()
 				local backend = alsa()
 				backend:start({})
 				local result = nil
-				backend:toggle("Master", function(level, muted)
+				backend.api.sink.toggle("Master", function(level, muted)
 					result = { level = level, muted = muted }
 				end)
 				fire(1, SGET_MASTER_OUTPUT)
@@ -333,41 +403,41 @@ describe("audio.backends.alsa (instance)", function()
 			end)
 		end)
 
-		describe("mute", function()
-			it("sends 'off' command for Master", function()
+		describe("api.sink/source.mute", function()
+			it("sends 'off' command for Master via api.sink", function()
 				local backend = alsa()
 				backend:start({})
-				backend:mute("Master", function() end)
+				backend.api.sink.mute("Master", function() end)
 				assert.same({ "amixer", "set", "Master", "off" }, easy_cmds[1].cmd)
 			end)
 
-			it("sends 'off' command for Capture", function()
+			it("sends 'off' command for Capture via api.source", function()
 				local backend = alsa()
 				backend:start({})
-				backend:mute("Capture", function() end)
+				backend.api.source.mute("Capture", function() end)
 				assert.same({ "amixer", "set", "Capture", "off" }, easy_cmds[1].cmd)
 			end)
 		end)
 
-		describe("unmute", function()
+		describe("api.sink.unmute", function()
 			it("sends 'on' command for Master", function()
 				local backend = alsa()
 				backend:start({})
-				backend:unmute("Master", function() end)
+				backend.api.sink.unmute("Master", function() end)
 				assert.same({ "amixer", "set", "Master", "on" }, easy_cmds[1].cmd)
 			end)
 		end)
 
 		describe("pending counter", function()
-			it("Master event is suppressed while pending > 0 for Master", function()
+			it("Master event is suppressed while pending_sinks > 0 for Master", function()
 				local backend = alsa()
 				backend:start({ on_sink = function() end })
-				backend:adjust_perc("Master", 10, function() end)
+				backend.api.sink.adjust_perc("Master", 10, function() end)
 				local count = #easy_cmds
-				-- pending["Master"] == 1: event should decrement, not poll
+				-- pending_sinks["Master"] == 1: event should decrement, not poll
 				wlc_cbs.stdout("event value: 'Master',0")
 				assert.equals(count, #easy_cmds)
-				-- pending["Master"] == 0: event should poll
+				-- pending_sinks["Master"] == 0: event should poll
 				wlc_cbs.stdout("event value: 'Master',0")
 				assert.equals(count + 1, #easy_cmds)
 			end)
@@ -375,12 +445,12 @@ describe("audio.backends.alsa (instance)", function()
 			it("Capture event is not suppressed by Master pending", function()
 				local backend = alsa()
 				backend:start({ on_sink = function() end, on_source = function() end })
-				backend:adjust_perc("Master", 10, function() end)
+				backend.api.sink.adjust_perc("Master", 10, function() end)
 				local count = #easy_cmds
-				-- pending["Capture"] == 0: Capture event should poll
+				-- pending_sinks["Capture"] == 0: Capture event should poll
 				wlc_cbs.stdout("event value: 'Capture',0")
 				assert.equals(count + 1, #easy_cmds)
-				-- pending["Master"] == 1: Master event should NOT poll
+				-- pending_sinks["Master"] == 1: Master event should NOT poll
 				wlc_cbs.stdout("event value: 'Master',0")
 				assert.equals(count + 1, #easy_cmds)
 			end)
@@ -388,7 +458,7 @@ describe("audio.backends.alsa (instance)", function()
 			it("pending is decremented on command error so future events are not suppressed", function()
 				local backend = alsa()
 				backend:start({ on_sink = function() end })
-				backend:adjust_perc("Master", 10, function() end)
+				backend.api.sink.adjust_perc("Master", 10, function() end)
 				-- Simulate command failure
 				fire(1, "", 1)
 				local count = #easy_cmds

@@ -157,7 +157,7 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 	end)
 
 	it("does not poll sink-inputs on start when inputs is nil", function()
-		pulse():start({ on_sink = function() end })
+		pulse():start({ sinks = { add = function() end, update = function() end, remove = function() end } })
 		assert.equals(1, #easy_cmds)
 		local cmd_str = type(easy_cmds[1].cmd) == "table" and table.concat(easy_cmds[1].cmd, " ") or easy_cmds[1].cmd
 		assert.truthy(cmd_str:find("list sinks"))
@@ -203,7 +203,8 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 	end)
 
 	it("does not dispatch sink-input events when inputs is nil", function()
-		pulse():start({ on_sink = function() end })
+		local sh = { add = function() end, update = function() end, remove = function() end }
+		pulse():start({ sinks = sh })
 		easy_cmds[1].cb("", "", "", 0)
 		local count = #easy_cmds
 		wlc_cbs.stdout("Event 'new' on sink-input #263")
@@ -212,7 +213,7 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 
 	it("sink and source events still work alongside sink-input events", function()
 		pulse():start({
-			on_sink = function() end,
+			sinks = { add = function() end, update = function() end, remove = function() end },
 			inputs = { add = function() end, update = function() end, remove = function() end },
 		})
 		local count = #easy_cmds
@@ -308,11 +309,11 @@ describe("audio.backends.pulse (sink-input control)", function()
 		easy_cmds[n].cb(stdout or "", "", "", 0)
 	end
 
-	it("adjust_input_perc issues set-sink-input-volume with delta and calls cb", function()
+	it("api.sink_input.adjust_perc issues set-sink-input-volume with delta and calls cb", function()
 		local backend = pulse()
 		backend:start({})
 		local result = nil
-		backend:adjust_input_perc("263", 10, function(level, muted)
+		backend.api.sink_input.adjust_perc("263", 10, function(level, muted)
 			result = { level = level, muted = muted }
 		end)
 		assert.equals(1, #easy_cmds)
@@ -330,7 +331,7 @@ describe("audio.backends.pulse (sink-input control)", function()
 		assert.is_false(result.muted)
 	end)
 
-	it("adjust_input_perc increments pending_inputs so the next change event is suppressed", function()
+	it("api.sink_input.adjust_perc increments pending_inputs so the next change event is suppressed", function()
 		local updated = {}
 		local backend = pulse()
 		backend:start({
@@ -343,7 +344,7 @@ describe("audio.backends.pulse (sink-input control)", function()
 			},
 		})
 		easy_cmds[1].cb("", "", "", 0) -- startup poll
-		backend:adjust_input_perc("263", 5, function() end)
+		backend.api.sink_input.adjust_perc("263", 5, function() end)
 		fire(#easy_cmds, "") -- set completes, query issued
 		local count = #easy_cmds
 		wlc_cbs.stdout("Event 'change' on sink-input #263")
@@ -352,19 +353,19 @@ describe("audio.backends.pulse (sink-input control)", function()
 		assert.equals(count + 1, #easy_cmds) -- now fires
 	end)
 
-	it("set_input_perc issues set-sink-input-volume with absolute percent", function()
+	it("api.sink_input.set_perc issues set-sink-input-volume with absolute percent", function()
 		local backend = pulse()
 		backend:start({})
-		backend:set_input_perc("263", 75, function() end)
+		backend.api.sink_input.set_perc("263", 75, function() end)
 		local cmd_str = table.concat(easy_cmds[1].cmd, " ")
 		assert.truthy(cmd_str:find("set%-sink%-input%-volume"))
 		assert.truthy(cmd_str:find("75%%"))
 	end)
 
-	it("toggle_input issues set-sink-input-mute with toggle", function()
+	it("api.sink_input.toggle issues set-sink-input-mute with toggle", function()
 		local backend = pulse()
 		backend:start({})
-		backend:toggle_input("263", function() end)
+		backend.api.sink_input.toggle("263", function() end)
 		local cmd_str = table.concat(easy_cmds[1].cmd, " ")
 		assert.truthy(cmd_str:find("set%-sink%-input%-mute"))
 		assert.truthy(cmd_str:find("toggle"))
