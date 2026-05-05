@@ -1,18 +1,24 @@
 -- Benchmarks three approaches to parsing pactl list sinks output.
--- Two scenarios per approach:
---   1. parse default  — find and parse the default sink only
+-- Two scenarios, each run with N=1..5 sinks:
+--   1. parse default  — find and parse the default (target) sink only
 --   2. parse all      — parse every sink in the list
 --
--- Fixture setup (run from project root):
---   pactl get-default-sink > bench/fixtures/pactl_list_sinks_default.txt
---   pactl list sinks       > bench/fixtures/pactl_list_sinks.txt
---   pactl -f json list sinks > bench/fixtures/pactl_list_sinks.json
+-- Input is constructed by concatenating N-1 copies of the secondary
+-- sink followed by the default sink, simulating a realistic list where
+-- the target is at the end.
+--
+-- Fixtures (single sinks; JSON is pretty-printed for readability):
+--   bench/fixtures/sink_default.txt    -- target sink, text format
+--   bench/fixtures/sink_secondary.txt  -- non-target sink, text format
+--   bench/fixtures/sink_default.json   -- target sink, JSON object
+--   bench/fixtures/sink_secondary.json -- non-target sink, JSON object
 --
 -- Run: lua bench/pactl_sinks_parse.lua
 
 package.path = "lua/?.lua;lua/?/init.lua;" .. package.path
 
 local ITERATIONS = 10000
+local N_MAX = 5
 
 -- ----------------------------------------------------------------------------
 -- Fixtures
@@ -28,15 +34,45 @@ local function read_fixture(path)
 	return content
 end
 
-local default_name = read_fixture("bench/fixtures/pactl_list_sinks_default.txt"):match("^([^\n]+)")
-local text_fixture = read_fixture("bench/fixtures/pactl_list_sinks.txt")
-local json_fixture = read_fixture("bench/fixtures/pactl_list_sinks.json")
+local default_text = read_fixture("bench/fixtures/sink_default.txt")
+local secondary_text = read_fixture("bench/fixtures/sink_secondary.txt")
+local default_json_pretty = read_fixture("bench/fixtures/sink_default.json")
+local secondary_json_pretty = read_fixture("bench/fixtures/sink_secondary.json")
 
-if not default_name or default_name == "" then
-	error("pactl_list_sinks_default.txt is empty or malformed")
+local default_name = default_text:match("\tName: ([^\n]+)")
+if not default_name then
+	error("could not extract Name from sink_default.txt")
 end
-
 print("Default sink: " .. default_name)
+
+-- ----------------------------------------------------------------------------
+-- JSON modules
+-- ----------------------------------------------------------------------------
+
+local ok_c, c_json = pcall(require, "json")
+local lua_json = require("continuity.util.json.json_lua")
+
+-- Compact the pretty-printed fixture objects once (realistic pactl output format).
+-- Uses lua_json which is always available; all parsers receive the same string.
+local default_json = lua_json.encode(lua_json.decode(default_json_pretty))
+local secondary_json = lua_json.encode(lua_json.decode(secondary_json_pretty))
+
+-- ----------------------------------------------------------------------------
+-- Build N-sink inputs: (N-1) secondary sinks followed by the default
+-- ----------------------------------------------------------------------------
+
+local text_inputs, json_inputs = {}, {}
+for n = 1, N_MAX do
+	local text_parts, json_parts = {}, {}
+	for i = 1, n - 1 do
+		text_parts[i] = secondary_text
+		json_parts[i] = secondary_json
+	end
+	text_parts[n] = default_text
+	json_parts[n] = default_json
+	text_inputs[n] = table.concat(text_parts, "\n")
+	json_inputs[n] = "[" .. table.concat(json_parts, ",") .. "]"
+end
 
 -- ----------------------------------------------------------------------------
 -- Shared derive helpers (same logic as pulse backend)
@@ -91,7 +127,7 @@ local function derive_connection(device_name)
 end
 
 -- ----------------------------------------------------------------------------
--- Shared block-to-state extractor (used by both pattern scenarios)
+-- Shared state extractors
 -- ----------------------------------------------------------------------------
 
 local function block_to_state(block)
@@ -111,11 +147,36 @@ local function block_to_state(block)
 	}
 end
 
+local function sink_to_state(sink)
+	local total, count = 0, 0
+	if type(sink.volume) == "table" then
+		for _, ch in pairs(sink.volume) do
+			if type(ch) == "table" and type(ch.value_percent) == "string" then
+				local n = tonumber(ch.value_percent:match("(%d+)%%"))
+				if n then
+					total = total + n
+					count = count + 1
+				end
+			end
+		end
+	end
+	local level = count > 0 and math.floor(total / count) or 0
+	local port = (sink.active_port ~= "") and sink.active_port or nil
+	return {
+		name = sink.name,
+		description = sink.description,
+		level = level,
+		muted = sink.mute or false,
+		port = port,
+		port_type = port and derive_port_type(port) or nil,
+		connection = sink.name and derive_connection(sink.name) or nil,
+	}
+end
+
 -- ----------------------------------------------------------------------------
 -- Method 1: pattern-based
 -- ----------------------------------------------------------------------------
 
---- Finds and returns the tab-indented block whose content contains device_name.
 local function find_device_block(list, device_name)
 	local current_lines = {}
 	local in_block = false
@@ -148,13 +209,9 @@ end
 
 local function parse_default_pattern(list, sink_name)
 	local block = find_device_block(list, sink_name)
-	if not block then
-		return nil
-	end
-	return block_to_state(block)
+	return block and block_to_state(block) or nil
 end
 
---- Parses every sink block, returning an array of states.
 local function parse_all_pattern(list)
 	local results = {}
 	local current_lines = {}
@@ -181,41 +238,7 @@ end
 
 -- ----------------------------------------------------------------------------
 -- Method 2 & 3: JSON-based
---
--- Expects the output of `pactl -f json list sinks`: a JSON array of sink
--- objects. Each sink has at minimum:
---   name        string
---   description string
---   mute        boolean
---   active_port string
---   volume      { [channel]: { value_percent: "N%" } }
 -- ----------------------------------------------------------------------------
-
-local function sink_to_state(sink)
-	local total, count = 0, 0
-	if type(sink.volume) == "table" then
-		for _, ch in pairs(sink.volume) do
-			if type(ch) == "table" and type(ch.value_percent) == "string" then
-				local n = tonumber(ch.value_percent:match("(%d+)%%"))
-				if n then
-					total = total + n
-					count = count + 1
-				end
-			end
-		end
-	end
-	local level = count > 0 and math.floor(total / count) or 0
-	local port = sink.active_port ~= "" and sink.active_port or nil
-	return {
-		name = sink.name,
-		description = sink.description,
-		level = level,
-		muted = sink.mute or false,
-		port = port,
-		port_type = port and derive_port_type(port) or nil,
-		connection = sink.name and derive_connection(sink.name) or nil,
-	}
-end
 
 local function make_json_parse_default(json_mod)
 	return function(json_str, sink_name)
@@ -246,9 +269,6 @@ local function make_json_parse_all(json_mod)
 	end
 end
 
-local ok_c, c_json = pcall(require, "json")
-local lua_json = require("continuity.util.json.json_lua")
-
 local parse_default_json_c = ok_c and make_json_parse_default(c_json) or nil
 local parse_default_json_lua = make_json_parse_default(lua_json)
 local parse_all_json_c = ok_c and make_json_parse_all(c_json) or nil
@@ -258,102 +278,147 @@ local parse_all_json_lua = make_json_parse_all(lua_json)
 -- Sanity check
 -- ----------------------------------------------------------------------------
 
-local function check_single(label, result)
-	if result == nil then
-		io.stderr:write("WARN: " .. label .. " returned nil — check fixture and parser\n")
-	else
-		print(
-			string.format(
-				"  %-28s name=%-45s level=%d muted=%s port=%s",
-				label,
-				tostring(result.name),
-				result.level,
-				tostring(result.muted),
-				tostring(result.port)
-			)
-		)
+local function state_str(s)
+	if s == nil then
+		return "nil"
 	end
+	return string.format(
+		"name=%s level=%d muted=%s port=%s",
+		tostring(s.name),
+		s.level,
+		tostring(s.muted),
+		tostring(s.port)
+	)
 end
 
-local function check_all(label, results)
-	if results == nil then
-		io.stderr:write("WARN: " .. label .. " returned nil — check fixture and parser\n")
+local function states_str(arr)
+	if arr == nil then
+		return "nil"
+	end
+	local parts = {}
+	for i, s in ipairs(arr) do
+		parts[i] = state_str(s)
+	end
+	return table.concat(parts, " | ")
+end
+
+-- Runs fn_pat, fn_c (optional), fn_lua and checks all agree.
+-- Prints ✓ on pass; full output on failure.
+local function sanity(label, to_str, fn_pat, fn_c, fn_lua)
+	local s_pat = to_str(fn_pat())
+	local s_c = fn_c and to_str(fn_c()) or s_pat
+	local s_lua = to_str(fn_lua())
+	if s_pat == s_c and s_pat == s_lua then
+		print("  " .. label .. " ✓")
 	else
-		print(string.format("  %-28s [%d sinks]", label, #results))
-		for _, r in ipairs(results) do
-			print(
-				string.format(
-					"    name=%-45s level=%d muted=%s port=%s",
-					tostring(r.name),
-					r.level,
-					tostring(r.muted),
-					tostring(r.port)
-				)
-			)
+		print("  " .. label .. " FAIL")
+		print("    pattern:    " .. s_pat)
+		if fn_c then
+			print("    c-binding:  " .. s_c)
 		end
+		print("    lua-native: " .. s_lua)
 	end
 end
 
-print("\nSanity check — parse default:")
-check_single("pattern", parse_default_pattern(text_fixture, default_name))
-if parse_default_json_c then
-	check_single("json (c-binding)", parse_default_json_c(json_fixture, default_name))
-end
-check_single("json (lua native)", parse_default_json_lua(json_fixture, default_name))
-
-print("\nSanity check — parse all:")
-check_all("pattern", parse_all_pattern(text_fixture))
-if parse_all_json_c then
-	check_all("json (c-binding)", parse_all_json_c(json_fixture))
-end
-check_all("json (lua native)", parse_all_json_lua(json_fixture))
+-- Use N=2 so both sink types appear in the input.
+print("\nSanity check:")
+sanity(
+	"parse default (N=2)",
+	state_str,
+	function()
+		return parse_default_pattern(text_inputs[2], default_name)
+	end,
+	parse_default_json_c and function()
+		return parse_default_json_c(json_inputs[2], default_name)
+	end,
+	function()
+		return parse_default_json_lua(json_inputs[2], default_name)
+	end
+)
+sanity(
+	"parse all     (N=2)",
+	states_str,
+	function()
+		return parse_all_pattern(text_inputs[2])
+	end,
+	parse_all_json_c and function()
+		return parse_all_json_c(json_inputs[2])
+	end,
+	function()
+		return parse_all_json_lua(json_inputs[2])
+	end
+)
 
 -- ----------------------------------------------------------------------------
 -- Benchmark
 -- ----------------------------------------------------------------------------
 
-local function bench(name, fn)
+local function measure(fn)
 	local t0 = os.clock()
 	for _ = 1, ITERATIONS do
 		fn()
 	end
-	local elapsed = os.clock() - t0
-	local mean_us = (elapsed / ITERATIONS) * 1e6
-	print(string.format("  %-30s  %8.2f µs/iter  (%d iters, %.3fs total)", name, mean_us, ITERATIONS, elapsed))
+	return (os.clock() - t0) / ITERATIONS * 1e6
 end
 
-local SEP = string.rep("-", 72)
-
-print(string.format("\nBenchmark 1: parse default sink  (%d iterations)", ITERATIONS))
-print(SEP)
-bench("pattern", function()
-	parse_default_pattern(text_fixture, default_name)
-end)
-if parse_default_json_c then
-	bench("json (c-binding)", function()
-		parse_default_json_c(json_fixture, default_name)
-	end)
-else
-	print("  json (c-binding)               [skipped — lua-json c ext not available]")
+local function fmt_us(n)
+	return string.format("%10.2f µs", n)
 end
-bench("json (lua native)", function()
-	parse_default_json_lua(json_fixture, default_name)
-end)
-print(SEP)
 
-print(string.format("\nBenchmark 2: parse all sinks  (%d iterations)", ITERATIONS))
-print(SEP)
-bench("pattern", function()
-	parse_all_pattern(text_fixture)
-end)
-if parse_all_json_c then
-	bench("json (c-binding)", function()
-		parse_all_json_c(json_fixture)
-	end)
-else
-	print("  json (c-binding)               [skipped — lua-json c ext not available]")
+local NA = string.rep(" ", 10) .. "[n/a]  "
+local HDR = string.format("  %3s  %13s  %13s  %13s", "N", "pattern", "c-binding", "lua-native")
+local SEP = string.rep("-", #HDR)
+
+-- make_pat(n), make_c(n), make_lua(n) each return a thunk for iteration N.
+local function run_table(label, make_pat, make_c, make_lua)
+	print(string.format("\n%s  (%d iterations)", label, ITERATIONS))
+	print(SEP)
+	print(HDR)
+	print(SEP)
+	for n = 1, N_MAX do
+		local t_pat = measure(make_pat(n))
+		local t_c_str = make_c and fmt_us(measure(make_c(n))) or NA
+		local t_lua = measure(make_lua(n))
+		print(string.format("  %3d  %s  %s  %s", n, fmt_us(t_pat), t_c_str, fmt_us(t_lua)))
+	end
+	print(SEP)
 end
-bench("json (lua native)", function()
-	parse_all_json_lua(json_fixture)
-end)
-print(SEP)
+
+run_table(
+	"Benchmark 1: parse default sink",
+	function(n)
+		return function()
+			parse_default_pattern(text_inputs[n], default_name)
+		end
+	end,
+	parse_default_json_c
+		and function(n)
+			return function()
+				parse_default_json_c(json_inputs[n], default_name)
+			end
+		end,
+	function(n)
+		return function()
+			parse_default_json_lua(json_inputs[n], default_name)
+		end
+	end
+)
+
+run_table(
+	"Benchmark 2: parse all sinks",
+	function(n)
+		return function()
+			parse_all_pattern(text_inputs[n])
+		end
+	end,
+	parse_all_json_c and function(n)
+		return function()
+			parse_all_json_c(json_inputs[n])
+		end
+	end,
+	function(n)
+		return function()
+			parse_all_json_lua(json_inputs[n])
+		end
+	end
+)
