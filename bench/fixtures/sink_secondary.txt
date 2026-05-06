@@ -1,0 +1,92 @@
+Sink #57
+	State: SUSPENDED
+	Name: alsa_output.pci-0000_00_1f.3.analog-stereo
+	Description: Built-in Audio Analog Stereo
+	Driver: PipeWire
+	Sample Specification: s32le 2ch 48000Hz
+	Channel Map: front-left,front-right
+	Owner Module: 4294967295
+	Mute: no
+	Volume: front-left: 22921 /  35% / -27.37 dB,   front-right: 22921 /  35% / -27.37 dB
+	        balance 0.00
+	Base Volume: 65536 / 100% / 0.00 dB
+	Monitor Source: alsa_output.pci-0000_00_1f.3.analog-stereo.monitor
+	Latency: 0 usec, configured 0 usec
+	Flags: HARDWARE HW_MUTE_CTRL HW_VOLUME_CTRL DECIBEL_VOLUME LATENCY
+	Properties:
+		alsa.card = "0"
+		alsa.card_name = "HDA Intel PCH"
+		alsa.class = "generic"
+		alsa.components = "HDA:10ec0293,155814a1,00100003 HDA:80862812,80860101,00100000"
+		alsa.device = "0"
+		alsa.driver_name = "snd_hda_intel"
+		alsa.id = "ALC293 Analog"
+		alsa.long_card_name = "HDA Intel PCH at 0x9cc74000 irq 181"
+		alsa.mixer_name = "Realtek ALC293"
+		alsa.name = "ALC293 Analog"
+		alsa.resolution_bits = "16"
+		alsa.subclass = "generic-mix"
+		alsa.subdevice = "0"
+		alsa.subdevice_name = "subdevice #0"
+		alsa.sync.id = "00000000:00000000:00000000:00000000"
+		api.alsa.card.longname = "HDA Intel PCH at 0x9cc74000 irq 181"
+		api.alsa.card.name = "HDA Intel PCH"
+		api.alsa.path = "front:0"
+		api.alsa.pcm.card = "0"
+		api.alsa.pcm.stream = "playback"
+		audio.channels = "2"
+		audio.position = "[ FL, FR ]"
+		card.profile.device = "7"
+		device.api = "alsa"
+		device.bus = "pci"
+		device.class = "sound"
+		device.icon_name = "audio-card-analog"
+		device.id = "53"
+		device.profile.description = "Analog Stereo"
+		device.profile.name = "analog-stereo"
+		device.routes = "2"
+		factory.name = "api.alsa.pcm.sink"
+		media.class = "Audio/Sink"
+		device.description = "Built-in Audio"
+		node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+		node.nick = "ALC293 Analog"
+		node.pause-on-idle = "false"
+		object.path = "alsa:acp:PCH:7:playback"
+		port.group = "playback"
+		priority.driver = "1009"
+		priority.session = "1009"
+		factory.id = "19"
+		clock.quantum-limit = "8192"
+		client.id = "47"
+		node.driver = "true"
+		node.loop.name = "data-loop.0"
+		library.name = "audioconvert/libspa-audioconvert"
+		object.id = "57"
+		object.serial = "57"
+		api.acp.auto-port = "false"
+		api.acp.auto-profile = "false"
+		api.alsa.card = "0"
+		api.alsa.split-enable = "true"
+		api.alsa.use-acp = "true"
+		api.dbus.ReserveDevice1 = "Audio0"
+		api.dbus.ReserveDevice1.Priority = "-20"
+		device.bus_path = "pci-0000:00:1f.3"
+		device.enum.api = "udev"
+		device.form_factor = "internal"
+		device.name = "alsa_card.pci-0000_00_1f.3"
+		device.nick = "HDA Intel PCH"
+		device.plugged.usec = "13685066"
+		device.product.id = "0xa0c8"
+		device.product.name = "Tiger Lake-LP Smart Sound Technology Audio Controller"
+		device.subsystem = "sound"
+		sysfs.path = "/devices/pci0000:00/0000:00:1f.3/sound/card0"
+		device.vendor.id = "0x8086"
+		device.vendor.name = "Intel Corporation"
+		spa.object.id = "2"
+		device.string = "0"
+	Ports:
+		analog-output-speaker: Speakers (type: Speaker, priority: 10000, availability group: Legacy 3, availability unknown)
+		analog-output-headphones: Headphones (type: Headphones, priority: 9900, availability group: Legacy 2, not available)
+	Active Port: analog-output-speaker
+	Formats:
+		pcm

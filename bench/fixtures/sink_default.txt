@@ -1,0 +1,60 @@
+Sink #7722
+	State: RUNNING
+	Name: bluez_output.foobar.1
+	Description: Denon PerL Pro 567
+	Driver: PipeWire
+	Sample Specification: s24le 2ch 44100Hz
+	Channel Map: front-left,front-right
+	Owner Module: 4294967295
+	Mute: no
+	Volume: front-left: 2580 /   4% / -84.29 dB,   front-right: 2580 /   4% / -84.29 dB
+	        balance 0.00
+	Base Volume: 65536 / 100% / 0.00 dB
+	Monitor Source: bluez_output.foobar.1.monitor
+	Latency: 0 usec, configured 0 usec
+	Flags: HARDWARE HW_VOLUME_CTRL DECIBEL_VOLUME LATENCY
+	Properties:
+		api.bluez5.address = "8C:A9:6F:21:75:B0"
+		api.bluez5.codec = "aptx"
+		api.bluez5.profile = "a2dp-sink"
+		api.bluez5.transport = ""
+		bluez5.loopback = "false"
+		card.profile.device = "1"
+		device.id = "70"
+		device.routes = "1"
+		factory.name = "api.bluez5.a2dp.sink"
+		device.description = "Denon PerL Pro 567"
+		node.name = "bluez_output.foobar.1"
+		node.pause-on-idle = "false"
+		priority.driver = "1010"
+		priority.session = "1010"
+		spa.object.id = "1"
+		factory.id = "12"
+		clock.quantum-limit = "8192"
+		device.api = "bluez5"
+		media.class = "Audio/Sink"
+		media.name = "Denon PerL Pro 567"
+		node.driver = "true"
+		port.group = "stream.0"
+		node.loop.name = "data-loop.0"
+		library.name = "audioconvert/libspa-audioconvert"
+		object.id = "71"
+		object.serial = "7722"
+		client.id = "47"
+		api.bluez5.class = "0x240404"
+		api.bluez5.connection = "connected"
+		api.bluez5.device = ""
+		api.bluez5.icon = "audio-headset"
+		api.bluez5.path = "/org/bluez/hci0/dev_foobar"
+		bluez5.profile = "off"
+		device.alias = "Denon PerL Pro 567"
+		device.bus = "bluetooth"
+		device.form_factor = "headset"
+		device.icon_name = "audio-headset-bluetooth"
+		device.name = "bluez_card.foobar"
+		device.string = "8C:A9:6F:21:75:B0"
+	Ports:
+		headset-output: Headphones (type: Headset, priority: 0, available)
+	Active Port: headset-output
+	Formats:
+		pcm
