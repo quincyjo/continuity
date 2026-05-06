@@ -327,7 +327,15 @@ function registry.new()
 				and source.state[field] ~= nil
 				and partial_state[field] ~= source.state[field]
 			then
-				source.state = {}
+				-- Keep non-track state, clear track state.
+				-- TODO: Consider splitting track data into state.track or state.metadata?
+				-- This is a breaking change, so needs to be carefully considered.
+				source.state = {
+					status = source.state.status,
+					volume = source.state.volume,
+					shuffle = source.state.shuffle,
+					loop = source.state.loop,
+				}
 				break
 			end
 		end
