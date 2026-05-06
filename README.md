@@ -162,6 +162,7 @@ bat:subscribe(function(state)
     -- state.ac_online, state.batteries (per-battery breakdown)
 end)
 
+-- Note: These are the legacy API. These values are also available directly on state now.
 local seconds = bat.time_remaining()  -- nil unless discharging
 local seconds = bat.time_until_full() -- nil unless charging
 ```
