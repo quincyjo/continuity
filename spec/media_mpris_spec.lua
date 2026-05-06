@@ -1222,6 +1222,12 @@ describe("monitor streaming dispatch", function()
 		.. " path=/org/mpris/MediaPlayer2;"
 		.. " interface=org.freedesktop.DBus.Properties;"
 		.. " member=PropertiesChanged"
+	-- Unique bus name header — resolves via unique_name_map populated by GetNameOwner mock.
+	local UNIQUE_HEADER = "signal time=1.0 sender=:1.42"
+		.. " -> destination=(null destination) serial=1"
+		.. " path=/org/mpris/MediaPlayer2;"
+		.. " interface=org.freedesktop.DBus.Properties;"
+		.. " member=PropertiesChanged"
 
 	local monitor_stdout, monitor_exit
 	local update_calls, dbus_cmds
@@ -1242,7 +1248,7 @@ describe("monitor streaming dispatch", function()
 				local last = cmd[#cmd]
 				if last == "org.freedesktop.DBus.ListNames" then
 					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
-				elseif last == "org.freedesktop.DBus.GetNameOwner" then
+				elseif cmd[#cmd - 1] == "org.freedesktop.DBus.GetNameOwner" then
 					cb('   string ":1.42"\n', "", "", 0)
 				else
 					cb("", "", "", 0)
@@ -1343,6 +1349,49 @@ describe("monitor streaming dispatch", function()
 		assert.equals(0, #dbus_cmds)
 	end)
 
+	it("dispatches delta from unique sender resolved via unique_name_map", function()
+		feed({
+			UNIQUE_HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Playing"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(1, #update_calls)
+		assert.equals("mpris:spotify", update_calls[1].sid)
+		assert.equals("playing", update_calls[1].state.status)
+		assert.equals(0, #dbus_cmds)
+	end)
+
+	it("falls back to GetAll for unique sender with invalidated properties", function()
+		local awful = require("awful")
+		local get_all_called = false
+		awful.spawn.easy_async = function(cmd, cb)
+			dbus_cmds[#dbus_cmds + 1] = cmd
+			if type(cmd) == "table" and cmd[#cmd] == "string:org.mpris.MediaPlayer2.Player" then
+				get_all_called = true
+			else
+				cb("", "", "", 0)
+			end
+		end
+		feed({
+			UNIQUE_HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"   ]",
+			"   array [",
+			'      string "Metadata"',
+			"   ]",
+		})
+		assert.equals(0, #update_calls)
+		assert.is_true(get_all_called)
+	end)
+
 	it("falls back to GetAll when delta arrives during pending add", function()
 		package.loaded["continuity.media.backends.mpris"] = nil
 		package.loaded["continuity.util.app_icon"] = {
@@ -1357,7 +1406,7 @@ describe("monitor streaming dispatch", function()
 				local last = cmd[#cmd]
 				if last == "org.freedesktop.DBus.ListNames" then
 					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
-				elseif last == "org.freedesktop.DBus.GetNameOwner" then
+				elseif cmd[#cmd - 1] == "org.freedesktop.DBus.GetNameOwner" then
 					cb('   string ":1.42"\n', "", "", 0)
 				elseif last == "string:org.mpris.MediaPlayer2.Player" then
 					get_all_called = get_all_called + 1
