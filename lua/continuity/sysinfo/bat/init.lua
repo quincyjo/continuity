@@ -133,14 +133,14 @@ end
 --- If the state is not Discharging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_remaining()
-	return calculate_time_remaining(bat.state)
+	return bat.state and bat.state.time_remaining
 end
 
 --- Calculate the until fully charged based of the rolling average power.
 --- If the state is not Charging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_until_full()
-	return calculate_time_until_full(bat.state)
+	return bat.state and bat.state.time_until_full
 end
 
 --- Stop the battery monitoring.
