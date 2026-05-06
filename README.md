@@ -539,7 +539,7 @@ conventions, and the local verification checklist.
 
 ## Notes
 
-You will likely see some Awesome warning pairs when reloading like this:
+When reloading awesome, you will see Awesome warning pairs like this:
 
 ```
 2026-04-23 16:23:28 W: awesome: sysinfo.bat.udevadm: Shutting down process group 1224241. A following unknown child exited with signal 15 may occur and can be ignored.
@@ -566,3 +566,5 @@ are killed, and if this happens after the reload transfers all subprocesses to
 the new Awesome instance, the child exits will be reported as
 `Unknown child ... exited with signal 15`. This is confirmation that the
 process properly cleaned itself up, and it is not an error.
+
+> **Note**: These will not log when existing Awesome, only when reloading.
