@@ -30,6 +30,8 @@ local BatteryStatus = {
 ---@field power_average   number         Watts, EMA-smoothed draw or charge rate
 ---@field capacity        number         Health percentage (energy_full / energy_design * 100)
 ---@field charge_controlled boolean       True if any battery's perc is within its charge control window
+---@field time_remaining  number|nil     Time remaining in seconds; nil if not discharging
+---@field time_until_full number|nil     Time until fully charged in seconds; nil if not charging
 ---@field batteries       BatteryState[] Per-battery breakdown
 
 ---@class BatteryBackend
@@ -51,6 +53,28 @@ local bat = {}
 ---@type BatState|nil
 bat.state = nil
 
+--- Calculate the time remaining based of the rolling average power.
+--- If the state is not Discharging or there is power, nil is returned.
+---@param state BatState
+---@return number|nil
+local function calculate_time_remaining(state)
+	if not state or state.status ~= BatteryStatus.Discharging or state.power_now == 0 then
+		return
+	end
+	return (state.energy_now / state.power_average) * 3600
+end
+
+--- Calculate the until fully charged based of the rolling average power.
+--- If the state is not Charging or there is power, nil is returned.
+---@param state BatState
+---@return number|nil
+local function calculate_time_until_full(state)
+	if not state or state.status ~= BatteryStatus.Charging or state.power_now == 0 then
+		return
+	end
+	return ((state.energy_full - state.energy_now) / state.power_average) * 3600
+end
+
 local function _on_update(data)
 	-- Reset EMA when power flow direction changes
 	if bat.state and bat.state.status ~= data.status then
@@ -62,6 +86,8 @@ local function _on_update(data)
 		_power_average = _power_alpha * data.power_now + (1 - _power_alpha) * _power_average
 	end
 	data.power_average = _power_average
+	data.time_remaining = calculate_time_remaining(data)
+	data.time_until_full = calculate_time_until_full(data)
 
 	bat.state = data
 	for _, sub in ipairs(_subscribers) do
@@ -107,20 +133,14 @@ end
 --- If the state is not Discharging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_remaining()
-	if not bat.state or bat.state.status ~= BatteryStatus.Discharging or bat.state.power_now == 0 then
-		return
-	end
-	return (bat.state.energy_now / bat.state.power_average) * 3600
+	return bat.state and bat.state.time_remaining
 end
 
 --- Calculate the until fully charged based of the rolling average power.
 --- If the state is not Charging or there is power, nil is returned.
 ---@return number|nil
 function bat.time_until_full()
-	if not bat.state or bat.state.status ~= BatteryStatus.Charging or bat.state.power_now == 0 then
-		return
-	end
-	return ((bat.state.energy_full - bat.state.energy_now) / bat.state.power_average) * 3600
+	return bat.state and bat.state.time_until_full
 end
 
 --- Stop the battery monitoring.
