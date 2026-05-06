@@ -112,7 +112,14 @@ describe("notification", function()
 	end)
 
 	local function make_source(id, state)
-		return { id = id, name = id, state = state or {} }
+		return {
+			id = id,
+			name = id,
+			state = state or {},
+			active = function(self)
+				return self.state.title ~= nil or self.state.status == "playing"
+			end,
+		}
 	end
 
 	-- Helper: fake D-Bus notification object.
@@ -190,6 +197,16 @@ describe("notification", function()
 			notification.new(mock_reg, nil)
 			mock_reg.fire_updated(make_source("mpd:localhost", { title = "Song" }))
 			assert.equals(0, #notifications_fired)
+		end)
+
+		it("destroys notifcations for a source that goes inactive", function()
+			local mock_reg = make_mock_registry()
+			notification.new(mock_reg, nil)
+			mock_reg.fire_updated(make_source("mpd:localhost", { title = "Song", status = "playing" }))
+			assert.equals(1, #notifications_fired)
+			mock_reg.fire_updated(make_source("mpd:localhost", { title = nil, status = "stopped" }))
+			local notif = notifications_fired[1]
+			assert.is_true(notif._private.is_destroyed)
 		end)
 	end)
 
