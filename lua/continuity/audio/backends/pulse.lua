@@ -1,5 +1,6 @@
 local awful = require("awful")
 local Process = require("continuity.util.process")
+local json = require("continuity.util.json")
 
 local Pulse = {}
 
@@ -78,7 +79,7 @@ local function parse_volume_mute(stdout)
 end
 
 -- ----------------------------------------------------------------------------
--- Parse poll list output
+-- Parse poll list output (text format)
 -- ----------------------------------------------------------------------------
 
 --- Finds the tab-indented block for device index `index_str` in a `pactl list` output.
@@ -124,87 +125,12 @@ local function parse_device_block(block, default_name)
 	}
 end
 
---- Finds the block in `list` whose content contains `device_name`.
---- Blocks start at unindented "Sink #N" / "Source #N" lines.
---- Returns the block content (tab-indented lines) as a string, or nil.
----@param list string
----@param device_name string
----@return string?
-local function find_device_block(list, device_name)
-	local current_lines = {}
-	local in_block = false
-
-	local function check()
-		if not in_block then
-			return nil
-		end
-		local block = table.concat(current_lines, "\n")
-		if block:find(device_name, 1, true) then
-			return block
-		end
-		return nil
-	end
-
-	for line in (list .. "\n"):gmatch("([^\n]*)\n") do
-		if line:match("^%u%l+ #%d+") then
-			local found = check()
-			if found then
-				return found
-			end
-			in_block = true
-			current_lines = {}
-		elseif in_block then
-			current_lines[#current_lines + 1] = line
-		end
-	end
-	return check()
-end
-
---- Parses the combined output of:
----   pactl get-default-sink; echo "---"; pactl list sinks
---- (or the source equivalent). `id` is set as the `id` field of the returned state.
----@param stdout string
----@return AudioState|nil
-local function parse_list(stdout)
-	local default_name = stdout:match("^([^\n]+)")
-	if not default_name then
-		return nil
-	end
-	local sentinel = stdout:find("\n---\n", 1, true)
-	if not sentinel then
-		return nil
-	end
-	local list = stdout:sub(sentinel + 5) -- skip past "\n---\n"
-
-	local block = find_device_block(list, default_name)
-	if not block then
-		return nil
-	end
-
-	local level = tonumber(block:match("/%s+(%d+)%%"))
-	local muted = block:match("Mute: (%a+)") == "yes"
-	local port = block:match("\tActive Port: ([^\n]+)")
-	local device_name = block:match("\tName: ([^\n]+)")
-
-	return {
-		level = level or 0,
-		muted = muted or false,
-		port = port,
-		port_type = port and derive_port_type(port) or nil,
-		connection = device_name and derive_connection(device_name) or nil,
-	}
-end
-
--- ----------------------------------------------------------------------------
--- Parse all devices
--- ----------------------------------------------------------------------------
-
 --- Parses combined output of:
 ---   pactl get-default-sink; echo "---"; pactl list sinks
 --- (or the source equivalent). Returns one entry per device.
 ---@param stdout string
 ---@return { id: string, state: AudioState, meta: { name: string?, description: string? } }[]
-local function parse_all_devices(stdout)
+local function parse_all_devices_text(stdout)
 	local default_name = stdout:match("^([^\n]+)")
 	local sentinel = stdout:find("\n---\n", 1, true)
 	if not default_name or not sentinel then
@@ -238,8 +164,25 @@ local function parse_all_devices(stdout)
 	return entries
 end
 
+--- Parses a single device by index from combined stdout (text format).
+---@param stdout string
+---@param idx_str string
+---@return { state: AudioState, meta: { name: string?, description: string? } }?
+local function parse_device_by_index_text(stdout, idx_str)
+	local default_name = stdout:match("^([^\n]+)")
+	local sentinel = stdout:find("\n---\n", 1, true)
+	if not default_name or not sentinel then
+		return nil
+	end
+	local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
+	if not block then
+		return nil
+	end
+	return parse_device_block(block, default_name)
+end
+
 -- ----------------------------------------------------------------------------
--- Parse sink inputs
+-- Parse sink inputs (text format)
 -- ----------------------------------------------------------------------------
 
 --- Extracts the tab-indented block for Sink Input #id from full list output.
@@ -261,10 +204,9 @@ local function find_sink_input_block(stdout, id)
 end
 
 --- Parses a single sink-input block into a state and metadata table.
----@param id     string  pactl sink-input index as string e.g. "263"
 ---@param block  string  Tab-indented lines from find_sink_input_block
 ---@return SinkInputState, SinkInputMeta
-local function parse_sink_input_block(id, block) -- luacheck: ignore 212
+local function parse_sink_input_block(block)
 	local level = tonumber(block:match("/%s+(%d+)%%"))
 	local muted = block:match("\tMute: (%a+)") == "yes"
 	local sink = tonumber(block:match("\tSink: (%d+)"))
@@ -282,12 +224,213 @@ local function parse_sink_input_block(id, block) -- luacheck: ignore 212
 	}
 end
 
+--- Parses all sink inputs from text list output.
+---@param stdout string  Output of: pactl list sink-inputs
+---@return { id: string, state: SinkInputState, meta: SinkInputMeta }[]
+local function parse_all_sink_inputs_text(stdout)
+	local entries = {}
+	local pos = 1
+	while true do
+		local _, header_end, idx_str = stdout:find("Sink Input #(%d+)\n", pos)
+		if not header_end then
+			break
+		end
+		local block_start = header_end + 1
+		local block_end = stdout:find("\n%S", block_start)
+		local block = block_end and stdout:sub(block_start, block_end - 1) or stdout:sub(block_start)
+		local s, meta = parse_sink_input_block(block)
+		entries[#entries + 1] = { id = idx_str, state = s, meta = meta }
+		pos = block_end or (#stdout + 1)
+	end
+	return entries
+end
+
+--- Parses a single sink input by id from text list output.
+---@param stdout string
+---@param id string
+---@return SinkInputState?, SinkInputMeta?
+local function parse_sink_input_by_index_text(stdout, id)
+	local block = find_sink_input_block(stdout, id)
+	if not block then
+		return nil, nil
+	end
+	return parse_sink_input_block(block)
+end
+
+-- ----------------------------------------------------------------------------
+-- Parse poll list output (JSON format)
+-- ----------------------------------------------------------------------------
+
+--- Extracts volume level (0-100) from a pactl JSON volume object.
+---@param vol table?
+---@return integer
+local function volume_level_json(vol)
+	if not vol then
+		return 0
+	end
+	local _, ch = next(vol)
+	if not ch then
+		return 0
+	end
+	return tonumber(ch.value_percent:match("(%d+)%%")) or 0
+end
+
+--- Parses combined output of:
+---   pactl get-default-sink; echo "---"; pactl --format=json list sinks
+--- (or the source equivalent). Returns one entry per device.
+---@param stdout string
+---@return { id: string, state: AudioState, meta: { name: string?, description: string? } }[]
+local function parse_all_devices_json(stdout)
+	local default_name = stdout:match("^([^\n]+)")
+	local sentinel = stdout:find("\n---\n", 1, true)
+	if not default_name or not sentinel then
+		return {}
+	end
+	local ok, devices = pcall(json.decode, stdout:sub(sentinel + 5))
+	if not ok or type(devices) ~= "table" then
+		return {}
+	end
+	local entries = {}
+	for _, dev in ipairs(devices) do
+		local name = dev.name
+		local port = dev.active_port
+		entries[#entries + 1] = {
+			id = tostring(dev.index),
+			state = {
+				level = volume_level_json(dev.volume),
+				muted = dev.mute == true,
+				port = port,
+				port_type = port and derive_port_type(port) or nil,
+				connection = name and derive_connection(name) or nil,
+				is_default = name == default_name,
+			},
+			meta = { name = name, description = dev.description },
+		}
+	end
+	return entries
+end
+
+--- Parses a single device by index from combined stdout (JSON format).
+---@param stdout string
+---@param idx_str string
+---@return { state: AudioState, meta: { name: string?, description: string? } }?
+local function parse_device_by_index_json(stdout, idx_str)
+	local default_name = stdout:match("^([^\n]+)")
+	local sentinel = stdout:find("\n---\n", 1, true)
+	if not default_name or not sentinel then
+		return nil
+	end
+	local ok, devices = pcall(json.decode, stdout:sub(sentinel + 5))
+	if not ok or type(devices) ~= "table" then
+		return nil
+	end
+	local target = tonumber(idx_str)
+	for _, dev in ipairs(devices) do
+		if dev.index == target then
+			local name = dev.name
+			local port = dev.active_port
+			return {
+				state = {
+					level = volume_level_json(dev.volume),
+					muted = dev.mute == true,
+					port = port,
+					port_type = port and derive_port_type(port) or nil,
+					connection = name and derive_connection(name) or nil,
+					is_default = name == default_name,
+				},
+				meta = { name = name, description = dev.description },
+			}
+		end
+	end
+	return nil
+end
+
+-- ----------------------------------------------------------------------------
+-- Parse sink inputs (JSON format)
+-- ----------------------------------------------------------------------------
+
+--- Parses all sink inputs from JSON list output.
+---@param stdout string  Output of: pactl --format=json list sink-inputs
+---@return { id: string, state: SinkInputState, meta: SinkInputMeta }[]
+local function parse_all_sink_inputs_json(stdout)
+	local ok, inputs = pcall(json.decode, stdout)
+	if not ok or type(inputs) ~= "table" then
+		return {}
+	end
+	local entries = {}
+	for _, inp in ipairs(inputs) do
+		local props = inp.properties or {}
+		entries[#entries + 1] = {
+			id = tostring(inp.index),
+			state = {
+				level = volume_level_json(inp.volume),
+				muted = inp.mute == true,
+				sink = inp.sink,
+				name = props["media.name"],
+			},
+			meta = {
+				app_name = props["application.name"],
+				icon_name = props["application.icon_name"],
+			},
+		}
+	end
+	return entries
+end
+
+--- Parses a single sink input by id from JSON list output.
+---@param stdout string
+---@param id string
+---@return SinkInputState?, SinkInputMeta?
+local function parse_sink_input_by_index_json(stdout, id)
+	local ok, inputs = pcall(json.decode, stdout)
+	if not ok or type(inputs) ~= "table" then
+		return nil, nil
+	end
+	local target = tonumber(id)
+	for _, inp in ipairs(inputs) do
+		if inp.index == target then
+			local props = inp.properties or {}
+			return {
+				level = volume_level_json(inp.volume),
+				muted = inp.mute == true,
+				sink = inp.sink,
+				name = props["media.name"],
+			}, {
+				app_name = props["application.name"],
+				icon_name = props["application.icon_name"],
+			}
+		end
+	end
+	return nil, nil
+end
+
+-- ----------------------------------------------------------------------------
+-- Load-time format selection
+-- ----------------------------------------------------------------------------
+
+local SINK_POLL_CMD, SOURCE_POLL_CMD, INPUT_CMD
+local _parse_all_devices, _parse_device_by_index, _parse_all_sink_inputs, _parse_sink_input_by_index
+if json.is_c_extension then
+	SINK_POLL_CMD = { "sh", "-c", [[pactl get-default-sink; echo "---"; pactl --format=json list sinks]] }
+	SOURCE_POLL_CMD = { "sh", "-c", [[pactl get-default-source; echo "---"; pactl --format=json list sources]] }
+	INPUT_CMD = { "sh", "-c", "pactl --format=json list sink-inputs" }
+	_parse_all_devices = parse_all_devices_json
+	_parse_device_by_index = parse_device_by_index_json
+	_parse_all_sink_inputs = parse_all_sink_inputs_json
+	_parse_sink_input_by_index = parse_sink_input_by_index_json
+else
+	SINK_POLL_CMD = { "sh", "-c", [[pactl get-default-sink; echo "---"; pactl list sinks]] }
+	SOURCE_POLL_CMD = { "sh", "-c", [[pactl get-default-source; echo "---"; pactl list sources]] }
+	INPUT_CMD = { "sh", "-c", "pactl list sink-inputs" }
+	_parse_all_devices = parse_all_devices_text
+	_parse_device_by_index = parse_device_by_index_text
+	_parse_all_sink_inputs = parse_all_sink_inputs_text
+	_parse_sink_input_by_index = parse_sink_input_by_index_text
+end
+
 -- ----------------------------------------------------------------------------
 -- Backend
 -- ----------------------------------------------------------------------------
-
-local SINK_POLL_CMD = { "sh", "-c", [[pactl get-default-sink; echo "---"; pactl list sinks]] }
-local SOURCE_POLL_CMD = { "sh", "-c", [[pactl get-default-source; echo "---"; pactl list sources]] }
 
 ---@return AudioBackend
 local function create()
@@ -306,22 +449,13 @@ local function create()
 	local pending_inputs = {}
 
 	local function poll_inputs()
-		awful.spawn.easy_async({ "sh", "-c", "pactl list sink-inputs" }, function(stdout, _, _, exitcode)
+		awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 or not input_handles then
 				return
 			end
-			local pos = 1
-			while true do
-				local _, header_end, idx_str = stdout:find("Sink Input #(%d+)\n", pos)
-				if not header_end then
-					break
-				end
-				local block_start = header_end + 1
-				local block_end = stdout:find("\n%S", block_start)
-				local block = block_end and stdout:sub(block_start, block_end - 1) or stdout:sub(block_start)
-				local s, meta = parse_sink_input_block(idx_str, block)
-				input_handles.add(idx_str, s, meta)
-				pos = block_end or (#stdout + 1)
+			local entries = _parse_all_sink_inputs(stdout)
+			for _, entry in ipairs(entries) do
+				input_handles.add(entry.id, entry.state, entry.meta)
 			end
 		end)
 	end
@@ -331,7 +465,7 @@ local function create()
 			if exitcode ~= 0 or not sink_handles then
 				return
 			end
-			local entries = parse_all_devices(stdout)
+			local entries = _parse_all_devices(stdout)
 			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				sink_handles.add(entry.id, entry.state, entry.meta)
@@ -353,7 +487,7 @@ local function create()
 			if exitcode ~= 0 or not source_handles then
 				return
 			end
-			local entries = parse_all_devices(stdout)
+			local entries = _parse_all_devices(stdout)
 			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				source_handles.add(entry.id, entry.state, entry.meta)
@@ -393,14 +527,8 @@ local function create()
 						if exitcode ~= 0 or not sink_handles then
 							return
 						end
-						local default_name = stdout:match("^([^\n]+)")
-						local sentinel = stdout:find("\n---\n", 1, true)
-						if not default_name or not sentinel then
-							return
-						end
-						local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
-						if block then
-							local parsed = parse_device_block(block, default_name)
+						local parsed = _parse_device_by_index(stdout, idx_str)
+						if parsed then
 							sink_handles.add(idx_str, parsed.state, parsed.meta)
 						end
 					end)
@@ -414,14 +542,8 @@ local function create()
 							if exitcode ~= 0 or not sink_handles then
 								return
 							end
-							local default_name = stdout:match("^([^\n]+)")
-							local sentinel = stdout:find("\n---\n", 1, true)
-							if not default_name or not sentinel then
-								return
-							end
-							local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
-							if block then
-								local parsed = parse_device_block(block, default_name)
+							local parsed = _parse_device_by_index(stdout, idx_str)
+							if parsed then
 								sink_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_sink then
 									on_sink(current_default_sink_idx, parsed.state, parsed.meta)
@@ -448,14 +570,8 @@ local function create()
 						if exitcode ~= 0 or not source_handles then
 							return
 						end
-						local default_name = stdout:match("^([^\n]+)")
-						local sentinel = stdout:find("\n---\n", 1, true)
-						if not default_name or not sentinel then
-							return
-						end
-						local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
-						if block then
-							local parsed = parse_device_block(block, default_name)
+						local parsed = _parse_device_by_index(stdout, idx_str)
+						if parsed then
 							source_handles.add(idx_str, parsed.state, parsed.meta)
 						end
 					end)
@@ -469,14 +585,8 @@ local function create()
 							if exitcode ~= 0 or not source_handles then
 								return
 							end
-							local default_name = stdout:match("^([^\n]+)")
-							local sentinel = stdout:find("\n---\n", 1, true)
-							if not default_name or not sentinel then
-								return
-							end
-							local block = find_device_block_by_index(stdout:sub(sentinel + 5), idx_str)
-							if block then
-								local parsed = parse_device_block(block, default_name)
+							local parsed = _parse_device_by_index(stdout, idx_str)
+							if parsed then
 								source_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_source then
 									on_source(current_default_source_idx, parsed.state, parsed.meta)
@@ -501,7 +611,7 @@ local function create()
 						end
 						local new_default = stdout:match("^([^\n]+)")
 						if new_default and new_default ~= current_default_sink then
-							local entries = parse_all_devices(stdout)
+							local entries = _parse_all_devices(stdout)
 							for _, entry in ipairs(entries) do
 								if entry.meta.name == current_default_sink or entry.meta.name == new_default then
 									sink_handles.update(entry.id, entry.state)
@@ -524,7 +634,7 @@ local function create()
 						end
 						local new_default = stdout:match("^([^\n]+)")
 						if new_default and new_default ~= current_default_source then
-							local entries = parse_all_devices(stdout)
+							local entries = _parse_all_devices(stdout)
 							for _, entry in ipairs(entries) do
 								if entry.meta.name == current_default_source or entry.meta.name == new_default then
 									source_handles.update(entry.id, entry.state)
@@ -548,36 +658,28 @@ local function create()
 						pending_inputs[idx_str] = nil
 						input_handles.remove(idx_str)
 					elseif event_type == "new" and idx_str then
-						awful.spawn.easy_async(
-							{ "sh", "-c", "pactl list sink-inputs" },
-							function(stdout, _, _, exitcode)
-								if exitcode ~= 0 or not input_handles then
-									return
-								end
-								local block = find_sink_input_block(stdout, idx_str)
-								if block then
-									local s, meta = parse_sink_input_block(idx_str, block)
-									input_handles.add(idx_str, s, meta)
-								end
+						awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
+							if exitcode ~= 0 or not input_handles then
+								return
 							end
-						)
+							local s, meta = _parse_sink_input_by_index(stdout, idx_str)
+							if s then
+								input_handles.add(idx_str, s, meta)
+							end
+						end)
 					elseif event_type == "change" and idx_str then
 						if pending_inputs[idx_str] and pending_inputs[idx_str] > 0 then
 							pending_inputs[idx_str] = pending_inputs[idx_str] - 1
 						else
-							awful.spawn.easy_async(
-								{ "sh", "-c", "pactl list sink-inputs" },
-								function(stdout, _, _, exitcode)
-									if exitcode ~= 0 or not input_handles then
-										return
-									end
-									local block = find_sink_input_block(stdout, idx_str)
-									if block then
-										local s = parse_sink_input_block(idx_str, block)
-										input_handles.update(idx_str, s)
-									end
+							awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
+								if exitcode ~= 0 or not input_handles then
+									return
 								end
-							)
+								local s = _parse_sink_input_by_index(stdout, idx_str)
+								if s then
+									input_handles.update(idx_str, s)
+								end
+							end)
 						end
 					end
 				end
@@ -756,13 +858,12 @@ local function create()
 	end
 
 	local function after_set_input(id, cb)
-		awful.spawn.easy_async({ "sh", "-c", "pactl list sink-inputs" }, function(stdout, _, _, exitcode)
+		awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 then
 				return
 			end
-			local block = find_sink_input_block(stdout, id)
-			if block and cb then
-				local s = parse_sink_input_block(id, block)
+			local s = _parse_sink_input_by_index(stdout, id)
+			if s and cb then
 				cb(s.level, s.muted)
 			end
 		end)
@@ -837,16 +938,21 @@ Pulse._private = {
 	derive_port_type = derive_port_type,
 	derive_connection = derive_connection,
 	parse_volume_mute = parse_volume_mute,
-	parse_list = parse_list,
-	parse_all_devices = parse_all_devices,
+	-- text parse functions
+	parse_all_devices = parse_all_devices_text,
 	find_device_block_by_index = find_device_block_by_index,
 	parse_device_block = parse_device_block,
 	find_sink_input_block = find_sink_input_block,
 	parse_sink_input_block = parse_sink_input_block,
+	-- json parse functions
+	parse_all_devices_json = parse_all_devices_json,
+	parse_device_by_index_json = parse_device_by_index_json,
+	parse_all_sink_inputs_json = parse_all_sink_inputs_json,
+	parse_sink_input_by_index_json = parse_sink_input_by_index_json,
 }
 
 return setmetatable(Pulse, {
-	__call = function(_, opts)
-		return create(opts)
+	__call = function(_)
+		return create()
 	end,
 })
