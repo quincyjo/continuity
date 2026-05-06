@@ -346,11 +346,21 @@ function registry.new()
 			if flags.can_control == false then
 				source.playback = nil
 			elseif source.playback then
-				source.playback.can_seek = flags.can_seek
-				source.playback.can_go_next = flags.can_go_next
-				source.playback.can_go_previous = flags.can_go_previous
-				source.playback.can_play = flags.can_play
-				source.playback.can_pause = flags.can_pause
+				if flags.can_seek ~= nil then
+					source.playback.can_seek = flags.can_seek
+				end
+				if flags.can_go_next ~= nil then
+					source.playback.can_go_next = flags.can_go_next
+				end
+				if flags.can_go_previous ~= nil then
+					source.playback.can_go_previous = flags.can_go_previous
+				end
+				if flags.can_play ~= nil then
+					source.playback.can_play = flags.can_play
+				end
+				if flags.can_pause ~= nil then
+					source.playback.can_pause = flags.can_pause
+				end
 			end
 		end
 

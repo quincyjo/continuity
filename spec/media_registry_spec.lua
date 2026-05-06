@@ -139,6 +139,17 @@ describe("registry", function()
 				assert.is_false(playback.can_go_previous)
 			end)
 
+			it("partial flags update preserves absent fields", function()
+				reg.add("src:1", "source", {}, { playback = make_executor(), flags = make_flags() })
+				reg.update("src:1", {}, { can_pause = false })
+				local playback = reg.sources()[1].playback
+				assert.is_false(playback.can_pause)
+				assert.is_true(playback.can_seek)
+				assert.is_true(playback.can_go_next)
+				assert.is_true(playback.can_go_previous)
+				assert.is_true(playback.can_play)
+			end)
+
 			it("flags update is a no-op when source.playback is nil", function()
 				reg.add("src:1", "source", {})
 				assert.has_no.errors(function()
