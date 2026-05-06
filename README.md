@@ -158,13 +158,13 @@ local bat = require("continuity.sysinfo.bat")
 bat.setup()
 bat:subscribe(function(state)
     -- state.perc, state.status ("Charging"|"Discharging")
-    -- state.power_now, state.power_average (watts)
+    -- state.power_now (watts)
     -- state.ac_online, state.batteries (per-battery breakdown)
+    -- EMA smoothed:
+    state.power_average
+    state.time_remaining  -- nil unless discharging
+    state.time_until_full -- nil unless charging
 end)
-
--- Note: These are the legacy API. These values are also available directly on state now.
-local seconds = bat.time_remaining()  -- nil unless discharging
-local seconds = bat.time_until_full() -- nil unless charging
 ```
 
 [Full documentation](docs/sysinfo/bat.md)
