@@ -13,6 +13,7 @@
 ---@field id          string
 ---@field app_name    string?
 ---@field icon_name   string?
+---@field app_icon    string?
 ---@field state       SinkInputState
 ---@field subscribe   fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
 ---@field on_control  fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
@@ -125,6 +126,7 @@ function inputs.new()
 			id = id,
 			app_name = meta and meta.app_name,
 			icon_name = meta and meta.icon_name,
+			app_icon = meta and meta.app_icon,
 			state = initial_state or {},
 		}, HandleMT)
 		state.inputs[id] = handle
