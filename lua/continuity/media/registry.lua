@@ -357,7 +357,15 @@ function registry.new()
 				and source.state[field] ~= nil
 				and partial_state[field] ~= source.state[field]
 			then
-				source.state = {}
+				-- Keep non-track state, clear track state.
+				-- TODO: Consider splitting track data into state.track or state.metadata?
+				-- This is a breaking change, so needs to be carefully considered.
+				source.state = {
+					status = source.state.status,
+					volume = source.state.volume,
+					shuffle = source.state.shuffle,
+					loop = source.state.loop,
+				}
 				break
 			end
 		end
@@ -376,11 +384,21 @@ function registry.new()
 			if flags.can_control == false then
 				source.playback = nil
 			elseif source.playback then
-				source.playback.can_seek = flags.can_seek
-				source.playback.can_go_next = flags.can_go_next
-				source.playback.can_go_previous = flags.can_go_previous
-				source.playback.can_play = flags.can_play
-				source.playback.can_pause = flags.can_pause
+				if flags.can_seek ~= nil then
+					source.playback.can_seek = flags.can_seek
+				end
+				if flags.can_go_next ~= nil then
+					source.playback.can_go_next = flags.can_go_next
+				end
+				if flags.can_go_previous ~= nil then
+					source.playback.can_go_previous = flags.can_go_previous
+				end
+				if flags.can_play ~= nil then
+					source.playback.can_play = flags.can_play
+				end
+				if flags.can_pause ~= nil then
+					source.playback.can_pause = flags.can_pause
+				end
 			end
 		end
 

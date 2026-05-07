@@ -139,6 +139,17 @@ describe("registry", function()
 				assert.is_false(playback.can_go_previous)
 			end)
 
+			it("partial flags update preserves absent fields", function()
+				reg.add("src:1", "source", {}, { playback = make_executor(), flags = make_flags() })
+				reg.update("src:1", {}, { can_pause = false })
+				local playback = reg.sources()[1].playback
+				assert.is_false(playback.can_pause)
+				assert.is_true(playback.can_seek)
+				assert.is_true(playback.can_go_next)
+				assert.is_true(playback.can_go_previous)
+				assert.is_true(playback.can_play)
+			end)
+
 			it("flags update is a no-op when source.playback is nil", function()
 				reg.add("src:1", "source", {})
 				assert.has_no.errors(function()
@@ -486,6 +497,30 @@ describe("registry", function()
 			-- title was set on add; updating with same title should not clear
 			reg.update("src:1", { title = "Song A", status = "playing" })
 			assert.equals("Artist", reg.sources()[1].state.artist)
+		end)
+
+		it("preserves status across a track boundary", function()
+			reg.update("src:1", { status = "playing" })
+			reg.update("src:1", { title = "Song B" })
+			assert.equals("playing", reg.sources()[1].state.status)
+		end)
+
+		it("preserves volume, shuffle, and loop across a track boundary", function()
+			reg.update("src:1", { volume = 80, shuffle = true, loop = "track" })
+			reg.update("src:1", { title = "Song B" })
+			local s = reg.sources()[1].state
+			assert.equals(80, s.volume)
+			assert.is_true(s.shuffle)
+			assert.equals("track", s.loop)
+		end)
+
+		it("clears track-specific fields not in boundary set (album, art_uri, duration) on boundary", function()
+			reg.update("src:1", { album = "Album A", art_uri = "file://art.png", duration = 240 })
+			reg.update("src:1", { title = "Song B" })
+			local s = reg.sources()[1].state
+			assert.is_nil(s.album)
+			assert.is_nil(s.art_uri)
+			assert.is_nil(s.duration)
 		end)
 	end)
 

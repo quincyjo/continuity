@@ -341,6 +341,14 @@ function notification.new(registry, setup_opts)
 			return
 		end
 
+		-- If the source has gone inactive, remove any active notification.
+		if not source:active() then
+			if last_notif[source.id] then
+				nc.destroy(last_notif[source.id].notif, nc.reason.dismissed_by_command)
+			end
+			return
+		end
+
 		-- Nothing to notify.
 		if id == last_identity[source.id] and status == last_status[source.id] then
 			return
