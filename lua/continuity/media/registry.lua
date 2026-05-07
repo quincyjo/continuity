@@ -84,6 +84,7 @@ function registry.new()
 	---@field source_capapabilities  table<string, SourceCapabilities>
 	---@field position_stop_fns      table<string, fun()>
 	---@field source_cbs             table<string, fun(state: MediaState)[]>
+	---@field debounced_source_cbs   table<string, table[]>
 	---@field source_removed_cbs     table<string, fun(source_id: string)[]>
 	---@field on_playback_action_cbs fun(source: MediaSource, action: PlaybackAction)[]
 	local state = {
@@ -96,6 +97,7 @@ function registry.new()
 		source_capapabilities = {}, -- source_id -> SourceCapabilities
 		position_stop_fns = {}, -- source_id -> stop_fn (from capabilities.position.subscribe)
 		source_cbs = {},
+		debounced_source_cbs = {},
 		source_removed_cbs = {},
 		on_playback_action_cbs = {},
 	}
@@ -198,16 +200,44 @@ function registry.new()
 				return self.state.title ~= nil or self.state.status == "playing"
 			end,
 
-			subscribe = function(self, cb)
-				if not state.source_cbs[self.id] then
-					state.source_cbs[self.id] = {}
-				end
-				local cbs = state.source_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return function()
-					for i = #cbs, 1, -1 do
-						if cbs[i] == cb then
-							table.remove(cbs, i)
+			subscribe = function(self, cb, opts)
+				if opts and opts.debounce then
+					if not state.debounced_source_cbs[self.id] then
+						state.debounced_source_cbs[self.id] = {}
+					end
+					local sub = {
+						cb = cb,
+						timer = gears.timer({
+							timeout = opts.debounce,
+							single_shot = true,
+							callback = function()
+								cb(self.state)
+							end,
+						}),
+					}
+					local cbs = state.debounced_source_cbs[self.id]
+					cbs[#cbs + 1] = sub
+					return function()
+						local list = state.debounced_source_cbs[self.id] or {}
+						for i = #list, 1, -1 do
+							if list[i] == sub then
+								table.remove(list, i)
+								break
+							end
+						end
+						sub.timer:stop()
+					end
+				else
+					if not state.source_cbs[self.id] then
+						state.source_cbs[self.id] = {}
+					end
+					local cbs = state.source_cbs[self.id]
+					cbs[#cbs + 1] = cb
+					return function()
+						for i = #cbs, 1, -1 do
+							if cbs[i] == cb then
+								table.remove(cbs, i)
+							end
 						end
 					end
 				end
@@ -400,6 +430,9 @@ function registry.new()
 						end,
 					})
 				end
+			end
+			for _, sub in pairs(state.debounced_source_cbs[source_id] or {}) do
+				sub.timer:again()
 			end
 		end
 	end
