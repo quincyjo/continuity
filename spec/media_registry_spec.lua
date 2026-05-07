@@ -901,6 +901,82 @@ describe("registry", function()
 		end)
 	end)
 
+	describe("source:subscribe", function()
+		local gears_mod
+		local source
+
+		before_each(function()
+			gears_mod = require("gears")
+			gears_mod._created = {}
+			reg = registry.new()
+			reg.add("src:1", "source", { title = "Track A", status = "playing" })
+			source = reg.sources()[1]
+		end)
+
+		it("fires immediately on update when no opts provided", function()
+			local calls = {}
+			source:subscribe(function(s)
+				calls[#calls + 1] = s
+			end)
+			reg.update("src:1", { title = "Track B" })
+			assert.equals(1, #calls)
+			assert.equals("Track B", calls[1].title)
+		end)
+
+		it("returns an unsubscribe function that stops further calls", function()
+			local count = 0
+			local unsub = source:subscribe(function()
+				count = count + 1
+			end)
+			reg.update("src:1", { title = "B" })
+			unsub()
+			reg.update("src:1", { title = "C" })
+			assert.equals(1, count)
+		end)
+
+		it("debounced: does not fire immediately on update", function()
+			local called = false
+			source:subscribe(function()
+				called = true
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "Track B" })
+			assert.is_false(called)
+		end)
+
+		it("debounced: fires after timer expires", function()
+			local calls = {}
+			source:subscribe(function(s)
+				calls[#calls + 1] = s
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "Track B" })
+			assert.equals(1, #gears_mod._created)
+			gears_mod._created[1]:fire()
+			assert.equals(1, #calls)
+			assert.equals("Track B", calls[1].title)
+		end)
+
+		it("debounced: multiple updates restart the timer (coalesced)", function()
+			source:subscribe(function() end, { debounce = 0.1 })
+			reg.update("src:1", { title = "B" })
+			reg.update("src:1", { title = "C" })
+			reg.update("src:1", { title = "D" })
+			assert.equals(1, #gears_mod._created)
+			assert.equals(3, gears_mod._created[1].again_count)
+		end)
+
+		it("debounced: unsubscribe stops the timer and prevents callback", function()
+			local count = 0
+			local unsub = source:subscribe(function()
+				count = count + 1
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "B" })
+			unsub()
+			assert.is_true(gears_mod._created[1].stopped)
+			gears_mod._created[1]:fire()
+			assert.equals(0, count)
+		end)
+	end)
+
 	describe("source:active()", function()
 		it("returns true when state has a title", function()
 			reg.add("src:1", "test", { title = "Some Track" })
