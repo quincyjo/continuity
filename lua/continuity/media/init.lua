@@ -65,7 +65,7 @@ local notification_mod = require("continuity.media.notification")
 ---@field state         MediaState
 ---@field position?     Position
 ---@field playback?     Playback
----@field subscribe     fun(self, cb: fun(state: MediaState)): fun()
+---@field subscribe     fun(self, cb: fun(state: MediaState), opts: RegistrySubscribeOpts?): fun()
 ---@field on_removed    fun(self, cb: fun(source_id: string)): fun()
 ---@field active        fun(self: MediaSource): boolean
 

@@ -74,6 +74,12 @@ describe("audio.backends.pulse (device dispatch)", function()
 
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
+		package.loaded["continuity.util.json"] = nil
+		local saved_json = package.loaded["json"]
+		package.loaded["json"] = nil
+		package.preload["json"] = function()
+			error("disabled")
+		end -- luacheck: ignore
 		easy_cmds = {}
 		wlc_cbs = nil
 		awful = require("awful")
@@ -85,6 +91,8 @@ describe("audio.backends.pulse (device dispatch)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
+		package.preload["json"] = nil
+		package.loaded["json"] = saved_json
 	end)
 
 	local function make_sink_handles(added, updated, removed)
