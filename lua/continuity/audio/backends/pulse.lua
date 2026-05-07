@@ -1,6 +1,7 @@
 local awful = require("awful")
 local Process = require("continuity.util.process")
 local json = require("continuity.util.json")
+local app_icon = require("continuity.util.app_icon")
 
 local Pulse = {}
 
@@ -448,6 +449,28 @@ local function create()
 	local pending_sources = {}
 	local pending_inputs = {}
 
+	---@param id string
+	---@param state SinkInputState
+	---@param meta SinkInputMeta
+	local function register_input(id, state, meta)
+		if not input_handles then
+			return
+		end
+		if meta.icon_name then
+			app_icon.by_icon_name(meta.icon_name, function(icon_path)
+				meta.app_icon = icon_path
+				input_handles.add(id, state, meta)
+			end)
+		elseif meta.app_name then
+			app_icon.by_app_name(meta.app_name, function(icon_path)
+				meta.app_icon = icon_path
+				input_handles.add(id, state, meta)
+			end)
+		else
+			input_handles.add(id, state, meta)
+		end
+	end
+
 	local function poll_inputs()
 		awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 or not input_handles then
@@ -455,7 +478,7 @@ local function create()
 			end
 			local entries = _parse_all_sink_inputs(stdout)
 			for _, entry in ipairs(entries) do
-				input_handles.add(entry.id, entry.state, entry.meta)
+				register_input(entry.id, entry.state, entry.meta)
 			end
 		end)
 	end
@@ -664,7 +687,7 @@ local function create()
 							end
 							local s, meta = _parse_sink_input_by_index(stdout, idx_str)
 							if s then
-								input_handles.add(idx_str, s, meta)
+								register_input(idx_str, s, meta or {})
 							end
 						end)
 					elseif event_type == "change" and idx_str then
