@@ -1,52 +1,27 @@
----@class SinkInputState
----@field level  AudioLevel
----@field muted  AudioMuted
----@field name   string?
----@field sink   integer?
+---@class DeviceCollection
+---@field on_added   fun(cb: fun(handle: AudioHandle)): fun()
+---@field on_updated fun(cb: fun(handle: AudioHandle)): fun()
+---@field on_removed fun(cb: fun(id: string)): fun()
+---@field all        fun(): AudioHandle[]
 
----@class SinkInputMeta
----@field app_name  string?
----@field icon_name string?
----@field app_icon  string?
-
----@class SinkInputHandle
----@field id          string
----@field app_name    string?
----@field icon_name   string?
----@field app_icon    string?
----@field state       SinkInputState
----@field subscribe   fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
----@field on_control  fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
----@field on_removed  fun(self: SinkInputHandle, cb: fun(id: string)): fun()
----@field adjust_perc fun(self: SinkInputHandle, delta: integer)
----@field set_perc    fun(self: SinkInputHandle, value: number)
----@field toggle_mute fun(self: SinkInputHandle)
----@field move_to     fun(self: SinkInputHandle, target: AudioHandle|integer|string)
-
----@class InputHandles
----@field add    fun(id: string, state: SinkInputState, meta: SinkInputMeta?)
----@field update fun(id: string, state: SinkInputState)
+---@class DeviceHandles
+---@field add    fun(id: string, state: AudioState, meta: { name: string?, description: string? }?)
+---@field update fun(id: string, state: AudioState)
 ---@field remove fun(id: string)
 
----@class InputCollection
----@field on_added   fun(cb: fun(handle: SinkInputHandle)): fun()
----@field on_updated fun(cb: fun(handle: SinkInputHandle)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): SinkInputHandle[]
+local devices = {}
 
-local inputs = {}
-
----@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
-function inputs.new()
-	---@type { inputs: table<string, SinkInputHandle>, subscribers: table<string, fun(state: SinkInputState)[]>, on_control_cbs: table<string, fun(state: SinkInputState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: SinkInputHandle)[], on_updated_cbs: fun(handle: SinkInputHandle)[], on_removed_cbs: fun(id: string)[] }
+---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
+function devices.new()
+	---@type { handles: table<string, AudioHandle>, subscribers: table<string, fun(state: AudioState)[]>, on_control_cbs: table<string, fun(state: AudioState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
-		inputs = {},
-		on_added_cbs = {},
-		on_updated_cbs = {},
-		on_removed_cbs = {},
+		handles = {},
 		subscribers = {},
 		on_control_cbs = {},
 		handle_removed_cbs = {},
+		on_added_cbs = {},
+		on_updated_cbs = {},
+		on_removed_cbs = {},
 	}
 
 	local function fire(cbs, ...)
@@ -73,23 +48,20 @@ function inputs.new()
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
-
 			on_control = function(self, cb)
 				local cbs = state.on_control_cbs[self.id]
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
-
 			on_removed = function(self, cb)
 				local cbs = state.handle_removed_cbs[self.id]
 				cbs[#cbs + 1] = cb
 				return make_unsub(cbs, cb)
 			end,
-
 			adjust_perc = function() end,
 			set_perc = function() end,
 			toggle_mute = function() end,
-			move_to = function() end,
+			set_default = function() end,
 		},
 	}
 
@@ -110,56 +82,58 @@ function inputs.new()
 		return make_unsub(state.on_removed_cbs, cb)
 	end
 
-	---@return SinkInputHandle[]
+	---@return AudioHandle[]
 	function inst.all()
 		local list = {}
-		for _, h in pairs(state.inputs) do
+		for _, h in pairs(state.handles) do
 			list[#list + 1] = h
 		end
 		return list
 	end
 
-	local handles = {}
+	local function full_state_changed(old, new)
+		return old.level ~= new.level
+			or old.muted ~= new.muted
+			or old.port ~= new.port
+			or old.port_type ~= new.port_type
+			or old.connection ~= new.connection
+			or old.is_default ~= new.is_default
+	end
 
-	function handles.add(id, initial_state, meta)
+	local device_handles = {}
+
+	function device_handles.add(id, initial_state, meta)
 		local handle = setmetatable({
 			id = id,
-			app_name = meta and meta.app_name,
-			icon_name = meta and meta.icon_name,
-			app_icon = meta and meta.app_icon,
+			name = meta and meta.name,
+			description = meta and meta.description,
 			state = initial_state or {},
 		}, HandleMT)
-		state.inputs[id] = handle
+		state.handles[id] = handle
 		state.subscribers[id] = {}
 		state.on_control_cbs[id] = {}
 		state.handle_removed_cbs[id] = {}
 		fire(state.on_added_cbs, handle)
 	end
 
-	function handles.update(id, partial_state)
-		local handle = state.inputs[id]
+	function device_handles.update(id, new_state)
+		local handle = state.handles[id]
 		if not handle then
 			return
 		end
-		local changed = false
-		for k, v in pairs(partial_state) do
-			if v ~= nil and handle.state[k] ~= v then
-				handle.state[k] = v
-				changed = true
-			end
-		end
-		if changed then
+		if full_state_changed(handle.state, new_state) then
+			handle.state = new_state
 			fire(state.subscribers[id] or {}, handle.state)
 			fire(state.on_updated_cbs, handle)
 		end
 	end
 
-	function handles.remove(id)
-		if not state.inputs[id] then
+	function device_handles.remove(id)
+		if not state.handles[id] then
 			return
 		end
 		fire(state.handle_removed_cbs[id] or {}, id)
-		state.inputs[id] = nil
+		state.handles[id] = nil
 		state.subscribers[id] = nil
 		state.on_control_cbs[id] = nil
 		state.handle_removed_cbs[id] = nil
@@ -205,17 +179,16 @@ function inputs.new()
 			end)
 		end
 
-		HandleMT.__index.move_to = function(self, target)
-			local sink_id = type(target) == "table" and target.id or target
-			api_sub.move(self.id, sink_id, function()
+		HandleMT.__index.set_default = function(self)
+			api_sub.set_default(self.id, function()
 				fire(state.on_control_cbs[self.id] or {}, self.state)
 			end)
 		end
 
-		return handles
+		return device_handles
 	end
 
 	return inst, bind
 end
 
-return inputs
+return devices

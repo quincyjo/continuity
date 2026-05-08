@@ -58,7 +58,7 @@ bat:subscribe(function(state)
 	if state.ac_online then
 		local markup = "🔌 AC"
 		if state.status == bat.BatteryStatus.Charging and not state.charge_controlled then
-			markup = string.format("%s (%s)", markup, format_time(bat.time_until_full() or 0))
+			markup = string.format("%s (%s)", markup, format_time(state.time_until_full or 0))
 		end
 		battery_widget:set_markup(markup)
 	else
@@ -67,7 +67,7 @@ bat:subscribe(function(state)
 			    "%s %d%% (%s)",
 			    perc > 30 and "🔋" or "🪫",
 			    state.perc,
-			    format_time(bat.time_remaining() or 0)
+			    format_time(state.time_remaining or 0)
 			)
 		)
 	end

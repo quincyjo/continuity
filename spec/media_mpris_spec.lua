@@ -512,6 +512,138 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 	end)
 end)
 
+describe("mpris streaming parsing", function()
+	describe("parse_can_flags_partial", function()
+		it("returns nil when no Can* keys are present", function()
+			assert.is_nil(mpris._private.parse_can_flags_partial({ PlaybackStatus = "Playing" }))
+		end)
+
+		it("returns nil for empty props", function()
+			assert.is_nil(mpris._private.parse_can_flags_partial({}))
+		end)
+
+		it("returns only the present key", function()
+			local flags = mpris._private.parse_can_flags_partial({ CanPause = false })
+			assert.is_not_nil(flags)
+			assert.is_false(flags.can_pause)
+			assert.is_nil(flags.can_seek)
+			assert.is_nil(flags.can_go_next)
+			assert.is_nil(flags.can_go_previous)
+			assert.is_nil(flags.can_play)
+			assert.is_nil(flags.can_control)
+		end)
+
+		it("maps all Can* keys when all are present", function()
+			local flags = mpris._private.parse_can_flags_partial({
+				CanControl = true,
+				CanSeek = false,
+				CanGoNext = true,
+				CanGoPrevious = false,
+				CanPlay = true,
+				CanPause = false,
+			})
+			assert.is_not_nil(flags)
+			assert.is_true(flags.can_control)
+			assert.is_false(flags.can_seek)
+			assert.is_true(flags.can_go_next)
+			assert.is_false(flags.can_go_previous)
+			assert.is_true(flags.can_play)
+			assert.is_false(flags.can_pause)
+		end)
+
+		it("treats false values as present (not absent)", function()
+			local flags = mpris._private.parse_can_flags_partial({ CanSeek = false })
+			assert.is_not_nil(flags)
+			assert.is_false(flags.can_seek)
+		end)
+	end)
+
+	describe("parse_properties_changed", function()
+		local function signal(sender, changed_array, invalidated_array)
+			return table.concat({
+				"signal time=1.0 sender="
+					.. sender
+					.. " -> destination=(null destination) serial=1"
+					.. " path=/org/mpris/MediaPlayer2;"
+					.. " interface=org.freedesktop.DBus.Properties;"
+					.. " member=PropertiesChanged",
+				'   string "org.mpris.MediaPlayer2.Player"',
+				"   array [",
+				changed_array or "",
+				"   ]",
+				"   array [",
+				invalidated_array or "",
+				"   ]",
+			}, "\n")
+		end
+
+		it("returns nil for empty input", function()
+			assert.is_nil(mpris._private.parse_properties_changed(""))
+		end)
+
+		it("parses PlaybackStatus from changed properties", function()
+			local body =
+				'      dict entry(\n         string "PlaybackStatus"\n         variant             string "Paused"\n      )'
+			local r = mpris._private.parse_properties_changed(signal(":1.62", body))
+			assert.is_not_nil(r)
+			assert.equals("Paused", r.props.PlaybackStatus)
+			assert.equals(0, #r.invalidated)
+		end)
+
+		it("parses CanPause from changed properties", function()
+			local body =
+				'      dict entry(\n         string "CanPause"\n         variant             boolean false\n      )'
+			local r = mpris._private.parse_properties_changed(signal(":1.62", body))
+			assert.is_not_nil(r)
+			assert.is_false(r.props.CanPause)
+		end)
+
+		it("parses Metadata nested dict from changed properties", function()
+			local meta_body = table.concat({
+				"      dict entry(",
+				'         string "Metadata"',
+				"         variant             array [",
+				"            dict entry(",
+				'               string "xesam:title"',
+				'               variant             string "Some Song"',
+				"            )",
+				"            dict entry(",
+				'               string "mpris:trackid"',
+				'               variant             string "/track/1"',
+				"            )",
+				"         ]",
+				"      )",
+			}, "\n")
+			local r = mpris._private.parse_properties_changed(signal(":1.62", meta_body))
+			assert.is_not_nil(r)
+			assert.equals("Some Song", r.props["xesam:title"])
+			assert.equals("/track/1", r.props["mpris:trackid"])
+			assert.equals(0, #r.invalidated)
+		end)
+
+		it("parses invalidated_properties from second array", function()
+			local inv = '      string "Metadata"\n      string "PlaybackStatus"'
+			local r = mpris._private.parse_properties_changed(signal(":1.62", nil, inv))
+			assert.is_not_nil(r)
+			assert.equals(0, next(r.props) == nil and 0 or 1) -- props empty
+			assert.equals(2, #r.invalidated)
+			assert.equals("Metadata", r.invalidated[1])
+			assert.equals("PlaybackStatus", r.invalidated[2])
+		end)
+
+		it("includes the sender line in the result", function()
+			local r = mpris._private.parse_properties_changed(
+				signal(
+					":1.99",
+					'      dict entry(\n         string "PlaybackStatus"\n         variant             string "Playing"\n      )'
+				)
+			)
+			assert.is_not_nil(r)
+			assert.is_not_nil(r.sender_line:find(":1.99", 1, true))
+		end)
+	end)
+end)
+
 describe("backend instance", function()
 	before_each(function()
 		package.loaded["menubar.utils"] = nil
@@ -1081,6 +1213,268 @@ describe("playback commands", function()
 	it("play() is a no-op for unknown source_id", function()
 		caps.playback.play("mpris:unknown")
 		assert.equals(0, #spawned_cmds)
+	end)
+end)
+
+describe("monitor streaming dispatch", function()
+	local HEADER = "signal time=1.0 sender=org.mpris.MediaPlayer2.spotify"
+		.. " -> destination=(null destination) serial=1"
+		.. " path=/org/mpris/MediaPlayer2;"
+		.. " interface=org.freedesktop.DBus.Properties;"
+		.. " member=PropertiesChanged"
+	-- Unique bus name header — resolves via unique_name_map populated by GetNameOwner mock.
+	local UNIQUE_HEADER = "signal time=1.0 sender=:1.42"
+		.. " -> destination=(null destination) serial=1"
+		.. " path=/org/mpris/MediaPlayer2;"
+		.. " interface=org.freedesktop.DBus.Properties;"
+		.. " member=PropertiesChanged"
+
+	local monitor_stdout, monitor_exit
+	local update_calls, dbus_cmds
+
+	before_each(function()
+		package.loaded["continuity.media.backends.mpris"] = nil
+		package.loaded["continuity.util.app_icon"] = {
+			by_desktop_entry = function(_, cb)
+				cb(nil)
+			end,
+		}
+		update_calls = {}
+		dbus_cmds = {}
+		local awful = require("awful")
+		awful.spawn.easy_async = function(cmd, cb)
+			dbus_cmds[#dbus_cmds + 1] = cmd
+			if type(cmd) == "table" then
+				local last = cmd[#cmd]
+				if last == "org.freedesktop.DBus.ListNames" then
+					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
+				elseif cmd[#cmd - 1] == "org.freedesktop.DBus.GetNameOwner" then
+					cb('   string ":1.42"\n', "", "", 0)
+				else
+					cb("", "", "", 0)
+				end
+			else
+				cb("", "", "", 0)
+			end
+		end
+		awful.spawn.with_line_callback = function(cmd, cbs)
+			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
+			if cmd_str:find("PropertiesChanged", 1, true) then
+				monitor_stdout = cbs.stdout
+				monitor_exit = cbs.exit
+			end
+			return 1
+		end
+		local b = require("continuity.media.backends.mpris")()
+		local reg = {
+			add = function() end,
+			update = function(sid, state, flags)
+				update_calls[#update_calls + 1] = { sid = sid, state = state, flags = flags }
+			end,
+			remove = function() end,
+			add_dbus_sender = function() end,
+		}
+		b:start(reg)
+		dbus_cmds = {}
+	end)
+
+	local function feed(lines)
+		for _, line in ipairs(lines) do
+			monitor_stdout(line)
+		end
+	end
+
+	it("dispatches PlaybackStatus delta directly via registry.update without GetAll", function()
+		feed({
+			HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Paused"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(1, #update_calls)
+		assert.equals("mpris:spotify", update_calls[1].sid)
+		assert.equals("paused", update_calls[1].state.status)
+		assert.equals(0, #dbus_cmds)
+	end)
+
+	it("falls back to GetAll when invalidated_properties is non-empty", function()
+		local awful = require("awful")
+		local get_all_called = false
+		awful.spawn.easy_async = function(cmd, cb)
+			dbus_cmds[#dbus_cmds + 1] = cmd
+			if type(cmd) == "table" and cmd[#cmd] == "string:org.mpris.MediaPlayer2.Player" then
+				get_all_called = true
+			else
+				cb("", "", "", 0)
+			end
+		end
+		feed({
+			HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"   ]",
+			"   array [",
+			'      string "Metadata"',
+			"   ]",
+		})
+		assert.equals(0, #update_calls)
+		assert.is_true(get_all_called)
+	end)
+
+	it("ignores signals from senders not in unique_name_map", function()
+		local unknown_header = "signal time=1.0 sender=:1.99"
+			.. " -> destination=(null destination) serial=1"
+			.. " path=/org/mpris/MediaPlayer2;"
+			.. " interface=org.freedesktop.DBus.Properties;"
+			.. " member=PropertiesChanged"
+		feed({
+			unknown_header,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Paused"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(0, #update_calls)
+		assert.equals(0, #dbus_cmds)
+	end)
+
+	it("dispatches delta from unique sender resolved via unique_name_map", function()
+		feed({
+			UNIQUE_HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Playing"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(1, #update_calls)
+		assert.equals("mpris:spotify", update_calls[1].sid)
+		assert.equals("playing", update_calls[1].state.status)
+		assert.equals(0, #dbus_cmds)
+	end)
+
+	it("falls back to GetAll for unique sender with invalidated properties", function()
+		local awful = require("awful")
+		local get_all_called = false
+		awful.spawn.easy_async = function(cmd, cb)
+			dbus_cmds[#dbus_cmds + 1] = cmd
+			if type(cmd) == "table" and cmd[#cmd] == "string:org.mpris.MediaPlayer2.Player" then
+				get_all_called = true
+			else
+				cb("", "", "", 0)
+			end
+		end
+		feed({
+			UNIQUE_HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"   ]",
+			"   array [",
+			'      string "Metadata"',
+			"   ]",
+		})
+		assert.equals(0, #update_calls)
+		assert.is_true(get_all_called)
+	end)
+
+	it("falls back to GetAll when delta arrives during pending add", function()
+		package.loaded["continuity.media.backends.mpris"] = nil
+		package.loaded["continuity.util.app_icon"] = {
+			by_desktop_entry = function(_, cb)
+				cb(nil)
+			end,
+		}
+		local awful = require("awful")
+		local get_all_called = 0
+		awful.spawn.easy_async = function(cmd, cb)
+			if type(cmd) == "table" then
+				local last = cmd[#cmd]
+				if last == "org.freedesktop.DBus.ListNames" then
+					cb('   array [\n      string "org.mpris.MediaPlayer2.spotify"\n   ]\n', "", "", 0)
+				elseif cmd[#cmd - 1] == "org.freedesktop.DBus.GetNameOwner" then
+					cb('   string ":1.42"\n', "", "", 0)
+				elseif last == "string:org.mpris.MediaPlayer2.Player" then
+					get_all_called = get_all_called + 1
+					-- Do not call back — keeps pending_adds[svc] alive
+				else
+					cb("", "", "", 0)
+				end
+			else
+				cb("", "", "", 0)
+			end
+		end
+		awful.spawn.with_line_callback = function(cmd, cbs)
+			local cmd_str = type(cmd) == "table" and table.concat(cmd, " ") or cmd
+			if cmd_str:find("PropertiesChanged", 1, true) then
+				monitor_stdout = cbs.stdout
+			end
+			return 1
+		end
+		local b2 = require("continuity.media.backends.mpris")()
+		local local_updates = {}
+		b2:start({
+			add = function() end,
+			update = function(sid, state, flags)
+				local_updates[#local_updates + 1] = { sid = sid, state = state, flags = flags }
+			end,
+			remove = function() end,
+			add_dbus_sender = function() end,
+		})
+		-- get_all_called == 1 at this point (from add_player's player_get_all, not called back)
+		local calls_at_setup = get_all_called
+		feed({
+			HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Paused"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(0, #local_updates)
+		assert.is_true(get_all_called > calls_at_setup)
+	end)
+
+	it("clears buffer on process exit so stale partial record is not replayed", function()
+		-- Feed a partial record (header + some body, no closing arrays)
+		monitor_stdout(HEADER)
+		monitor_stdout('   string "org.mpris.MediaPlayer2.Player"')
+		monitor_stdout("   array [")
+		-- Process exits — buffer should clear
+		monitor_exit("exit", 1)
+		-- Feed a complete new signal and flush it
+		feed({
+			HEADER,
+			'   string "org.mpris.MediaPlayer2.Player"',
+			"   array [",
+			"      dict entry(",
+			'         string "PlaybackStatus"',
+			'         variant             string "Playing"',
+			"      )",
+			"   ]",
+			"   array [",
+			"   ]",
+		})
+		assert.equals(1, #update_calls)
+		assert.equals("playing", update_calls[1].state.status)
 	end)
 end)
 

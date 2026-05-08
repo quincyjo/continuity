@@ -2,22 +2,24 @@ require("spec.support.awesome_mocks")
 
 local inputs_mod
 
-local function make_mock_backend()
+local function make_mock_api_sub()
 	return {
-		adjust_input_perc = function() end,
-		set_input_perc = function() end,
-		toggle_input = function() end,
+		adjust_perc = function() end,
+		set_perc = function() end,
+		toggle = function() end,
+		move = function() end,
 	}
 end
 
 describe("audio.inputs registry", function()
-	local inst, handles, backend
+	local inst, handles, api_sub, bind
 
 	before_each(function()
 		package.loaded["continuity.audio.inputs"] = nil
 		inputs_mod = require("continuity.audio.inputs")
-		backend = make_mock_backend()
-		inst, handles = inputs_mod.new(backend)
+		api_sub = make_mock_api_sub()
+		inst, bind = inputs_mod.new()
+		handles = bind(api_sub)
 	end)
 
 	describe("handles.add", function()
@@ -231,20 +233,24 @@ describe("audio.inputs registry", function()
 
 		before_each(function()
 			calls = {}
-			backend = {
-				adjust_input_perc = function(_, id, delta, cb)
+			api_sub = {
+				adjust_perc = function(id, delta, cb)
 					calls[#calls + 1] = { method = "adjust", id = id, delta = delta, cb = cb }
 				end,
-				set_input_perc = function(_, id, value, cb)
+				set_perc = function(id, value, cb)
 					calls[#calls + 1] = { method = "set", id = id, value = value, cb = cb }
 				end,
-				toggle_input = function(_, id, cb)
+				toggle = function(id, cb)
 					calls[#calls + 1] = { method = "toggle", id = id, cb = cb }
+				end,
+				move = function(input_id, sink_id, cb)
+					calls[#calls + 1] = { method = "move", input_id = input_id, sink_id = sink_id, cb = cb }
 				end,
 			}
 			package.loaded["continuity.audio.inputs"] = nil
 			inputs_mod = require("continuity.audio.inputs")
-			inst, handles = inputs_mod.new(backend)
+			inst, bind = inputs_mod.new()
+			handles = bind(api_sub)
 			handles.add("263", { level = 50, muted = false })
 		end)
 
@@ -252,7 +258,7 @@ describe("audio.inputs registry", function()
 			return inst.all()[1]
 		end
 
-		it("adjust_perc calls backend:adjust_input_perc with clamped delta", function()
+		it("adjust_perc calls api_sub.adjust_perc with clamped delta", function()
 			handle():adjust_perc(10)
 			assert.equals(1, #calls)
 			assert.equals("adjust", calls[1].method)
@@ -265,24 +271,24 @@ describe("audio.inputs registry", function()
 			assert.equals(50, calls[1].delta) -- clamped to 50
 		end)
 
-		it("adjust_perc fires on_control without calling backend when clamped delta is 0", function()
+		it("adjust_perc fires on_control without calling api_sub when clamped delta is 0", function()
 			handles.update("263", { level = 100 })
 			local control_count = 0
 			handle():on_control(function()
 				control_count = control_count + 1
 			end)
 			handle():adjust_perc(10) -- already at 100
-			assert.equals(0, #calls) -- backend not called
+			assert.equals(0, #calls) -- api_sub not called
 			assert.equals(1, control_count)
 		end)
 
-		it("set_perc clamps to [0, 100] and calls backend", function()
+		it("set_perc clamps to [0, 100] and calls api_sub", function()
 			handle():set_perc(150)
 			assert.equals("set", calls[1].method)
 			assert.equals(100, calls[1].value)
 		end)
 
-		it("toggle_mute calls backend:toggle_input", function()
+		it("toggle_mute calls api_sub.toggle", function()
 			handle():toggle_mute()
 			assert.equals("toggle", calls[1].method)
 			assert.equals("263", calls[1].id)
@@ -294,7 +300,7 @@ describe("audio.inputs registry", function()
 				control_states[#control_states + 1] = s
 			end)
 			handle():adjust_perc(10)
-			calls[1].cb(60, false) -- simulate backend response
+			calls[1].cb(60, false) -- simulate api_sub response
 			assert.equals(1, #control_states)
 			assert.equals(60, control_states[1].level)
 		end)
@@ -332,6 +338,37 @@ describe("audio.inputs registry", function()
 			unsub()
 			handle():adjust_perc(5)
 			calls[2].cb(60, false) -- should not fire since unsubscribed
+			assert.equals(1, count)
+		end)
+
+		it("move_to with a handle target calls api_sub.move with handle id", function()
+			local sink_handle = { id = "alsa_output.usb" }
+			handle():move_to(sink_handle)
+			assert.equals(1, #calls)
+			assert.equals("move", calls[1].method)
+			assert.equals("263", calls[1].input_id)
+			assert.equals("alsa_output.usb", calls[1].sink_id)
+		end)
+
+		it("move_to with a string target passes it through directly", function()
+			handle():move_to("alsa_output.pci")
+			assert.equals("263", calls[1].input_id)
+			assert.equals("alsa_output.pci", calls[1].sink_id)
+		end)
+
+		it("move_to with an integer target passes it through directly", function()
+			handle():move_to(57)
+			assert.equals("263", calls[1].input_id)
+			assert.equals(57, calls[1].sink_id)
+		end)
+
+		it("move_to fires on_control in the callback", function()
+			local count = 0
+			handle():on_control(function()
+				count = count + 1
+			end)
+			handle():move_to("alsa_output.pci")
+			calls[1].cb()
 			assert.equals(1, count)
 		end)
 	end)

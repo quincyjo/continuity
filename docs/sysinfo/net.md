@@ -2,8 +2,9 @@
 
 The `net` module provides a singleton network monitor that pushes state to
 subscribers when interface state changes or on a regular polling interval. The
-default backend monitors link events via `ip monitor link` and polls `/sys/class/net`
-for per-interface byte counters to compute transfer rates.
+default backend monitors link events via `ip monitor link` and polls `/proc/net/dev`
+and `/proc/net/wireless` for per-interface byte counters and wifi signal to compute
+transfer rates.
 
 ## Setup
 
