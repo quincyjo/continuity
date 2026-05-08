@@ -132,6 +132,7 @@ end
 --- Calculate the time remaining based of the rolling average power.
 --- If the state is not Discharging or there is power, nil is returned.
 ---@return number|nil
+---@deprecated Read time_remaining from the state instead.
 function bat.time_remaining()
 	return bat.state and bat.state.time_remaining
 end
@@ -139,6 +140,7 @@ end
 --- Calculate the until fully charged based of the rolling average power.
 --- If the state is not Charging or there is power, nil is returned.
 ---@return number|nil
+---@deprecated Read time_until_full from the state instead.
 function bat.time_until_full()
 	return bat.state and bat.state.time_until_full
 end
