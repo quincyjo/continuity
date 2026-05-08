@@ -5,7 +5,7 @@ local Process = require("continuity.util.process")
 local ipmonitor_mod = {}
 
 ---@class IpmonitorOptions
----@field interval integer Polling interval, default is 2.
+---@field interval integer Polling interval in seconds for byte counter reads, default is 2.
 
 ---@param line string
 ---@return table|nil  { name, state, carrier, deleted }
@@ -35,60 +35,14 @@ function ipmonitor_mod._parse_ip_link_line(line)
 	return { name = name, deleted = false, state = up and "up" or "down", carrier = carrier }
 end
 
----@param stdout string
----@return table<string, table>
-function ipmonitor_mod._parse_stats_output(stdout)
-	local devs = {}
-	for line in stdout:gmatch("[^\n]+") do
-		local name, key, val = line:match("^dev:([^:]+):([^:]+):(.+)$")
-		if name and key then
-			devs[name] = devs[name] or {}
-			if key == "tx" then
-				devs[name].tx_bytes = tonumber(val) or 0
-			elseif key == "rx" then
-				devs[name].rx_bytes = tonumber(val) or 0
-			elseif key == "state" then
-				devs[name].state = val
-			elseif key == "carrier" then
-				devs[name].carrier = val == "1"
-			elseif key == "wifi" then
-				devs[name].wifi = val == "1"
-			elseif key == "signal" then
-				local s = tonumber(val)
-				devs[name].signal = s ~= 0 and s or nil
-			end
-		end
+---@param line string  Space-separated awk output: "<name> <rx_bytes> <tx_bytes>"
+---@return table|nil  { name, rx_bytes, tx_bytes }
+function ipmonitor_mod._parse_proc_net_dev_line(line)
+	local name, rx, tx = line:match("^(%S+) (%d+) (%d+)$")
+	if not name then
+		return nil
 	end
-	return devs
-end
-
-local function build_stats_cmd(dev_names)
-	local parts = {}
-	for _, dev in ipairs(dev_names) do
-		parts[#parts + 1] = string.format(
-			"printf 'dev:%s:tx:%%s\\ndev:%s:rx:%%s\\ndev:%s:state:%%s\\ndev:%s:carrier:%%s\\ndev:%s:wifi:%%s\\n' "
-				.. '"$(cat /sys/class/net/%s/statistics/tx_bytes 2>/dev/null || echo 0)" '
-				.. '"$(cat /sys/class/net/%s/statistics/rx_bytes 2>/dev/null || echo 0)" '
-				.. '"$(cat /sys/class/net/%s/operstate 2>/dev/null || echo unknown)" '
-				.. '"$(cat /sys/class/net/%s/carrier 2>/dev/null || echo 0)" '
-				.. '"$(grep -c DEVTYPE=wlan /sys/class/net/%s/uevent 2>/dev/null || echo 0)"',
-			dev,
-			dev,
-			dev,
-			dev,
-			dev,
-			dev,
-			dev,
-			dev,
-			dev,
-			dev
-		)
-	end
-	-- Append wifi signal levels from /proc/net/wireless (covers all wifi ifaces at once).
-	-- Format: "  wlan0: 0000  54.  -56.  -256. ..." — field 4 is signal level in dBm.
-	parts[#parts + 1] = 'awk \'NR>2{gsub(/:$/,"",$1);printf "dev:%s:signal:%d\\n",$1,int($4)}\''
-		.. " /proc/net/wireless 2>/dev/null"
-	return table.concat(parts, "\n")
+	return { name = name, rx_bytes = tonumber(rx), tx_bytes = tonumber(tx) }
 end
 
 ---@param opts? IpmonitorOptions
@@ -97,7 +51,6 @@ local function create(opts)
 	opts = opts or {}
 	local interval = opts.interval or 2
 	local on_update = nil
-	local timer = nil
 	local devices = {}
 	local prev_bytes = {}
 
@@ -112,53 +65,6 @@ local function create(opts)
 		return { devices = devs, tx_rate = total_tx, rx_rate = total_rx }
 	end
 
-	local function read_stats()
-		local dev_names = {}
-		for name in pairs(devices) do
-			dev_names[#dev_names + 1] = name
-		end
-		if #dev_names == 0 then
-			return
-		end
-
-		awful.spawn.easy_async({ "sh", "-c", build_stats_cmd(dev_names) }, function(stdout, _, _, exitcode)
-			if exitcode ~= 0 then
-				return
-			end
-			local now = os.time()
-			local stats = ipmonitor_mod._parse_stats_output(stdout)
-
-			for name, s in pairs(stats) do
-				local prev = prev_bytes[name]
-				local tx_rate, rx_rate = 0, 0
-				if prev then
-					local dt = now - prev.time
-					if dt > 0 then
-						tx_rate = math.max(0, (s.tx_bytes - prev.tx) / dt)
-						rx_rate = math.max(0, (s.rx_bytes - prev.rx) / dt)
-					end
-				end
-				prev_bytes[name] = { tx = s.tx_bytes, rx = s.rx_bytes, time = now }
-
-				local existing = devices[name] or {}
-				devices[name] = {
-					state = s.state or existing.state or "down",
-					carrier = s.carrier ~= nil and s.carrier or (existing.carrier or false),
-					tx_rate = tx_rate,
-					rx_rate = rx_rate,
-					tx_bytes = s.tx_bytes or 0,
-					rx_bytes = s.rx_bytes or 0,
-					wifi = s.wifi ~= nil and s.wifi or (existing.wifi or false),
-					signal = s.signal,
-				}
-			end
-
-			if on_update then
-				on_update(build_state())
-			end
-		end)
-	end
-
 	local proc = Process({
 		name = "sysinfo.net.ipmonitor",
 		cmd = { "sh", "-c", "ip monitor link | grep --line-buffered -E '^[0-9]|^Deleted'" },
@@ -170,14 +76,54 @@ local function create(opts)
 			if info.deleted then
 				devices[info.name] = nil
 				prev_bytes[info.name] = nil
-				if on_update then
-					on_update(build_state())
-				end
 			else
 				devices[info.name] = devices[info.name] or {}
 				devices[info.name].state = info.state
 				devices[info.name].carrier = info.carrier
-				read_stats()
+			end
+			if on_update then
+				on_update(build_state())
+			end
+		end,
+	})
+
+	local proc_stats = Process({
+		name = "sysinfo.net.ipmonitor.stats",
+		cmd = {
+			'awk \'NR>2{gsub(/:$/,"",$1); printf "%s %s %s\\n",$1,$2,$10}\' /proc/net/dev',
+			'awk \'NR>2{gsub(/:$/,"",$1); printf "sig %s %d\\n",$1,int($4)}\' /proc/net/wireless 2>/dev/null',
+		},
+		interval = interval,
+		stdout = function(line)
+			if line:match("^sig ") then
+				local name, dbm = line:match("^sig (%S+) (-?%d+)$")
+				if name and devices[name] then
+					local d = tonumber(dbm)
+					devices[name].signal = d ~= 0 and d or nil
+				end
+				return
+			end
+			local s = ipmonitor_mod._parse_proc_net_dev_line(line)
+			if not s or not devices[s.name] then
+				return
+			end
+			local now = os.time()
+			local prev = prev_bytes[s.name]
+			local tx_rate, rx_rate = 0, 0
+			if prev then
+				local dt = now - prev.time
+				if dt > 0 then
+					tx_rate = math.max(0, (s.tx_bytes - prev.tx) / dt)
+					rx_rate = math.max(0, (s.rx_bytes - prev.rx) / dt)
+				end
+			end
+			prev_bytes[s.name] = { tx = s.tx_bytes, rx = s.rx_bytes, time = now }
+			devices[s.name].tx_bytes = s.tx_bytes
+			devices[s.name].rx_bytes = s.rx_bytes
+			devices[s.name].tx_rate = tx_rate
+			devices[s.name].rx_rate = rx_rate
+			if on_update then
+				on_update(build_state())
 			end
 		end,
 	})
@@ -220,15 +166,12 @@ local function create(opts)
 					on_update(build_state())
 				end
 				proc:start()
-				timer = gears.timer({ timeout = interval, autostart = true, callback = read_stats })
+				proc_stats:start()
 			end)
 		end,
 		stop = function(_)
 			proc:stop()
-			if timer then
-				timer:stop()
-			end
-			timer = nil
+			proc_stats:stop()
 			on_update = nil
 			devices = {}
 			prev_bytes = {}
