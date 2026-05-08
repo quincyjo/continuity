@@ -1,18 +1,20 @@
 ---@class SinkInputState
----@field level  integer
----@field muted  boolean
+---@field level  AudioLevel
+---@field muted  AudioMuted
 ---@field name   string?
 ---@field sink   integer?
 
 ---@class SinkInputMeta
 ---@field app_name  string?
 ---@field icon_name string?
+---@field app_icon  string?
 
 ---@class SinkInputHandle
----@field id        string
----@field app_name  string?
----@field icon_name string?
----@field state     SinkInputState
+---@field id          string
+---@field app_name    string?
+---@field icon_name   string?
+---@field app_icon    string?
+---@field state       SinkInputState
 ---@field subscribe   fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
 ---@field on_control  fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
 ---@field on_removed  fun(self: SinkInputHandle, cb: fun(id: string)): fun()
@@ -124,6 +126,7 @@ function inputs.new()
 			id = id,
 			app_name = meta and meta.app_name,
 			icon_name = meta and meta.icon_name,
+			app_icon = meta and meta.app_icon,
 			state = initial_state or {},
 		}, HandleMT)
 		state.inputs[id] = handle

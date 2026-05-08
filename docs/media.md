@@ -115,7 +115,19 @@ end)
 -- if data is streamed in or multiple backends are backing the source.
 -- The subscriber will be notified once a source has stopped receiving updates
 -- (excluding playback position) for the debounce period.
-media.sources.on_updated(function(source) ... end, { debounce = 0.2 })
+media.sources.on_updated(function(source) ... end, { debounce = 0.1 })
+
+-- Media sources are also directly subscribeable, which is often a more directly
+-- useful pattern for widgets, as they tend to be for a single source.
+media.sources.on_added(function(source)
+    -- Note that the source subscription receives the state, not the whole source.
+    local unsub = source:subscribe(function(state) ... end, { debounce = 0.1 })
+    local stop_pos = source.state.position:subscribe(function(pos) ... end)
+    source:on_removed(functino()
+        unsub()
+        stop_pos()
+    end)
+end)
 ```
 
 ### Playback Position

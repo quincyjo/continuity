@@ -112,96 +112,6 @@ describe("audio.backends.pulse", function()
 		end)
 	end)
 
-	describe("_parse_list", function()
-		-- Output of: pactl get-default-sink; echo "---"; pactl list sinks
-		local SINK_POLL_OUTPUT = table.concat({
-			"alsa_output.pci-0000_00_1f.3.analog-stereo",
-			"---",
-			"Sink #57",
-			"\tState: SUSPENDED",
-			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
-			"\tDescription: Built-in Audio Analog Stereo",
-			"\tMute: no",
-			"\tVolume: front-left: 26216 /  40% / -23.87 dB,   front-right: 26216 /  40% / -23.87 dB",
-			"\t        balance 0.00",
-			"\tBase Volume: 65536 / 100% / 0.00 dB",
-			"\tActive Port: analog-output-speaker",
-			"\tFormats:",
-			"\t\tpcm",
-		}, "\n") .. "\n"
-
-		-- Two sinks; default is the second one, active port is headphones
-		local MULTI_SINK_HEADPHONES_OUTPUT = table.concat({
-			"alsa_output.pci-0000_00_1f.3.analog-stereo",
-			"---",
-			"Sink #55",
-			"\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo",
-			"\tMute: no",
-			"\tVolume: front-left: 65536 / 100% / 0.00 dB",
-			"\tActive Port: hdmi-output-0",
-			"Sink #57",
-			"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
-			"\tMute: yes",
-			"\tVolume: front-left: 26216 /  40% / -23.87 dB",
-			"\tActive Port: analog-output-headphones",
-		}, "\n") .. "\n"
-
-		-- Bluetooth sink
-		local BLUETOOTH_SINK_OUTPUT = table.concat({
-			"bluez_output.AA_BB_CC_DD_EE_FF.1",
-			"---",
-			"Sink #60",
-			"\tName: bluez_output.AA_BB_CC_DD_EE_FF.1",
-			"\tMute: no",
-			"\tVolume: front-left: 32768 /  50% / -18.06 dB",
-			"\tActive Port: headphones-output",
-		}, "\n") .. "\n"
-
-		it("parses level, muted, port, port_type, and connection", function()
-			local state = pulse._private.parse_list(SINK_POLL_OUTPUT)
-			assert.not_nil(state)
-			assert.equals(40, state.level)
-			assert.is_false(state.muted)
-			assert.equals("analog-output-speaker", state.port)
-			assert.equals("speaker", state.port_type)
-			assert.equals("analog", state.connection)
-		end)
-
-		it("finds the correct sink when multiple sinks are present", function()
-			local state = pulse._private.parse_list(MULTI_SINK_HEADPHONES_OUTPUT)
-			assert.not_nil(state)
-			assert.equals(40, state.level)
-			assert.is_true(state.muted)
-			assert.equals("analog-output-headphones", state.port)
-			assert.equals("headphones", state.port_type)
-			assert.equals("analog", state.connection)
-		end)
-
-		it("derives bluetooth connection from device name", function()
-			local state = pulse._private.parse_list(BLUETOOTH_SINK_OUTPUT)
-			assert.not_nil(state)
-			assert.equals("bluetooth", state.connection)
-			assert.equals(50, state.level)
-		end)
-
-		it("returns nil when sentinel is missing", function()
-			assert.is_nil(pulse._private.parse_list("alsa_output.pci\nSink #57\n"))
-		end)
-
-		it("returns nil when default device is not in the list", function()
-			local output = table.concat({
-				"alsa_output.pci-0000_00_1f.3.analog-stereo",
-				"---",
-				"Sink #57",
-				"\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo",
-				"\tMute: no",
-				"\tVolume: front-left: 65536 / 100% / 0.00 dB",
-				"\tActive Port: hdmi-output-0",
-			}, "\n") .. "\n"
-			assert.is_nil(pulse._private.parse_list(output))
-		end)
-	end)
-
 	describe("parse_all_devices", function()
 		local SINGLE_SINK_OUTPUT = table.concat({
 			"alsa_output.pci-0000_00_1f.3.analog-stereo",
@@ -409,6 +319,145 @@ describe("audio.backends.pulse", function()
 			assert.equals(0, parsed.state.level)
 		end)
 	end)
+
+	describe("parse_all_devices_json", function()
+		local SINGLE_SINK_JSON = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+			.. [=[
+[{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":false,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-speaker"}]
+]=]
+
+		local MULTI_SINK_JSON = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+			.. [=[
+[{"index":55,"name":"alsa_output.pci-0000_00_1f.3.hdmi-stereo","description":"Built-in Audio HDMI","mute":false,"volume":{"front-left":{"value":65536,"value_percent":"100%","db":"0.00 dB"}},"active_port":"hdmi-output-0"},{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":true,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-headphones"}]
+]=]
+
+		it("returns one entry for a single sink", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			assert.equals(1, #entries)
+		end)
+
+		it("entry id is the numeric index string", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			assert.equals("57", entries[1].id)
+		end)
+
+		it("entry meta.name is the name field", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", entries[1].meta.name)
+		end)
+
+		it("entry meta.description is the description field", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			assert.equals("Built-in Audio Analog Stereo", entries[1].meta.description)
+		end)
+
+		it("entry state has correct level, muted, port, port_type, connection", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			local s = entries[1].state
+			assert.equals(40, s.level)
+			assert.is_false(s.muted)
+			assert.equals("analog-output-speaker", s.port)
+			assert.equals("speaker", s.port_type)
+			assert.equals("analog", s.connection)
+		end)
+
+		it("is_default is true for the default device", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_JSON)
+			assert.is_true(entries[1].state.is_default)
+		end)
+
+		it("returns one entry per sink when multiple sinks are present", function()
+			local entries = pulse._private.parse_all_devices_json(MULTI_SINK_JSON)
+			assert.equals(2, #entries)
+		end)
+
+		it("assigns correct ids and names for multiple sinks", function()
+			local entries = pulse._private.parse_all_devices_json(MULTI_SINK_JSON)
+			local by_id = {}
+			for _, e in ipairs(entries) do
+				by_id[e.id] = e
+			end
+			assert.is_not_nil(by_id["55"])
+			assert.equals("alsa_output.pci-0000_00_1f.3.hdmi-stereo", by_id["55"].meta.name)
+			assert.is_not_nil(by_id["57"])
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", by_id["57"].meta.name)
+		end)
+
+		it("is_default is true only for the default sink", function()
+			local entries = pulse._private.parse_all_devices_json(MULTI_SINK_JSON)
+			local by_id = {}
+			for _, e in ipairs(entries) do
+				by_id[e.id] = e
+			end
+			assert.is_false(by_id["55"].state.is_default)
+			assert.is_true(by_id["57"].state.is_default)
+		end)
+
+		it("returns empty table when sentinel is missing", function()
+			local entries = pulse._private.parse_all_devices_json("alsa_output.pci\n---\nnot-json\n")
+			assert.equals(0, #entries)
+		end)
+
+		it("meta.description is nil when description is absent from JSON", function()
+			local output = "bluez_output.AA_BB_CC.1\n---\n"
+				.. '[{"index":60,"name":"bluez_output.AA_BB_CC.1","mute":false,"volume":{"front-left":{"value":32768,"value_percent":"50%","db":"-18.06 dB"}},"active_port":"headphones-output"}]\n' -- luacheck: ignore
+			local entries = pulse._private.parse_all_devices_json(output)
+			assert.equals(1, #entries)
+			assert.is_nil(entries[1].meta.description)
+		end)
+
+		it("derives bluetooth connection from device name", function()
+			local output = "bluez_output.AA_BB_CC.1\n---\n"
+				.. '[{"index":60,"name":"bluez_output.AA_BB_CC.1","mute":false,"volume":{"front-left":{"value":32768,"value_percent":"50%","db":"-18.06 dB"}},"active_port":"headphones-output"}]\n' -- luacheck: ignore
+			local entries = pulse._private.parse_all_devices_json(output)
+			assert.equals("bluetooth", entries[1].state.connection)
+			assert.equals(50, entries[1].state.level)
+		end)
+	end)
+
+	describe("parse_device_by_index_json", function()
+		local MULTI_SINK_JSON = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+			.. [=[
+[{"index":55,"name":"alsa_output.pci-0000_00_1f.3.hdmi-stereo","description":"Built-in HDMI","mute":false,"volume":{"front-left":{"value":65536,"value_percent":"100%","db":"0.00 dB"}},"active_port":"hdmi-output-0"},{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Analog","mute":true,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-speaker"}]
+]=]
+
+		it("returns state and meta for a known index", function()
+			local parsed = pulse._private.parse_device_by_index_json(MULTI_SINK_JSON, "55")
+			assert.is_not_nil(parsed)
+			assert.equals("alsa_output.pci-0000_00_1f.3.hdmi-stereo", parsed.meta.name)
+			assert.equals(100, parsed.state.level)
+			assert.is_false(parsed.state.muted)
+			assert.equals("hdmi-output-0", parsed.state.port)
+		end)
+
+		it("returns the correct entry when multiple sinks exist", function()
+			local parsed = pulse._private.parse_device_by_index_json(MULTI_SINK_JSON, "57")
+			assert.is_not_nil(parsed)
+			assert.equals("alsa_output.pci-0000_00_1f.3.analog-stereo", parsed.meta.name)
+			assert.equals(40, parsed.state.level)
+			assert.is_true(parsed.state.muted)
+		end)
+
+		it("is_default is true when the device is the default", function()
+			local parsed = pulse._private.parse_device_by_index_json(MULTI_SINK_JSON, "57")
+			assert.is_true(parsed.state.is_default)
+		end)
+
+		it("is_default is false when the device is not the default", function()
+			local parsed = pulse._private.parse_device_by_index_json(MULTI_SINK_JSON, "55")
+			assert.is_false(parsed.state.is_default)
+		end)
+
+		it("returns nil for an unknown index", function()
+			local parsed = pulse._private.parse_device_by_index_json(MULTI_SINK_JSON, "99")
+			assert.is_nil(parsed)
+		end)
+
+		it("returns nil when sentinel is missing", function()
+			local parsed = pulse._private.parse_device_by_index_json("alsa_output.pci\n", "57")
+			assert.is_nil(parsed)
+		end)
+	end)
 end)
 
 describe("audio.backends.pulse (instance)", function()
@@ -434,6 +483,12 @@ describe("audio.backends.pulse (instance)", function()
 
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
+		package.loaded["continuity.util.json"] = nil
+		local saved_json = package.loaded["json"]
+		package.loaded["json"] = nil
+		package.preload["json"] = function()
+			error("disabled")
+		end -- luacheck: ignore
 		easy_cmds = {}
 		wlc_cbs = nil
 		awful = require("awful")
@@ -445,6 +500,8 @@ describe("audio.backends.pulse (instance)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
+		package.preload["json"] = nil
+		package.loaded["json"] = saved_json
 	end)
 
 	describe("start", function()

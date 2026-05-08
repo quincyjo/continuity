@@ -139,6 +139,17 @@ describe("registry", function()
 				assert.is_false(playback.can_go_previous)
 			end)
 
+			it("partial flags update preserves absent fields", function()
+				reg.add("src:1", "source", {}, { playback = make_executor(), flags = make_flags() })
+				reg.update("src:1", {}, { can_pause = false })
+				local playback = reg.sources()[1].playback
+				assert.is_false(playback.can_pause)
+				assert.is_true(playback.can_seek)
+				assert.is_true(playback.can_go_next)
+				assert.is_true(playback.can_go_previous)
+				assert.is_true(playback.can_play)
+			end)
+
 			it("flags update is a no-op when source.playback is nil", function()
 				reg.add("src:1", "source", {})
 				assert.has_no.errors(function()
@@ -486,6 +497,30 @@ describe("registry", function()
 			-- title was set on add; updating with same title should not clear
 			reg.update("src:1", { title = "Song A", status = "playing" })
 			assert.equals("Artist", reg.sources()[1].state.artist)
+		end)
+
+		it("preserves status across a track boundary", function()
+			reg.update("src:1", { status = "playing" })
+			reg.update("src:1", { title = "Song B" })
+			assert.equals("playing", reg.sources()[1].state.status)
+		end)
+
+		it("preserves volume, shuffle, and loop across a track boundary", function()
+			reg.update("src:1", { volume = 80, shuffle = true, loop = "track" })
+			reg.update("src:1", { title = "Song B" })
+			local s = reg.sources()[1].state
+			assert.equals(80, s.volume)
+			assert.is_true(s.shuffle)
+			assert.equals("track", s.loop)
+		end)
+
+		it("clears track-specific fields not in boundary set (album, art_uri, duration) on boundary", function()
+			reg.update("src:1", { album = "Album A", art_uri = "file://art.png", duration = 240 })
+			reg.update("src:1", { title = "Song B" })
+			local s = reg.sources()[1].state
+			assert.is_nil(s.album)
+			assert.is_nil(s.art_uri)
+			assert.is_nil(s.duration)
 		end)
 	end)
 
@@ -898,6 +933,82 @@ describe("registry", function()
 			reg.on_source_updated(function() end, { debounce = 0.2 })
 			reg.update("src:1", { title = "X" })
 			assert.equals(1, immediate_calls)
+		end)
+	end)
+
+	describe("source:subscribe", function()
+		local gears_mod
+		local source
+
+		before_each(function()
+			gears_mod = require("gears")
+			gears_mod._created = {}
+			reg = registry.new()
+			reg.add("src:1", "source", { title = "Track A", status = "playing" })
+			source = reg.sources()[1]
+		end)
+
+		it("fires immediately on update when no opts provided", function()
+			local calls = {}
+			source:subscribe(function(s)
+				calls[#calls + 1] = s
+			end)
+			reg.update("src:1", { title = "Track B" })
+			assert.equals(1, #calls)
+			assert.equals("Track B", calls[1].title)
+		end)
+
+		it("returns an unsubscribe function that stops further calls", function()
+			local count = 0
+			local unsub = source:subscribe(function()
+				count = count + 1
+			end)
+			reg.update("src:1", { title = "B" })
+			unsub()
+			reg.update("src:1", { title = "C" })
+			assert.equals(1, count)
+		end)
+
+		it("debounced: does not fire immediately on update", function()
+			local called = false
+			source:subscribe(function()
+				called = true
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "Track B" })
+			assert.is_false(called)
+		end)
+
+		it("debounced: fires after timer expires", function()
+			local calls = {}
+			source:subscribe(function(s)
+				calls[#calls + 1] = s
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "Track B" })
+			assert.equals(1, #gears_mod._created)
+			gears_mod._created[1]:fire()
+			assert.equals(1, #calls)
+			assert.equals("Track B", calls[1].title)
+		end)
+
+		it("debounced: multiple updates restart the timer (coalesced)", function()
+			source:subscribe(function() end, { debounce = 0.1 })
+			reg.update("src:1", { title = "B" })
+			reg.update("src:1", { title = "C" })
+			reg.update("src:1", { title = "D" })
+			assert.equals(1, #gears_mod._created)
+			assert.equals(3, gears_mod._created[1].again_count)
+		end)
+
+		it("debounced: unsubscribe stops the timer and prevents callback", function()
+			local count = 0
+			local unsub = source:subscribe(function()
+				count = count + 1
+			end, { debounce = 0.1 })
+			reg.update("src:1", { title = "B" })
+			unsub()
+			assert.is_true(gears_mod._created[1].stopped)
+			gears_mod._created[1]:fire()
+			assert.equals(0, count)
 		end)
 	end)
 

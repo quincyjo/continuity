@@ -84,6 +84,13 @@ Then add the LuaRocks loader at the top of your `rc.lua`:
 require("luarocks.loader")
 ```
 
+> Optional: Install [lua-json](https://github.com/neoxic/lua-json) C extension.
+> to enable faster parsing where applicable (currently in Pulse audio backend).
+>
+> ```sh
+> luarocks install lua-json
+> ```
+
 **Via git:**
 
 ```bash
@@ -199,12 +206,13 @@ local bat = require("continuity.sysinfo.bat")
 bat.setup()
 bat:subscribe(function(state)
     -- state.perc, state.status ("Charging"|"Discharging")
-    -- state.power_now, state.power_average (watts)
+    -- state.power_now (watts)
     -- state.ac_online, state.batteries (per-battery breakdown)
+    -- EMA smoothed:
+    state.power_average
+    state.time_remaining  -- nil unless discharging
+    state.time_until_full -- nil unless charging
 end)
-
-local seconds = bat.time_remaining()  -- nil unless discharging
-local seconds = bat.time_until_full() -- nil unless charging
 ```
 
 [Full documentation](docs/sysinfo/bat.md)

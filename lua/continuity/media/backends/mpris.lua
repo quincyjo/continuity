@@ -30,6 +30,32 @@ function _private.parse_can_flags(props)
 	}
 end
 
+---@type table<string, string>
+local CAN_FLAG_KEYS = {
+	CanControl = "can_control",
+	CanSeek = "can_seek",
+	CanGoNext = "can_go_next",
+	CanGoPrevious = "can_go_previous",
+	CanPlay = "can_play",
+	CanPause = "can_pause",
+}
+
+--- Parse only the Can* keys present in props. Returns nil if none are present.
+--- Used for delta updates where only changed flags should be forwarded.
+---@param props table
+---@return PlaybackFlags|nil
+function _private.parse_can_flags_partial(props)
+	local flags = {}
+	local any = false
+	for dbus_key, flag_key in pairs(CAN_FLAG_KEYS) do
+		if props[dbus_key] ~= nil then
+			flags[flag_key] = props[dbus_key] ~= false
+			any = true
+		end
+	end
+	return any and flags or nil
+end
+
 ---@type table<string, PlaybackStatus>
 local PLAYBACK_MAP = { Playing = "playing", Paused = "paused", Stopped = "stopped" }
 ---@type table<string, PlaybackLoop>
@@ -321,6 +347,48 @@ function _private.parse_dbus_output(stdout)
 	end
 
 	return props
+end
+
+--- Parse a dbus-monitor PropertiesChanged signal record into changed props and
+--- invalidated property names. The record is a multi-line string starting with
+--- the signal header line. Returns nil on parse failure.
+--- Exported for testability.
+---@param record string  complete signal record (header + body lines)
+---@return {sender_line: string, props: table, invalidated: string[]}|nil
+function _private.parse_properties_changed(record)
+	if not record or #record == 0 then
+		return nil
+	end
+	local sender_line = record:match("^[^\n]+") or ""
+
+	-- First array [...] is the changed-properties dict.
+	local changed_content, pos2 = extract_balanced(record, 1)
+	if not changed_content then
+		return nil
+	end
+	local props = {}
+	parse_block(changed_content, props)
+	local meta_start = changed_content:find('"Metadata"%s+variant%s+array')
+	if meta_start then
+		local meta_content = extract_balanced(changed_content, meta_start)
+		if meta_content then
+			parse_block(meta_content, props)
+			if not props["mpris:trackid"] then
+				props["mpris:trackid"] = ""
+			end
+		end
+	end
+
+	-- Second array [...] is the invalidated-properties list.
+	local invalidated = {}
+	local inv_content = pos2 and extract_balanced(record, pos2)
+	if inv_content then
+		for s in inv_content:gmatch('"([^"]*)"') do
+			invalidated[#invalidated + 1] = s
+		end
+	end
+
+	return { sender_line = sender_line, props = props, invalidated = invalidated }
 end
 
 --- Extract the MPRIS service name from a dbus-monitor signal header line.
@@ -794,24 +862,90 @@ local function create_backend(opts)
 	end
 
 	-- PropertiesChanged monitor.
-	-- When a signal header line arrives containing a known player's sender name,
-	-- trigger a full GetAll refresh for that player.
+	-- Accumulates lines into records, dispatching each one as soon as its two
+	-- top-level array blocks are structurally complete (depth returns to 0
+	-- twice). Falls back to GetAll when invalidated_properties is non-empty or
+	-- an add is still in flight. The "signal " header acts as a safety flush
+	-- only (handles malformed/incomplete prior records).
+	local monitor_buffer = {}
+	local monitor_depth = 0
+	local monitor_arrays_closed = 0
+
+	local function dispatch_record()
+		if #monitor_buffer == 0 then
+			return
+		end
+		local record = table.concat(monitor_buffer, "\n")
+		monitor_buffer = {}
+		local r = _private.parse_properties_changed(record)
+		if not r then
+			return
+		end
+		local svc = _private.sender_service(r.sender_line, unique_name_map)
+		local source_id = svc and known_players[svc]
+		if not source_id then
+			return
+		end
+		if #r.invalidated > 0 or pending_adds[svc] then
+			refresh_player(svc, source_id, registry)
+			return
+		end
+		local state = {}
+		for k, v in pairs(_private.parse_metadata(r.props)) do
+			state[k] = v
+		end
+		for k, v in pairs(_private.parse_playback_props(r.props)) do
+			state[k] = v
+		end
+		local flags = _private.parse_can_flags_partial(r.props)
+		if state.track_id ~= nil then
+			track_ids[source_id] = state.track_id
+		end
+		if next(state) ~= nil or flags ~= nil then
+			registry.update(source_id, state, flags)
+		end
+	end
+
 	local monitor_proc = Process({
 		name = "media.mpris.monitor",
 		cmd = {
 			"dbus-monitor",
 			"--session",
-			"type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'",
+			"type='signal',"
+				.. "interface='org.freedesktop.DBus.Properties',"
+				.. "member='PropertiesChanged',"
+				.. "path='/org/mpris/MediaPlayer2',"
+				.. "arg0='org.mpris.MediaPlayer2.Player'",
 		},
 		retry_delay = 10,
 		stdout = function(line)
-			-- The signal header line contains "sender=<name>". Match it directly
-			-- since awful.spawn.with_line_callback drops blank lines, making
-			-- blank-line-based record-boundary detection unreliable.
-			local svc = _private.sender_service(line, unique_name_map)
-			if svc and known_players[svc] then
-				refresh_player(svc, known_players[svc], registry)
+			if line:match("^signal ") then
+				-- Safety flush: dispatch any incomplete prior record then start fresh.
+				dispatch_record()
+				monitor_depth = 0
+				monitor_arrays_closed = 0
+				monitor_buffer = { line }
+			else
+				monitor_buffer[#monitor_buffer + 1] = line
+				if line:match("%[%s*$") then
+					monitor_depth = monitor_depth + 1
+				elseif line:match("^%s*%]%s*$") then
+					monitor_depth = monitor_depth - 1
+					if monitor_depth == 0 then
+						monitor_arrays_closed = monitor_arrays_closed + 1
+						if monitor_arrays_closed == 2 then
+							dispatch_record()
+							monitor_depth = 0
+							monitor_arrays_closed = 0
+						end
+					end
+				end
 			end
+		end,
+		exit = function()
+			monitor_buffer = {}
+			monitor_depth = 0
+			monitor_arrays_closed = 0
 		end,
 	})
 
