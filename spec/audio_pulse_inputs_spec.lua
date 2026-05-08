@@ -232,6 +232,14 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
 		package.loaded["continuity.util.json"] = nil
+		package.loaded["continuity.util.app_icon"] = {
+			by_icon_name = function(_, cb)
+				cb(nil)
+			end,
+			by_app_name = function(_, cb)
+				cb(nil)
+			end,
+		}
 		local saved_json = package.loaded["json"]
 		package.loaded["json"] = nil
 		package.preload["json"] = function()
@@ -409,6 +417,14 @@ describe("audio.backends.pulse (sink-input control)", function()
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
 		package.loaded["continuity.util.json"] = nil
+		package.loaded["continuity.util.app_icon"] = {
+			by_icon_name = function(_, cb)
+				cb(nil)
+			end,
+			by_app_name = function(_, cb)
+				cb(nil)
+			end,
+		}
 		local saved_json = package.loaded["json"]
 		package.loaded["json"] = nil
 		package.preload["json"] = function()
@@ -493,5 +509,130 @@ describe("audio.backends.pulse (sink-input control)", function()
 		local cmd_str = table.concat(easy_cmds[1].cmd, " ")
 		assert.truthy(cmd_str:find("set%-sink%-input%-mute"))
 		assert.truthy(cmd_str:find("toggle"))
+	end)
+end)
+
+describe("audio.backends.pulse (register_input icon resolution)", function()
+	local pulse, awful, easy_cmds, app_icon_mock
+
+	local INPUT_WITH_ICON_NAME = table.concat({
+		"Sink Input #100",
+		"\tSink: 57",
+		"\tMute: no",
+		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+		"\tProperties:",
+		'\t\tapplication.name = "Google Chrome"',
+		'\t\tapplication.icon_name = "google-chrome"',
+		'\t\tmedia.name = "Google Chrome"',
+	}, "\n") .. "\n"
+
+	local INPUT_WITH_APP_NAME_ONLY = table.concat({
+		"Sink Input #101",
+		"\tSink: 57",
+		"\tMute: no",
+		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+		"\tProperties:",
+		'\t\tapplication.name = "spotify"',
+		'\t\tmedia.name = "Spotify"',
+	}, "\n") .. "\n"
+
+	local INPUT_NO_META = table.concat({
+		"Sink Input #102",
+		"\tSink: 57",
+		"\tMute: no",
+		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+	}, "\n") .. "\n"
+
+	before_each(function()
+		package.loaded["continuity.audio.backends.pulse"] = nil
+		package.loaded["continuity.util.json"] = nil
+		app_icon_mock = {
+			by_icon_name_calls = {},
+			by_app_name_calls = {},
+			by_icon_name = function(name, cb)
+				app_icon_mock.by_icon_name_calls[#app_icon_mock.by_icon_name_calls + 1] = { name = name, cb = cb }
+			end,
+			by_app_name = function(name, cb)
+				app_icon_mock.by_app_name_calls[#app_icon_mock.by_app_name_calls + 1] = { name = name, cb = cb }
+			end,
+		}
+		package.loaded["continuity.util.app_icon"] = app_icon_mock
+		local saved_json = package.loaded["json"]
+		package.loaded["json"] = nil
+		package.preload["json"] = function()
+			error("disabled")
+		end -- luacheck: ignore
+		easy_cmds = {}
+		awful = require("awful")
+		awful.spawn.easy_async = function(cmd, cb)
+			easy_cmds[#easy_cmds + 1] = { cmd = cmd, cb = cb }
+		end
+		awful.spawn.with_line_callback = function(_, _)
+			return 0
+		end
+		pulse = require("continuity.audio.backends.pulse")
+		package.preload["json"] = nil
+		package.loaded["json"] = saved_json
+	end)
+
+	it("resolves icon via by_icon_name when icon_name is present", function()
+		local added = {}
+		pulse():start({
+			inputs = {
+				add = function(id, state, meta)
+					added[#added + 1] = { id = id, state = state, meta = meta }
+				end,
+				update = function() end,
+				remove = function() end,
+			},
+		})
+		easy_cmds[1].cb(INPUT_WITH_ICON_NAME, "", "", 0)
+		assert.equals(1, #app_icon_mock.by_icon_name_calls)
+		assert.equals("google-chrome", app_icon_mock.by_icon_name_calls[1].name)
+		assert.equals(0, #app_icon_mock.by_app_name_calls)
+		assert.equals(0, #added)
+		app_icon_mock.by_icon_name_calls[1].cb("/usr/share/pixmaps/google-chrome.png")
+		assert.equals(1, #added)
+		assert.equals("/usr/share/pixmaps/google-chrome.png", added[1].meta.app_icon)
+	end)
+
+	it("resolves icon via by_app_name when only app_name is present", function()
+		local added = {}
+		pulse():start({
+			inputs = {
+				add = function(id, state, meta)
+					added[#added + 1] = { id = id, state = state, meta = meta }
+				end,
+				update = function() end,
+				remove = function() end,
+			},
+		})
+		easy_cmds[1].cb(INPUT_WITH_APP_NAME_ONLY, "", "", 0)
+		assert.equals(0, #app_icon_mock.by_icon_name_calls)
+		assert.equals(1, #app_icon_mock.by_app_name_calls)
+		assert.equals("spotify", app_icon_mock.by_app_name_calls[1].name)
+		assert.equals(0, #added)
+		app_icon_mock.by_app_name_calls[1].cb("/usr/share/pixmaps/spotify.png")
+		assert.equals(1, #added)
+		assert.equals("/usr/share/pixmaps/spotify.png", added[1].meta.app_icon)
+	end)
+
+	it("calls add immediately without icon resolution when neither icon_name nor app_name is present", function()
+		local added = {}
+		pulse():start({
+			inputs = {
+				add = function(id, state, meta)
+					added[#added + 1] = { id = id, state = state, meta = meta }
+				end,
+				update = function() end,
+				remove = function() end,
+			},
+		})
+		easy_cmds[1].cb(INPUT_NO_META, "", "", 0)
+		assert.equals(0, #app_icon_mock.by_icon_name_calls)
+		assert.equals(0, #app_icon_mock.by_app_name_calls)
+		assert.equals(1, #added)
+		assert.equals("102", added[1].id)
+		assert.is_nil(added[1].meta.app_icon)
 	end)
 end)
