@@ -3,7 +3,7 @@ require("spec.support.awesome_mocks")
 
 describe("net.backends.ipmonitor", function()
 	local ipmonitor, awful, gears_mod
-	local wlc_cbs, easy_cmds, kill_called
+	local wlc_calls, easy_cmds, kill_count
 
 	local function find_timer(timeout)
 		for _, t in ipairs(gears_mod._created) do
@@ -15,18 +15,18 @@ describe("net.backends.ipmonitor", function()
 
 	before_each(function()
 		package.loaded["continuity.sysinfo.net.backends.ipmonitor"] = nil
-		kill_called = false
-		wlc_cbs = nil
+		kill_count = 0
+		wlc_calls = {}
 		easy_cmds = {}
 		awful = require("awful")
 		gears_mod = require("gears")
 		gears_mod._created = {}
-		awful.spawn.with_line_callback = function(_cmd, cbs)
-			wlc_cbs = cbs
-			return 12345
+		awful.spawn.with_line_callback = function(cmd, cbs)
+			wlc_calls[#wlc_calls + 1] = { cmd = cmd, cbs = cbs }
+			return #wlc_calls * 100
 		end
 		awesome.kill = function(_pid, _sig)
-			kill_called = true
+			kill_count = kill_count + 1
 		end
 		awful.spawn.easy_async = function(cmd, cb)
 			easy_cmds[#easy_cmds + 1] = { cmd = cmd, cb = cb }
@@ -42,20 +42,6 @@ describe("net.backends.ipmonitor", function()
 		"3: wlan0: <BROADCAST,MULTICAST> mtu 1500 state DOWN",
 		"    link/ether 11:22:33:44:55:66 brd ff:ff:ff:ff:ff:ff",
 		"wifi:wlan0",
-	}, "\n") .. "\n"
-
-	local STATS_OUTPUT = table.concat({
-		"dev:eth0:tx:1000000",
-		"dev:eth0:rx:2000000",
-		"dev:eth0:state:up",
-		"dev:eth0:carrier:1",
-		"dev:eth0:wifi:0",
-		"dev:wlan0:tx:500000",
-		"dev:wlan0:rx:800000",
-		"dev:wlan0:state:up",
-		"dev:wlan0:carrier:1",
-		"dev:wlan0:wifi:1",
-		"dev:wlan0:signal:-62",
 	}, "\n") .. "\n"
 
 	describe("_parse_ip_link_line", function()
@@ -96,44 +82,38 @@ describe("net.backends.ipmonitor", function()
 		end)
 	end)
 
-	describe("_parse_stats_output", function()
-		it("parses tx/rx bytes per device", function()
-			local devs = ipmonitor._parse_stats_output(STATS_OUTPUT)
-			assert.equals(1000000, devs["eth0"].tx_bytes)
-			assert.equals(2000000, devs["eth0"].rx_bytes)
+	describe("_parse_proc_net_dev_line", function()
+		it("parses a valid stat line into name, rx_bytes, tx_bytes", function()
+			local r = ipmonitor._parse_proc_net_dev_line("eth0 2000000 1000000")
+			assert.equals("eth0", r.name)
+			assert.equals(2000000, r.rx_bytes)
+			assert.equals(1000000, r.tx_bytes)
 		end)
 
-		it("marks wifi devices", function()
-			local devs = ipmonitor._parse_stats_output(STATS_OUTPUT)
-			assert.is_false(devs["eth0"].wifi)
-			assert.is_true(devs["wlan0"].wifi)
+		it("returns nil for empty line", function()
+			assert.is_nil(ipmonitor._parse_proc_net_dev_line(""))
 		end)
 
-		it("parses state and carrier", function()
-			local devs = ipmonitor._parse_stats_output(STATS_OUTPUT)
-			assert.equals("up", devs["eth0"].state)
-			assert.is_true(devs["eth0"].carrier)
+		it("returns nil for lines with non-numeric byte fields", function()
+			assert.is_nil(ipmonitor._parse_proc_net_dev_line("sig wlan0 -62"))
 		end)
 
-		it("parses wifi signal level in dBm", function()
-			local devs = ipmonitor._parse_stats_output(STATS_OUTPUT)
-			assert.equals(-62, devs["wlan0"].signal)
-			assert.is_nil(devs["eth0"].signal)
-		end)
-
-		it("stores nil for signal value 0 (not associated sentinel)", function()
-			local out = STATS_OUTPUT .. "dev:wlan0:signal:0\n"
-			local devs = ipmonitor._parse_stats_output(out)
-			assert.is_nil(devs["wlan0"].signal)
+		it("returns nil for lines with missing fields", function()
+			assert.is_nil(ipmonitor._parse_proc_net_dev_line("eth0 2000000"))
 		end)
 	end)
 
-	it("starts ip link discovery and ip monitor on start", function()
+	it("starts ip link discovery on start", function()
 		local b = ipmonitor({ interval = 2 })
 		b:start(function() end)
 		assert.equals(1, #easy_cmds)
+	end)
+
+	it("starts both processes after discovery completes", function()
+		local b = ipmonitor({ interval = 2 })
+		b:start(function() end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		assert.is_not_nil(wlc_cbs)
+		assert.equals(2, #wlc_calls)
 	end)
 
 	it("calls on_update immediately after ip link discovery with zero rates", function()
@@ -159,37 +139,41 @@ describe("net.backends.ipmonitor", function()
 		assert.is_true(updates[1].devices["wlan0"].wifi)
 	end)
 
-	it("creates rate-sampling timer after discovery", function()
-		local b = ipmonitor({ interval = 2 })
-		b:start(function() end)
-		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		assert.is_not_nil(find_timer(2))
-	end)
-
-	it("rate timer tick triggers stats read", function()
-		local b = ipmonitor({ interval = 2 })
-		b:start(function() end)
-		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		local before = #easy_cmds
-		find_timer(2):fire()
-		assert.equals(before + 1, #easy_cmds)
-	end)
-
-	it("computes zero tx_rate and rx_rate when byte counts unchanged", function()
+	it("ip monitor link event triggers on_update with updated device state", function()
 		local updates = {}
 		local b = ipmonitor({ interval = 2 })
 		b:start(function(s)
 			updates[#updates + 1] = s
 		end)
-		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0) -- eager dispatch (#1)
-		local rate_timer = find_timer(2)
-		rate_timer:fire()
-		easy_cmds[#easy_cmds].cb(STATS_OUTPUT, "", "", 0) -- tick 1 (#2)
-		rate_timer:fire()
-		easy_cmds[#easy_cmds].cb(STATS_OUTPUT, "", "", 0) -- tick 2 (#3)
-		assert.equals(3, #updates)
-		assert.equals(0, updates[3].tx_rate)
-		assert.equals(0, updates[3].rx_rate)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		wlc_calls[1].cbs.stdout("3: wlan0: <BROADCAST,MULTICAST> mtu 1500 state DOWN")
+		local last = updates[#updates]
+		assert.equals("down", last.devices["wlan0"].state)
+	end)
+
+	it("deleted device is removed from state on ip monitor Deleted event", function()
+		local updates = {}
+		local b = ipmonitor({ interval = 2 })
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		wlc_calls[1].cbs.stdout("Deleted 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP")
+		local last = updates[#updates]
+		assert.is_nil(last.devices["eth0"])
+	end)
+
+	it("stats process stdout triggers on_update with zero rates on first tick", function()
+		local updates = {}
+		local b = ipmonitor({ interval = 2 })
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		wlc_calls[2].cbs.stdout("eth0 2000000 1000000")
+		local last = updates[#updates]
+		assert.equals(0, last.devices["eth0"].tx_rate)
+		assert.equals(0, last.devices["eth0"].rx_rate)
 	end)
 
 	it("computes non-zero tx_rate and rx_rate from increasing byte counts", function()
@@ -205,62 +189,87 @@ describe("net.backends.ipmonitor", function()
 			updates[#updates + 1] = s
 		end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		local rate_timer = find_timer(2)
 
-		-- First tick: establishes prev_bytes baseline (dispatches with zero rates)
-		rate_timer:fire()
-		easy_cmds[#easy_cmds].cb(STATS_OUTPUT, "", "", 0)
+		-- Tick 1: establish prev_bytes baseline (zero rates)
+		wlc_calls[2].cbs.stdout("eth0 2000000 1000000")
 
-		-- Advance time by 2 seconds, increase eth0 tx by 2000, rx by 4000
+		-- Advance time by 2 seconds; eth0 tx +2000, rx +4000
 		fake_time = 1002
-		local STATS_OUTPUT_2 = table.concat({
-			"dev:eth0:tx:1002000",
-			"dev:eth0:rx:2004000",
-			"dev:eth0:state:up",
-			"dev:eth0:carrier:1",
-			"dev:eth0:wifi:0",
-			"dev:wlan0:tx:500000",
-			"dev:wlan0:rx:800000",
-			"dev:wlan0:state:up",
-			"dev:wlan0:carrier:1",
-			"dev:wlan0:wifi:1",
-		}, "\n") .. "\n"
-
-		rate_timer:fire()
-		easy_cmds[#easy_cmds].cb(STATS_OUTPUT_2, "", "", 0)
+		wlc_calls[2].cbs.stdout("eth0 2004000 1002000")
 
 		os.time = real_time
 
-		-- updates: #1 eager, #2 tick-1 (zero rates), #3 tick-2 (computed rates)
-		assert.equals(3, #updates)
-		-- eth0: 2000 bytes / 2 seconds = 1000 bytes/sec tx, 2000 bytes/sec rx
-		assert.equals(1000, updates[3].devices["eth0"].tx_rate)
-		assert.equals(2000, updates[3].devices["eth0"].rx_rate)
+		local last = updates[#updates]
+		assert.equals(1000, last.devices["eth0"].tx_rate)
+		assert.equals(2000, last.devices["eth0"].rx_rate)
 	end)
 
-	it("ip monitor link event triggers immediate stats read", function()
+	it("computes zero tx_rate and rx_rate when byte counts unchanged", function()
+		local updates = {}
 		local b = ipmonitor({ interval = 2 })
-		b:start(function() end)
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		local before = #easy_cmds
-		wlc_cbs.stdout("2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP")
-		assert.equals(before + 1, #easy_cmds)
+		wlc_calls[2].cbs.stdout("eth0 2000000 1000000")
+		wlc_calls[2].cbs.stdout("eth0 2000000 1000000")
+		local last = updates[#updates]
+		assert.equals(0, last.devices["eth0"].tx_rate)
+		assert.equals(0, last.devices["eth0"].rx_rate)
 	end)
 
-	it("stop() kills the monitor and stops the timer", function()
+	it("stats process silently ignores interfaces not in the device table", function()
+		local updates = {}
+		local b = ipmonitor({ interval = 2 })
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		local count_before = #updates
+		wlc_calls[2].cbs.stdout("lo 69090840 69090840")
+		wlc_calls[2].cbs.stdout("virbr0 0 0")
+		assert.equals(count_before, #updates)
+	end)
+
+	it("signal line updates device.signal incorporated in next stat on_update", function()
+		local updates = {}
+		local b = ipmonitor({ interval = 2 })
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		wlc_calls[2].cbs.stdout("sig wlan0 -62")
+		wlc_calls[2].cbs.stdout("wlan0 800000 500000") -- triggers on_update
+		local last = updates[#updates]
+		assert.equals(-62, last.devices["wlan0"].signal)
+	end)
+
+	it("signal value 0 is stored as nil (not-associated sentinel)", function()
+		local updates = {}
+		local b = ipmonitor({ interval = 2 })
+		b:start(function(s)
+			updates[#updates + 1] = s
+		end)
+		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
+		wlc_calls[2].cbs.stdout("sig wlan0 0")
+		wlc_calls[2].cbs.stdout("wlan0 800000 500000")
+		local last = updates[#updates]
+		assert.is_nil(last.devices["wlan0"].signal)
+	end)
+
+	it("stop() kills both processes", function()
 		local b = ipmonitor({ interval = 2 })
 		b:start(function() end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
 		b:stop()
-		assert.is_true(kill_called)
-		assert.is_true(find_timer(2).stopped)
+		assert.equals(2, kill_count)
 	end)
 
-	it("monitor exit schedules retry", function()
+	it("ip monitor exit schedules retry timer", function()
 		local b = ipmonitor({ interval = 2 })
 		b:start(function() end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		wlc_cbs.exit()
+		wlc_calls[1].cbs.exit("exit", 1)
 		assert.is_not_nil(find_timer(10))
 	end)
 
@@ -269,22 +278,16 @@ describe("net.backends.ipmonitor", function()
 		b:start(function() end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
 		b:stop()
-		wlc_cbs.exit()
+		wlc_calls[1].cbs.exit("exit", 1)
 		assert.is_nil(find_timer(10))
 	end)
 
-	it("retry timer restarts the monitor process", function()
-		local spawn_count = 0
-		awful.spawn.with_line_callback = function(_cmd, cbs)
-			spawn_count = spawn_count + 1
-			wlc_cbs = cbs
-			return spawn_count * 100
-		end
+	it("ip monitor retry timer restarts the process", function()
 		local b = ipmonitor({ interval = 2 })
 		b:start(function() end)
 		easy_cmds[1].cb(IP_LINK_OUTPUT, "", "", 0)
-		wlc_cbs.exit()
+		wlc_calls[1].cbs.exit("exit", 1)
 		find_timer(10):fire()
-		assert.equals(2, spawn_count)
+		assert.equals(3, #wlc_calls)
 	end)
 end)
