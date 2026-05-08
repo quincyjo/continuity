@@ -326,6 +326,11 @@ describe("audio.backends.pulse", function()
 [{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":false,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-speaker"}]
 ]=]
 
+		local SINGLE_SINK_NO_PORT_JSON = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+			.. [=[
+[{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":false,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":null}]
+]=]
+
 		local MULTI_SINK_JSON = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
 			.. [=[
 [{"index":55,"name":"alsa_output.pci-0000_00_1f.3.hdmi-stereo","description":"Built-in Audio HDMI","mute":false,"volume":{"front-left":{"value":65536,"value_percent":"100%","db":"0.00 dB"}},"active_port":"hdmi-output-0"},{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":true,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-headphones"}]
@@ -412,6 +417,12 @@ describe("audio.backends.pulse", function()
 			local entries = pulse._private.parse_all_devices_json(output)
 			assert.equals("bluetooth", entries[1].state.connection)
 			assert.equals(50, entries[1].state.level)
+		end)
+
+		it("handles null port", function()
+			local entries = pulse._private.parse_all_devices_json(SINGLE_SINK_NO_PORT_JSON)
+			assert.is_nil(entries[1].state.port)
+			assert.is_nil(entries[1].state.port_type)
 		end)
 	end)
 

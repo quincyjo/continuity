@@ -276,6 +276,26 @@ local function volume_level_json(vol)
 	return tonumber(ch.value_percent:match("(%d+)%%")) or 0
 end
 
+---@param default_name string
+---@param dev table
+---@return { id: string, state: AudioState, meta: { name: string?, description: string? } }
+local function audio_form_json(default_name, dev)
+	local name = dev.name
+	local port = dev.active_port and dev.active_port ~= json.null and dev.active_port or nil
+	return {
+		id = tostring(dev.index),
+		state = {
+			level = volume_level_json(dev.volume),
+			muted = dev.mute == true,
+			port = port,
+			port_type = port and derive_port_type(port) or nil,
+			connection = name and derive_connection(name) or nil,
+			is_default = name == default_name,
+		},
+		meta = { name = name, description = dev.description },
+	}
+end
+
 --- Parses combined output of:
 ---   pactl get-default-sink; echo "---"; pactl --format=json list sinks
 --- (or the source equivalent). Returns one entry per device.
@@ -293,20 +313,7 @@ local function parse_all_devices_json(stdout)
 	end
 	local entries = {}
 	for _, dev in ipairs(devices) do
-		local name = dev.name
-		local port = dev.active_port
-		entries[#entries + 1] = {
-			id = tostring(dev.index),
-			state = {
-				level = volume_level_json(dev.volume),
-				muted = dev.mute == true,
-				port = port,
-				port_type = port and derive_port_type(port) or nil,
-				connection = name and derive_connection(name) or nil,
-				is_default = name == default_name,
-			},
-			meta = { name = name, description = dev.description },
-		}
+		entries[#entries + 1] = audio_form_json(default_name, dev)
 	end
 	return entries
 end
@@ -328,19 +335,7 @@ local function parse_device_by_index_json(stdout, idx_str)
 	local target = tonumber(idx_str)
 	for _, dev in ipairs(devices) do
 		if dev.index == target then
-			local name = dev.name
-			local port = dev.active_port
-			return {
-				state = {
-					level = volume_level_json(dev.volume),
-					muted = dev.mute == true,
-					port = port,
-					port_type = port and derive_port_type(port) or nil,
-					connection = name and derive_connection(name) or nil,
-					is_default = name == default_name,
-				},
-				meta = { name = name, description = dev.description },
-			}
+			return audio_form_json(default_name, dev)
 		end
 	end
 	return nil
@@ -349,6 +344,25 @@ end
 -- ----------------------------------------------------------------------------
 -- Parse sink inputs (JSON format)
 -- ----------------------------------------------------------------------------
+
+---@param inp table The JSON object for a single sink input>
+---@return { id: string, state: SinkInputState, meta: SinkInputMeta }
+local function input_from_json(inp)
+	local props = inp.properties ~= json.null and inp.properties or {}
+	return {
+		id = tostring(inp.index),
+		state = {
+			level = volume_level_json(inp.volume),
+			muted = inp.mute == true,
+			sink = inp.sink,
+			name = props["media.name"] ~= json.null and props["media.name"] or nil,
+		},
+		meta = {
+			app_name = props["application.name"] ~= json.null and props["application.name"] or nil,
+			icon_name = props["application.icon_name"] ~= json.null and props["application.icon_name"] or nil,
+		},
+	}
+end
 
 --- Parses all sink inputs from JSON list output.
 ---@param stdout string  Output of: pactl --format=json list sink-inputs
@@ -360,20 +374,7 @@ local function parse_all_sink_inputs_json(stdout)
 	end
 	local entries = {}
 	for _, inp in ipairs(inputs) do
-		local props = inp.properties or {}
-		entries[#entries + 1] = {
-			id = tostring(inp.index),
-			state = {
-				level = volume_level_json(inp.volume),
-				muted = inp.mute == true,
-				sink = inp.sink,
-				name = props["media.name"],
-			},
-			meta = {
-				app_name = props["application.name"],
-				icon_name = props["application.icon_name"],
-			},
-		}
+		entries[#entries + 1] = input_from_json(inp)
 	end
 	return entries
 end
@@ -390,16 +391,8 @@ local function parse_sink_input_by_index_json(stdout, id)
 	local target = tonumber(id)
 	for _, inp in ipairs(inputs) do
 		if inp.index == target then
-			local props = inp.properties or {}
-			return {
-				level = volume_level_json(inp.volume),
-				muted = inp.mute == true,
-				sink = inp.sink,
-				name = props["media.name"],
-			}, {
-				app_name = props["application.name"],
-				icon_name = props["application.icon_name"],
-			}
+			local input = input_from_json(inp)
+			return input.state, input.meta
 		end
 	end
 	return nil, nil
