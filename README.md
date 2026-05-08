@@ -17,6 +17,7 @@ your own UIs. Check out the docs for each module for some examples.
 - [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Conventions](#conventions)
+- [Brass Tacks](#brass-tacks)
 - [sysinfo](#sysinfo)
   - [bat](#bat--battery)
   - [cpu](#cpu--cpu)
@@ -145,6 +146,46 @@ media.sources.on_removed(               -- fires when a source is removed
     function(id) ... end
 )
 ```
+
+## Brass Tacks
+
+In reality, what modules are truly event based all the way down? For the ones
+that are not, how are they still "performance-oriented"?
+
+- **100% Event Driven**: Push-based throughout the entire stack.
+  - ✅ Audio: Both backends via `amixer sevents` or `pactl subscribe`.
+  - ✅ Media: Both backends via `dbus-monitor` and/or `nc`.
+- **Mix**: Mix of event driven and polling.
+  - 〽️ bat: `udevadm monitor`, but has a 30s optional (but default)
+    poll for better out-of-the-box functionality on systems that may
+    not emit events regularly or for certain changes in state.
+- **Polling by Definition**: Inherently polling vis a vis sampling.
+  - ⌛ net: `ip monitor` to detect device changes, polls stats.
+  - ⌛ cpu: By definition.
+  - ⌛ mem: By definition.
+  - ⌛ temp: By definition.
+- **Polling and Feels Bad**: It makes me sad.
+  - ❌ backlight: Polls to detect out of band changes, but is cheap.
+    Changes via the control API are still immediately observed by
+    consumers.
+
+**How polling is optimized when it is done:**
+
+This ultimately comes down to minimizing how often lua code is doing anything,
+and more generally, how often the glib loop has to invoke the lua engine.
+
+- Polling processes use a long-lived single `awful.spawn` via a shell
+  `while true sleep` loop.
+  - This avoids extra `gears.timer` and `awful.spawn` overhead and runs
+    completely outside of the glib loop with zero lua handoffs to manage.
+  - This uses the kernal to remove the process from the CPU scheduling pool
+    during downtime, which is as optimized as it gets.
+- Use of a `grep` pipe to filter lines of `stdout` that are not actionable.
+  - Not only is `grep` much faster than lua matching, but...
+  - Every line of `stdout` (and `stderr`) that a `spawn` emits requires a lua
+    handoff. By filtering down to only lines that are acted on, no-op handoffs
+    are eliminated. This optimization is done universally, not just in polling
+    processes.
 
 ---
 
@@ -506,7 +547,7 @@ conventions, and the local verification checklist.
 
 ## Notes
 
-You will likely see some Awesome warning pairs when reloading like this:
+When reloading awesome, you will see Awesome warning pairs like this:
 
 ```
 2026-04-23 16:23:28 W: awesome: sysinfo.bat.udevadm: Shutting down process group 1224241. A following unknown child exited with signal 15 may occur and can be ignored.
@@ -533,3 +574,5 @@ are killed, and if this happens after the reload transfers all subprocesses to
 the new Awesome instance, the child exits will be reported as
 `Unknown child ... exited with signal 15`. This is confirmation that the
 process properly cleaned itself up, and it is not an error.
+
+> **Note**: These will not log when existing Awesome, only when reloading.
