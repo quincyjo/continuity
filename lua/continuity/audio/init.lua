@@ -77,6 +77,10 @@ local Audio = {}
 local HandleMT = {
 	__index = {
 		on_ready = function(self, cb)
+			if self._private.initialized then
+				cb(self.state)
+				return
+			end
 			self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = cb
 		end,
 		subscribe = function(self, cb)
