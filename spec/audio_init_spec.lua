@@ -209,6 +209,70 @@ describe("audio (init)", function()
 		end)
 	end)
 
+	describe("Audio.Volume on_ready", function()
+		it("queues callback when not yet initialized", function()
+			local called = false
+			Audio.Volume:on_ready(function()
+				called = true
+			end)
+			assert.is_false(called)
+		end)
+
+		it("fires queued callback when on_sink fires", function()
+			local got = nil
+			Audio.Volume:on_ready(function(s)
+				got = s
+			end)
+			Audio.setup({ backend = make_backend() })
+			on_sink("57", { level = 40, muted = false }, {})
+			assert.is_not_nil(got)
+			assert.equals(40, got.level)
+		end)
+
+		it("fires immediately when already initialized", function()
+			Audio.setup({ backend = make_backend() })
+			on_sink("57", { level = 40, muted = false }, {})
+			local got = nil
+			Audio.Volume:on_ready(function(s)
+				got = s
+			end)
+			assert.is_not_nil(got)
+			assert.equals(40, got.level)
+		end)
+	end)
+
+	describe("Audio.Capture on_ready", function()
+		it("queues callback when not yet initialized", function()
+			local called = false
+			Audio.Capture:on_ready(function()
+				called = true
+			end)
+			assert.is_false(called)
+		end)
+
+		it("fires queued callback when on_source fires", function()
+			local got = nil
+			Audio.Capture:on_ready(function(s)
+				got = s
+			end)
+			Audio.setup({ backend = make_backend() })
+			on_source("12", { level = 80, muted = false }, {})
+			assert.is_not_nil(got)
+			assert.equals(80, got.level)
+		end)
+
+		it("fires immediately when already initialized", function()
+			Audio.setup({ backend = make_backend() })
+			on_source("12", { level = 80, muted = false }, {})
+			local got = nil
+			Audio.Capture:on_ready(function(s)
+				got = s
+			end)
+			assert.is_not_nil(got)
+			assert.equals(80, got.level)
+		end)
+	end)
+
 	describe("Audio.Volume refresh (post-init change detection)", function()
 		before_each(function()
 			Audio.setup({ backend = make_backend() })
