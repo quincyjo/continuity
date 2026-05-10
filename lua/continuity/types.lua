@@ -12,9 +12,9 @@
 ---@field on_control fun(self, cb: fun(state: T)): fun()
 
 ---@class Observable<T>
----@field on_added   fun(self, cb: fun(handle: T)): fun()
----@field on_updated fun(self, cb: fun(handle: T)): fun()
----@field on_removed fun(self, cb: fun(id: string)): fun()
----@field all        fun(self): T[]
+---@field on_added   fun(cb: fun(handle: T)): fun()
+---@field on_updated fun(cb: fun(handle: T)): fun()
+---@field on_removed fun(cb: fun(id: string)): fun()
+---@field all        fun(): T[]
 
 return {}
