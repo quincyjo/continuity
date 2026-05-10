@@ -9,30 +9,21 @@
 ---@field icon_name string?
 ---@field app_icon  string?
 
----@class SinkInputHandle
+---@class SinkInputHandle : Subscribable<SinkInputState>, AudioControls<SinkInputState>
 ---@field id          string
 ---@field app_name    string?
 ---@field icon_name   string?
 ---@field app_icon    string?
 ---@field state       SinkInputState
----@field subscribe   fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
----@field on_control  fun(self: SinkInputHandle, cb: fun(state: SinkInputState)): fun()
 ---@field on_removed  fun(self: SinkInputHandle, cb: fun(id: string)): fun()
----@field adjust_perc fun(self: SinkInputHandle, delta: integer)
----@field set_perc    fun(self: SinkInputHandle, value: number)
----@field toggle_mute fun(self: SinkInputHandle)
----@field move_to     fun(self: SinkInputHandle, target: AudioHandle|integer|string)
+---@field move_to     fun(self: SinkInputHandle, target: SinkHandle|integer|string)
 
 ---@class InputHandles
 ---@field add    fun(id: string, state: SinkInputState, meta: SinkInputMeta?)
 ---@field update fun(id: string, state: SinkInputState)
 ---@field remove fun(id: string)
 
----@class InputCollection
----@field on_added   fun(cb: fun(handle: SinkInputHandle)): fun()
----@field on_updated fun(cb: fun(handle: SinkInputHandle)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): SinkInputHandle[]
+---@class InputCollection : Observable<SinkInputHandle>
 
 local inputs = {}
 
