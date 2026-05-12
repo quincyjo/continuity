@@ -402,6 +402,7 @@ end
 -- Load-time format selection
 -- ----------------------------------------------------------------------------
 
+local SERVER_DEFAULT_CMD = { "sh", "-c", "pactl get-default-sink; pactl get-default-source" }
 local SINK_POLL_CMD, SOURCE_POLL_CMD, INPUT_CMD
 local _parse_all_devices, _parse_device_by_index, _parse_all_sink_inputs, _parse_sink_input_by_index
 if json.is_c_extension then
@@ -441,6 +442,10 @@ local function create()
 	local pending_sinks = {}
 	local pending_sources = {}
 	local pending_inputs = {}
+	local sink_name_to_idx = {}
+	local sink_idx_to_name = {}
+	local source_name_to_idx = {}
+	local source_idx_to_name = {}
 
 	---@param id string
 	---@param state SinkInputState
@@ -485,6 +490,10 @@ local function create()
 			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				sink_handles.add(entry.id, entry.state, entry.meta)
+				if entry.meta.name then
+					sink_name_to_idx[entry.meta.name] = entry.id
+					sink_idx_to_name[entry.id] = entry.meta.name
+				end
 				if entry.state.is_default then
 					current_default_sink = entry.meta.name
 					current_default_sink_idx = entry.id
@@ -507,6 +516,10 @@ local function create()
 			local default_state, default_meta = nil, nil
 			for _, entry in ipairs(entries) do
 				source_handles.add(entry.id, entry.state, entry.meta)
+				if entry.meta.name then
+					source_name_to_idx[entry.meta.name] = entry.id
+					source_idx_to_name[entry.id] = entry.meta.name
+				end
 				if entry.state.is_default then
 					current_default_source = entry.meta.name
 					current_default_source_idx = entry.id
@@ -546,6 +559,10 @@ local function create()
 						local parsed = _parse_device_by_index(stdout, idx_str)
 						if parsed then
 							sink_handles.add(idx_str, parsed.state, parsed.meta)
+							if parsed.meta.name then
+								sink_name_to_idx[parsed.meta.name] = idx_str
+								sink_idx_to_name[idx_str] = parsed.meta.name
+							end
 						end
 					end)
 				elseif event_type == "change" then
@@ -569,6 +586,11 @@ local function create()
 					end
 				elseif event_type == "remove" then
 					if sink_handles then
+						local name = sink_idx_to_name[idx_str]
+						if name then
+							sink_name_to_idx[name] = nil
+						end
+						sink_idx_to_name[idx_str] = nil
 						sink_handles.remove(idx_str)
 					end
 				end
@@ -589,6 +611,10 @@ local function create()
 						local parsed = _parse_device_by_index(stdout, idx_str)
 						if parsed then
 							source_handles.add(idx_str, parsed.state, parsed.meta)
+							if parsed.meta.name then
+								source_name_to_idx[parsed.meta.name] = idx_str
+								source_idx_to_name[idx_str] = parsed.meta.name
+							end
 						end
 					end)
 				elseif event_type == "change" then
@@ -612,6 +638,11 @@ local function create()
 					end
 				elseif event_type == "remove" then
 					if source_handles then
+						local name = source_idx_to_name[idx_str]
+						if name then
+							source_name_to_idx[name] = nil
+						end
+						source_idx_to_name[idx_str] = nil
 						source_handles.remove(idx_str)
 					end
 				end
@@ -620,52 +651,44 @@ local function create()
 					pending.server = pending.server - 1
 					return
 				end
-				if sink_handles then
-					awful.spawn.easy_async(SINK_POLL_CMD, function(stdout, _, _, exitcode)
-						if exitcode ~= 0 then
-							return
-						end
-						local new_default = stdout:match("^([^\n]+)")
-						if new_default and new_default ~= current_default_sink then
-							local entries = _parse_all_devices(stdout)
-							for _, entry in ipairs(entries) do
-								if entry.meta.name == current_default_sink or entry.meta.name == new_default then
-									sink_handles.update(entry.id, entry.state)
-									if entry.state.is_default then
-										current_default_sink_idx = entry.id
-										if on_sink then
-											on_sink(current_default_sink_idx, entry.state, entry.meta)
-										end
-									end
-								end
+				awful.spawn.easy_async(SERVER_DEFAULT_CMD, function(stdout, _, _, exitcode)
+					if exitcode ~= 0 then
+						return
+					end
+					local sink_name, source_name = stdout:match("^([^\n]+)\n([^\n]+)")
+					if sink_handles and sink_name and sink_name ~= current_default_sink then
+						local new_idx = sink_name_to_idx[sink_name]
+						if not new_idx then
+							poll_sinks()
+						else
+							if current_default_sink_idx then
+								sink_handles.patch(current_default_sink_idx, { is_default = false })
 							end
-							current_default_sink = new_default
-						end
-					end)
-				end
-				if source_handles then
-					awful.spawn.easy_async(SOURCE_POLL_CMD, function(stdout, _, _, exitcode)
-						if exitcode ~= 0 then
-							return
-						end
-						local new_default = stdout:match("^([^\n]+)")
-						if new_default and new_default ~= current_default_source then
-							local entries = _parse_all_devices(stdout)
-							for _, entry in ipairs(entries) do
-								if entry.meta.name == current_default_source or entry.meta.name == new_default then
-									source_handles.update(entry.id, entry.state)
-									if entry.state.is_default then
-										current_default_source_idx = entry.id
-										if on_source then
-											on_source(current_default_source_idx, entry.state, entry.meta)
-										end
-									end
-								end
+							local s, meta = sink_handles.patch(new_idx, { is_default = true })
+							if s and on_sink then
+								current_default_sink = sink_name
+								current_default_sink_idx = new_idx
+								on_sink(new_idx, s, meta)
 							end
-							current_default_source = new_default
 						end
-					end)
-				end
+					end
+					if source_handles and source_name and source_name ~= current_default_source then
+						local new_idx = source_name_to_idx[source_name]
+						if not new_idx then
+							poll_sources()
+						else
+							if current_default_source_idx then
+								source_handles.patch(current_default_source_idx, { is_default = false })
+							end
+							local s, meta = source_handles.patch(new_idx, { is_default = true })
+							if s and on_source then
+								current_default_source = source_name
+								current_default_source_idx = new_idx
+								on_source(new_idx, s, meta)
+							end
+						end
+					end
+				end)
 			elseif entity == "sink-input" then
 				if input_handles then
 					local idx_str = line:match("#(%d+)")
@@ -740,6 +763,10 @@ local function create()
 		pending_sources = {}
 		pending_inputs = {}
 		pending.server = 0
+		sink_name_to_idx = {}
+		sink_idx_to_name = {}
+		source_name_to_idx = {}
+		source_idx_to_name = {}
 	end
 
 	local function after_set_sink(idx, cb)
@@ -854,6 +881,17 @@ local function create()
 				pending.server = pending.server - 1
 				return
 			end
+			if sink_handles then
+				if current_default_sink_idx and current_default_sink_idx ~= idx then
+					sink_handles.patch(current_default_sink_idx, { is_default = false })
+				end
+				local s, meta = sink_handles.patch(idx, { is_default = true })
+				if s and on_sink then
+					current_default_sink = meta.name
+					current_default_sink_idx = idx
+					on_sink(idx, s, meta)
+				end
+			end
 			if cb then
 				cb()
 			end
@@ -866,6 +904,17 @@ local function create()
 			if exitcode ~= 0 then
 				pending.server = pending.server - 1
 				return
+			end
+			if source_handles then
+				if current_default_source_idx and current_default_source_idx ~= idx then
+					source_handles.patch(current_default_source_idx, { is_default = false })
+				end
+				local s, meta = source_handles.patch(idx, { is_default = true })
+				if s and on_source then
+					current_default_source = meta.name
+					current_default_source_idx = idx
+					on_source(idx, s, meta)
+				end
 			end
 			if cb then
 				cb()

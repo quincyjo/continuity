@@ -485,11 +485,11 @@ describe("audio.backends.pulse (instance)", function()
 	}, "\n") .. "\n"
 
 	local function make_sink_handles()
-		return { add = function() end, update = function() end, remove = function() end }
+		return { add = function() end, update = function() end, remove = function() end, patch = function() end }
 	end
 
 	local function make_source_handles()
-		return { add = function() end, update = function() end, remove = function() end }
+		return { add = function() end, update = function() end, remove = function() end, patch = function() end }
 	end
 
 	before_each(function()
@@ -617,12 +617,12 @@ describe("audio.backends.pulse (instance)", function()
 			assert.truthy(easy_cmds[#easy_cmds].cmd[3]:find("list sources"))
 		end)
 
-		it("polls both sinks and sources on server change event", function()
+		it("issues one combined default-query on server change event", function()
 			local backend = pulse()
 			backend:start({ sinks = make_sink_handles(), sources = make_source_handles() })
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on server #0")
-			assert.equals(count + 2, #easy_cmds)
+			assert.equals(count + 1, #easy_cmds)
 		end)
 
 		it("does not poll sink on sink event when no sink handles are registered", function()
