@@ -1,8 +1,4 @@
----@class DeviceCollection
----@field on_added   fun(cb: fun(handle: AudioHandle)): fun()
----@field on_updated fun(cb: fun(handle: AudioHandle)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): AudioHandle[]
+---@class DeviceCollection<T> : Observable<T>
 
 ---@class DeviceHandles
 ---@field add    fun(id: string, state: AudioState, meta: { name: string?, description: string? }?)

@@ -6,6 +6,11 @@ local devices_mod = require("continuity.audio.devices")
 
 ---@alias AudioCallback fun(state: AudioState)
 
+---@class AudioControls<T> : Controllable<T>
+---@field adjust_perc fun(self, delta: integer)
+---@field set_perc    fun(self, value: AudioLevel)
+---@field toggle_mute fun(self)
+
 ---@class AudioState
 ---@field level       AudioLevel
 ---@field muted       AudioMuted
@@ -14,19 +19,16 @@ local devices_mod = require("continuity.audio.devices")
 ---@field connection? "analog"|"bluetooth"|"hdmi"|"usb"
 ---@field is_default? boolean
 
----@class AudioHandle
+---@class AudioHandle : ReadyAware<AudioState>, AudioControls<AudioState>
 ---@field id          string
 ---@field name        string?
 ---@field description string?
 ---@field state       AudioState
----@field on_ready    fun(self: AudioHandle, cb: AudioCallback)
----@field on_control  fun(self: AudioHandle, cb: AudioCallback): fun()
----@field subscribe   fun(self: AudioHandle, cb: AudioCallback): fun()
----@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
----@field adjust_perc fun(self: AudioHandle, delta: integer)
----@field set_perc    fun(self: AudioHandle, value: number)
----@field toggle_mute fun(self: AudioHandle)
 ---@field set_default fun(self: AudioHandle)
+---@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
+
+---@alias SinkHandle   AudioHandle
+---@alias SourceHandle AudioHandle
 
 ---@class SinkApi
 ---@field adjust_perc fun(idx: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
@@ -98,6 +100,7 @@ local HandleMT = {
 				end
 			end
 		end,
+		---@deprecated Use the function returned by subscribe() instead.
 		unsubscribe = function(self, cb)
 			for i, sub in ipairs(self._private.subscribers) do
 				if sub == cb then
@@ -113,6 +116,7 @@ local HandleMT = {
 	},
 }
 
+---@type SinkHandle
 Audio.Volume = setmetatable({
 	id = "Master",
 	name = nil,
@@ -132,6 +136,7 @@ Audio.Volume = setmetatable({
 	},
 }, HandleMT)
 
+---@type SourceHandle
 Audio.Capture = setmetatable({
 	id = "Capture",
 	name = nil,
@@ -153,7 +158,9 @@ Audio.Capture = setmetatable({
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
+---@type DeviceCollection<SinkHandle>
 Audio.sinks, bind_sinks = devices_mod.new()
+---@type DeviceCollection<SourceHandle>
 Audio.sources, bind_sources = devices_mod.new()
 
 local function find_in_collection(collection_inst, id)

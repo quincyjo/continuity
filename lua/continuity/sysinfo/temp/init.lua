@@ -69,4 +69,5 @@ function temp.stop()
 	_setup_called = false
 end
 
+---@type Monitor<TempState>
 return temp

@@ -89,4 +89,5 @@ function net.stop()
 	_setup_called = false
 end
 
+---@type Monitor<NetState>
 return net
