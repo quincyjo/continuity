@@ -103,6 +103,15 @@ function devices.new()
 	local device_handles = {}
 
 	function device_handles.add(id, initial_state, meta)
+		if state.handles[id] then
+			local handle = state.handles[id]
+			if meta then
+				handle.name = meta.name
+				handle.description = meta.description
+			end
+			device_handles.update(id, initial_state or {})
+			return
+		end
 		local handle = setmetatable({
 			id = id,
 			name = meta and meta.name,
@@ -147,6 +156,7 @@ function devices.new()
 			handle.state.muted = muted
 			if changed then
 				fire(state.subscribers[handle.id] or {}, handle.state)
+				fire(state.on_updated_cbs, handle)
 			end
 			fire(state.on_control_cbs[handle.id] or {}, handle.state)
 		end
