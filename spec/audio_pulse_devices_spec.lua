@@ -25,24 +25,6 @@ describe("audio.backends.pulse (device dispatch)", function()
 		"\tActive Port: analog-output-speaker",
 	}, "\n") .. "\n"
 
-	-- Combined: hdmi=default (#55), alsa (#57) — for server change tests
-	local SINKS_HDMI_DEFAULT = table.concat({
-		"alsa_output.pci-0000_00_1f.3.hdmi-stereo",
-		"---",
-		"Sink #55",
-		"\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo",
-		"\tDescription: Built-in HDMI",
-		"\tMute: no",
-		"\tVolume: front-left: 65536 / 100% / 0.00 dB",
-		"\tActive Port: hdmi-output-0",
-		"Sink #57",
-		"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
-		"\tDescription: Built-in Analog",
-		"\tMute: no",
-		"\tVolume: front-left: 26216 /  40% / -23.87 dB",
-		"\tActive Port: analog-output-speaker",
-	}, "\n") .. "\n"
-
 	-- Combined: alsa=default plus new bluetooth #60
 	local SINKS_WITH_BT = table.concat({
 		"alsa_output.pci-0000_00_1f.3.analog-stereo",
@@ -59,6 +41,12 @@ describe("audio.backends.pulse (device dispatch)", function()
 		"\tMute: no",
 		"\tVolume: front-left: 32768 /  50% / -18.06 dB",
 	}, "\n") .. "\n"
+
+	-- Combined get-default-sink; get-default-source output for server events
+	local SERVER_DEFAULTS_ALSA =
+		"alsa_output.pci-0000_00_1f.3.analog-stereo\nalsa_input.pci-0000_00_1f.3.analog-stereo\n"
+	local SERVER_DEFAULTS_HDMI_SINK =
+		"alsa_output.pci-0000_00_1f.3.hdmi-stereo\nalsa_input.pci-0000_00_1f.3.analog-stereo\n"
 
 	-- Source
 	local SOURCES_INTERNAL_DEFAULT = table.concat({
@@ -95,22 +83,44 @@ describe("audio.backends.pulse (device dispatch)", function()
 		package.loaded["json"] = saved_json
 	end)
 
-	local function make_sink_handles(added, updated, removed)
+	local function make_sink_handles(added, updated, removed, patched)
+		local handles_state = {}
 		return {
-			add = function(id, state, meta)
+			add = function(id, s, meta)
+				if not handles_state[id] then
+					handles_state[id] =
+						{ state = s or {}, name = meta and meta.name, description = meta and meta.description }
+				end
 				if added then
-					added[#added + 1] = { id = id, state = state, meta = meta }
+					added[#added + 1] = { id = id, state = s, meta = meta }
 				end
 			end,
-			update = function(id, state)
+			update = function(id, s)
+				if handles_state[id] then
+					handles_state[id].state = s
+				end
 				if updated then
-					updated[#updated + 1] = { id = id, state = state }
+					updated[#updated + 1] = { id = id, state = s }
 				end
 			end,
 			remove = function(id)
+				handles_state[id] = nil
 				if removed then
 					removed[#removed + 1] = id
 				end
+			end,
+			patch = function(id, partial)
+				local h = handles_state[id]
+				if not h then
+					return nil, nil
+				end
+				for k, v in pairs(partial) do
+					h.state[k] = v
+				end
+				if patched then
+					patched[#patched + 1] = { id = id, partial = partial }
+				end
+				return h.state, { name = h.name, description = h.description }
 			end,
 		}
 	end
@@ -282,22 +292,33 @@ describe("audio.backends.pulse (device dispatch)", function()
 	end)
 
 	describe("'change' server event", function()
-		it("calls sinks.update for old and new defaults when default changes", function()
-			local updated = {}
-			pulse():start({ sinks = make_sink_handles(nil, updated) })
+		it("issues combined get-default-sink/source command (not a full list-sinks poll)", function()
+			pulse():start({ sinks = make_sink_handles() })
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
 			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
 			assert.equals(count + 1, #easy_cmds)
-			easy_cmds[#easy_cmds].cb(SINKS_HDMI_DEFAULT, "", "", 0)
+			assert.truthy(cmd_str(easy_cmds[#easy_cmds].cmd):find("get%-default%-sink"))
+			assert.is_falsy(cmd_str(easy_cmds[#easy_cmds].cmd):find("list sinks"))
+		end)
+
+		it("patches old default is_default=false and new default is_default=true", function()
+			local patched = {}
+			pulse():start({ sinks = make_sink_handles(nil, nil, nil, patched) })
+			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
+			while #patched > 0 do
+				table.remove(patched)
+			end
+			wlc_cbs.stdout("Event 'change' on server #4294967295")
+			easy_cmds[#easy_cmds].cb(SERVER_DEFAULTS_HDMI_SINK, "", "", 0)
 			local by_id = {}
-			for _, u in ipairs(updated) do
-				by_id[u.id] = u
+			for _, p in ipairs(patched) do
+				by_id[p.id] = p
 			end
 			assert.is_not_nil(by_id["57"])
-			assert.is_false(by_id["57"].state.is_default)
+			assert.is_false(by_id["57"].partial.is_default)
 			assert.is_not_nil(by_id["55"])
-			assert.is_true(by_id["55"].state.is_default)
+			assert.is_true(by_id["55"].partial.is_default)
 		end)
 
 		it("calls on_sink with the new default's numeric idx", function()
@@ -311,19 +332,27 @@ describe("audio.backends.pulse (device dispatch)", function()
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
 			on_sink_calls = {}
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
-			easy_cmds[#easy_cmds].cb(SINKS_HDMI_DEFAULT, "", "", 0)
+			easy_cmds[#easy_cmds].cb(SERVER_DEFAULTS_HDMI_SINK, "", "", 0)
 			assert.equals(1, #on_sink_calls)
 			assert.equals("55", on_sink_calls[1].id)
 			assert.is_true(on_sink_calls[1].state.is_default)
 		end)
 
-		it("does not poll when default is unchanged", function()
-			pulse():start({ sinks = make_sink_handles() })
+		it("does not patch or call on_sink when default is unchanged", function()
+			local patched, on_sink_calls = {}, {}
+			pulse():start({
+				on_sink = function(id, state)
+					on_sink_calls[#on_sink_calls + 1] = { id = id, state = state }
+				end,
+				sinks = make_sink_handles(nil, nil, nil, patched),
+			})
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
-			local count = #easy_cmds
+			on_sink_calls = {}
+			patched = {}
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
-			easy_cmds[#easy_cmds].cb(SINKS_ALSA_DEFAULT, "", "", 0) -- same default
-			assert.equals(count + 1, #easy_cmds) -- exactly one server poll, no extra sink poll
+			easy_cmds[#easy_cmds].cb(SERVER_DEFAULTS_ALSA, "", "", 0) -- same defaults
+			assert.equals(0, #patched)
+			assert.equals(0, #on_sink_calls)
 		end)
 
 		it("is suppressed when pending.server > 0", function()
@@ -334,9 +363,26 @@ describe("audio.backends.pulse (device dispatch)", function()
 			})
 			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
 			b.api.sink.set_default("55", function() end)
-			local count = #easy_cmds -- startup poll + set_default cmd
+			easy_cmds[#easy_cmds].cb("", "", "", 0) -- set_default succeeds
+			local count = #easy_cmds
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
 			assert.equals(count, #easy_cmds)
+		end)
+
+		it("falls back to poll_sinks when new default sink name is not in cache", function()
+			pulse():start({ sinks = make_sink_handles() })
+			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
+			local count = #easy_cmds
+			wlc_cbs.stdout("Event 'change' on server #4294967295")
+			-- new default is a device not in the cache
+			easy_cmds[#easy_cmds].cb(
+				"bluez_output.AA_BB_CC_DD_EE_FF.1\nalsa_input.pci-0000_00_1f.3.analog-stereo\n",
+				"",
+				"",
+				0
+			)
+			assert.equals(count + 2, #easy_cmds) -- combined poll + fallback list-sinks
+			assert.truthy(cmd_str(easy_cmds[#easy_cmds].cmd):find("list sinks"))
 		end)
 	end)
 
@@ -384,25 +430,95 @@ describe("audio.backends.pulse (device dispatch)", function()
 			wlc_cbs.stdout("Event 'change' on server #4294967295")
 			assert.equals(count + 1, #easy_cmds) -- not suppressed
 		end)
+
+		it("patches old and new default is_default on success and calls on_sink", function()
+			local patched = {}
+			local on_sink_calls = {}
+			local b = pulse()
+			b:start({
+				on_sink = function(id, state)
+					on_sink_calls[#on_sink_calls + 1] = { id = id, state = state }
+				end,
+				sinks = make_sink_handles(nil, nil, nil, patched),
+			})
+			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0) -- "57" is default
+			-- clear accumulators (in-place, so closures still reference the same tables)
+			while #on_sink_calls > 0 do
+				table.remove(on_sink_calls)
+			end
+			while #patched > 0 do
+				table.remove(patched)
+			end
+			b.api.sink.set_default("55", function() end)
+			easy_cmds[#easy_cmds].cb("", "", "", 0) -- success
+			local by_id = {}
+			for _, p in ipairs(patched) do
+				by_id[p.id] = p
+			end
+			assert.is_not_nil(by_id["57"])
+			assert.is_false(by_id["57"].partial.is_default)
+			assert.is_not_nil(by_id["55"])
+			assert.is_true(by_id["55"].partial.is_default)
+			assert.equals(1, #on_sink_calls)
+			assert.equals("55", on_sink_calls[1].id)
+			assert.is_true(on_sink_calls[1].state.is_default)
+		end)
+
+		it("does not call on_sink on set_default failure", function()
+			local on_sink_calls = {}
+			local b = pulse()
+			b:start({
+				on_sink = function(id, state)
+					on_sink_calls[#on_sink_calls + 1] = { id = id, state = state }
+				end,
+				sinks = make_sink_handles(),
+			})
+			easy_cmds[1].cb(SINKS_ALSA_DEFAULT, "", "", 0)
+			on_sink_calls = {}
+			b.api.sink.set_default("55", function() end)
+			easy_cmds[#easy_cmds].cb("", "", "", 1) -- failure
+			assert.equals(0, #on_sink_calls)
+		end)
 	end)
 
 	describe("source dispatch", function()
-		local function make_source_handles(added, updated, removed)
+		local function make_source_handles(added, updated, removed, patched)
+			local handles_state = {}
 			return {
-				add = function(id, state, meta)
+				add = function(id, s, meta)
+					if not handles_state[id] then
+						handles_state[id] = { state = s or {}, name = meta and meta.name }
+					end
 					if added then
-						added[#added + 1] = { id = id, state = state, meta = meta }
+						added[#added + 1] = { id = id, state = s, meta = meta }
 					end
 				end,
-				update = function(id, state)
+				update = function(id, s)
+					if handles_state[id] then
+						handles_state[id].state = s
+					end
 					if updated then
-						updated[#updated + 1] = { id = id, state = state }
+						updated[#updated + 1] = { id = id, state = s }
 					end
 				end,
 				remove = function(id)
+					handles_state[id] = nil
 					if removed then
 						removed[#removed + 1] = id
 					end
+				end,
+				patch = function(id, partial)
+					local h = handles_state[id]
+					if not h then
+						return nil, nil
+					end
+					for k, v in pairs(partial) do
+						h.state[k] = v
+					end
+					if patched then
+						patched[#patched + 1] = { id = id, partial = partial }
+					end
+					return h.state, { name = h.name }
 				end,
 			}
 		end

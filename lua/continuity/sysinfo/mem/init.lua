@@ -77,4 +77,5 @@ function mem.stop()
 	_setup_called = false
 end
 
+---@type Monitor<MemState>
 return mem

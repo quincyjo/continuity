@@ -1,8 +1,4 @@
----@class DeviceCollection
----@field on_added   fun(cb: fun(handle: AudioHandle)): fun()
----@field on_updated fun(cb: fun(handle: AudioHandle)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): AudioHandle[]
+---@class DeviceCollection<T> : Observable<T>
 
 ---@class DeviceHandles
 ---@field add    fun(id: string, state: AudioState, meta: { name: string?, description: string? }?)
@@ -103,6 +99,15 @@ function devices.new()
 	local device_handles = {}
 
 	function device_handles.add(id, initial_state, meta)
+		if state.handles[id] then
+			local handle = state.handles[id]
+			if meta then
+				handle.name = meta.name
+				handle.description = meta.description
+			end
+			device_handles.update(id, initial_state or {})
+			return
+		end
 		local handle = setmetatable({
 			id = id,
 			name = meta and meta.name,
@@ -140,6 +145,27 @@ function devices.new()
 		fire(state.on_removed_cbs, id)
 	end
 
+	function device_handles.patch(id, partial)
+		local handle = state.handles[id]
+		if not handle then
+			return nil, nil
+		end
+		local changed = false
+		for k, v in pairs(partial) do
+			if handle.state[k] ~= v then
+				changed = true
+			end
+		end
+		if changed then
+			for k, v in pairs(partial) do
+				handle.state[k] = v
+			end
+			fire(state.subscribers[id] or {}, handle.state)
+			fire(state.on_updated_cbs, handle)
+		end
+		return handle.state, { name = handle.name, description = handle.description }
+	end
+
 	local function bind(api_sub)
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted
@@ -147,6 +173,7 @@ function devices.new()
 			handle.state.muted = muted
 			if changed then
 				fire(state.subscribers[handle.id] or {}, handle.state)
+				fire(state.on_updated_cbs, handle)
 			end
 			fire(state.on_control_cbs[handle.id] or {}, handle.state)
 		end

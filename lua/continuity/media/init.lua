@@ -103,14 +103,12 @@ function media.setup(opts)
 	end
 end
 
----@class MediaSources
----@field on_added   fun(cb: fun(source: MediaSource)): fun()
+---@class MediaSources : Observable<MediaSource>
 ---@field on_updated fun(cb: fun(source: MediaSource), opts?: RegistrySubscribeOpts): fun()
----@field on_removed fun(cb: fun(source_id: string)): fun()
----@field all        fun(): MediaSource[]
 
 --- Source lifecycle subscriptions and snapshot accessor.
 --- on_updated debounce opts allow multi-backend coalescing to settle before firing.
+---@type MediaSources
 media.sources = {
 	on_added = function(cb)
 		assert(_registry, "media.sources.on_added() called before media.setup()")

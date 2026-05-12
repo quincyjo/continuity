@@ -6,6 +6,11 @@ local devices_mod = require("continuity.audio.devices")
 
 ---@alias AudioCallback fun(state: AudioState)
 
+---@class AudioControls<T> : Controllable<T>
+---@field adjust_perc fun(self, delta: integer)
+---@field set_perc    fun(self, value: AudioLevel)
+---@field toggle_mute fun(self)
+
 ---@class AudioState
 ---@field level       AudioLevel
 ---@field muted       AudioMuted
@@ -14,19 +19,16 @@ local devices_mod = require("continuity.audio.devices")
 ---@field connection? "analog"|"bluetooth"|"hdmi"|"usb"
 ---@field is_default? boolean
 
----@class AudioHandle
+---@class AudioHandle : ReadyAware<AudioState>, AudioControls<AudioState>
 ---@field id          string
 ---@field name        string?
 ---@field description string?
 ---@field state       AudioState
----@field on_ready    fun(self: AudioHandle, cb: AudioCallback)
----@field on_control  fun(self: AudioHandle, cb: AudioCallback): fun()
----@field subscribe   fun(self: AudioHandle, cb: AudioCallback): fun()
----@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
----@field adjust_perc fun(self: AudioHandle, delta: integer)
----@field set_perc    fun(self: AudioHandle, value: number)
----@field toggle_mute fun(self: AudioHandle)
 ---@field set_default fun(self: AudioHandle)
+---@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
+
+---@alias SinkHandle   AudioHandle
+---@alias SourceHandle AudioHandle
 
 ---@class SinkApi
 ---@field adjust_perc fun(idx: string, delta: integer, cb: fun(level: AudioLevel, muted: AudioMuted))
@@ -75,6 +77,10 @@ local Audio = {}
 local HandleMT = {
 	__index = {
 		on_ready = function(self, cb)
+			if self._private.initialized then
+				cb(self.state)
+				return
+			end
 			self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = cb
 		end,
 		subscribe = function(self, cb)
@@ -94,6 +100,7 @@ local HandleMT = {
 				end
 			end
 		end,
+		---@deprecated Use the function returned by subscribe() instead.
 		unsubscribe = function(self, cb)
 			for i, sub in ipairs(self._private.subscribers) do
 				if sub == cb then
@@ -109,8 +116,10 @@ local HandleMT = {
 	},
 }
 
+---@type SinkHandle
 Audio.Volume = setmetatable({
 	id = "Master",
+	name = nil,
 	description = nil,
 	state = {
 		muted = false,
@@ -121,12 +130,16 @@ Audio.Volume = setmetatable({
 		on_ready_cbs = {},
 		on_control_cbs = {},
 		subscribers = {},
-		api = nil,
+		bound_handle = nil,
+		bound_unsub = nil,
+		bound_control_unsub = nil,
 	},
 }, HandleMT)
 
+---@type SourceHandle
 Audio.Capture = setmetatable({
 	id = "Capture",
+	name = nil,
 	description = nil,
 	state = {
 		muted = false,
@@ -137,60 +150,95 @@ Audio.Capture = setmetatable({
 		on_ready_cbs = {},
 		on_control_cbs = {},
 		subscribers = {},
-		api = nil,
+		bound_handle = nil,
+		bound_unsub = nil,
+		bound_control_unsub = nil,
 	},
 }, HandleMT)
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
+---@type DeviceCollection<SinkHandle>
 Audio.sinks, bind_sinks = devices_mod.new()
+---@type DeviceCollection<SourceHandle>
 Audio.sources, bind_sources = devices_mod.new()
 
----@param id string
----@param state AudioState
----@param meta AudioDeviceMeta
-local function refresh(handle, id, state, meta)
-	handle.id = id
-	if not handle._private.initialized then
-		handle.state = state
-		handle.name = meta.name
-		handle.description = meta.description
-		handle._private.initialized = true
-		for _, cb in ipairs(handle._private.on_ready_cbs) do
-			cb(handle.state)
+local function find_in_collection(collection_inst, id)
+	for _, h in ipairs(collection_inst.all()) do
+		if h.id == id then
+			return h
 		end
-		handle._private.on_ready_cbs = nil
-	else
-		local prev = handle.state
-		if
-			prev.level ~= state.level
-			or prev.muted ~= state.muted
-			or prev.port ~= state.port
-			or prev.port_type ~= state.port_type
-			or prev.connection ~= state.connection
-			or handle.name ~= meta.name
-			or handle.description ~= meta.description
-		then
-			handle.state = state
-			handle.name = meta.name
-			handle.description = meta.description
+	end
+	return nil
+end
+
+---Bind a pre-made handle to the collection handle for the given device id.
+---Creates the collection handle via self-heal if not yet present.
+---On device switch: tears down old binding, sets up new one, notifies subscribers.
+---On same-device update: only notifies subscribers if metadata changed (state
+---changes propagate through the collection forwarder).
+local function rebind(handle, id, new_state, meta, collection_inst, collection_device_handles)
+	-- Always sync to the collection: creates handle if absent, updates state/meta if present.
+	collection_device_handles.add(id, new_state, meta)
+	local collection_handle = find_in_collection(collection_inst, id)
+	if not collection_handle then
+		return
+	end
+
+	local new_name = meta and meta.name or nil
+	local new_desc = meta and meta.description or nil
+	local is_first_bind = not handle._private.initialized
+	local is_device_switch = handle._private.bound_handle ~= collection_handle
+
+	if is_device_switch then
+		if handle._private.bound_unsub then
+			handle._private.bound_unsub()
+		end
+		if handle._private.bound_control_unsub then
+			handle._private.bound_control_unsub()
+		end
+
+		handle._private.bound_handle = collection_handle
+		handle.id = id
+		handle.name = new_name
+		handle.description = new_desc
+		handle.state = collection_handle.state
+
+		handle._private.bound_unsub = collection_handle:subscribe(function(s)
+			handle.state = s
+			for _, cb in ipairs(handle._private.subscribers) do
+				cb(s)
+			end
+		end)
+
+		handle._private.bound_control_unsub = collection_handle:on_control(function(s)
+			for _, cb in ipairs(handle._private.on_control_cbs) do
+				cb(s)
+			end
+		end)
+
+		if is_first_bind then
+			handle._private.initialized = true
+			for _, cb in ipairs(handle._private.on_ready_cbs) do
+				cb(handle.state)
+			end
+			handle._private.on_ready_cbs = nil
+		else
 			for _, cb in ipairs(handle._private.subscribers) do
 				cb(handle.state)
 			end
 		end
-	end
-end
-
-local function update(handle, level, muted)
-	if handle.state.level ~= level or handle.state.muted ~= muted then
-		handle.state.level = level
-		handle.state.muted = muted
-		for _, cb in ipairs(handle._private.subscribers) do
-			cb(handle.state)
+	else
+		-- Same device. State changes propagate via the collection forwarder.
+		-- Only explicitly notify if metadata changed.
+		handle.id = id
+		if handle.name ~= new_name or handle.description ~= new_desc then
+			handle.name = new_name
+			handle.description = new_desc
+			for _, cb in ipairs(handle._private.subscribers) do
+				cb(handle.state)
+			end
 		end
-	end
-	for _, cb in ipairs(handle._private.on_control_cbs) do
-		cb(handle.state)
 	end
 end
 
@@ -203,41 +251,33 @@ function Audio.setup(opts)
 	local sink_handles = bind_sinks(backend.api.sink)
 	local source_handles = bind_sources(backend.api.source)
 
-	Audio.Volume._private.api = backend.api.sink
-	Audio.Capture._private.api = backend.api.source
-
 	HandleMT.__index.adjust_perc = function(self, delta)
-		if delta > 0 and delta + self.state.level > 100 then
-			delta = 100 - self.state.level
-		elseif delta < 0 and delta + self.state.level < 0 then
-			delta = -self.state.level
-		end
-		if delta == 0 then
-			update(self, self.state.level, self.state.muted)
-		else
-			self._private.api.adjust_perc(self.id, delta, function(level, muted)
-				update(self, level, muted)
-			end)
+		if self._private.bound_handle then
+			self._private.bound_handle:adjust_perc(delta)
 		end
 	end
 	HandleMT.__index.set_perc = function(self, value)
-		value = math.max(0, math.min(100, math.floor(value + 0.5)))
-		self._private.api.set_perc(self.id, value, function(level, muted)
-			update(self, level, muted)
-		end)
+		if self._private.bound_handle then
+			self._private.bound_handle:set_perc(value)
+		end
 	end
 	HandleMT.__index.toggle_mute = function(self)
-		self._private.api.toggle(self.id, function(level, muted)
-			update(self, level, muted)
-		end)
+		if self._private.bound_handle then
+			self._private.bound_handle:toggle_mute()
+		end
+	end
+	HandleMT.__index.set_default = function(self)
+		if self._private.bound_handle then
+			self._private.bound_handle:set_default()
+		end
 	end
 
 	backend:start({
 		on_sink = function(id, state, meta)
-			refresh(Audio.Volume, id, state, meta)
+			rebind(Audio.Volume, id, state, meta, Audio.sinks, sink_handles)
 		end,
 		on_source = function(id, state, meta)
-			refresh(Audio.Capture, id, state, meta)
+			rebind(Audio.Capture, id, state, meta, Audio.sources, source_handles)
 		end,
 		inputs = input_handles,
 		sinks = sink_handles,

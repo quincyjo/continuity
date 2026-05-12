@@ -160,4 +160,5 @@ end
 
 bat.BatteryStatus = BatteryStatus
 
+---@type Monitor<BatState>
 return bat

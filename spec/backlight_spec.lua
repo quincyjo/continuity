@@ -402,6 +402,45 @@ describe("backlight module", function()
 		end)
 	end)
 
+	describe("devices.on_updated", function()
+		it("fires with the handle when brightness changes via backend", function()
+			backlight.setup({ backend = mock_backend })
+			add_device("intel_backlight", "display", 75)
+			local updated = nil
+			backlight.devices.on_updated(function(h)
+				updated = h
+			end)
+			change("intel_backlight", 50)
+			assert.is_not_nil(updated)
+			assert.equals(50, updated.state.brightness)
+		end)
+
+		it("does not fire when brightness is unchanged", function()
+			backlight.setup({ backend = mock_backend })
+			add_device("intel_backlight", "display", 75)
+			local fired = false
+			backlight.devices.on_updated(function()
+				fired = true
+			end)
+			change("intel_backlight", 75)
+			assert.is_false(fired)
+		end)
+
+		it("returns unsubscribe function", function()
+			backlight.setup({ backend = mock_backend })
+			add_device("intel_backlight", "display", 75)
+			local count = 0
+			local unsub = backlight.devices.on_updated(function()
+				count = count + 1
+			end)
+			change("intel_backlight", 50)
+			assert.equals(1, count)
+			unsub()
+			change("intel_backlight", 60)
+			assert.equals(1, count)
+		end)
+	end)
+
 	describe("devices.all()", function()
 		it("returns empty table before any devices", function()
 			backlight.setup({ backend = mock_backend })

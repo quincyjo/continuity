@@ -83,4 +83,5 @@ function cpu.stop()
 	_setup_called = false
 end
 
+---@type Monitor<CpuState>
 return cpu

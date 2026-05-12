@@ -10,19 +10,16 @@ local gears = require("gears")
 ---@field brightness number
 ---@field raw        integer|nil
 
----@class BacklightHandle
+---@class BacklightHandle : ReadyAware<BacklightUpdate>, Controllable<BacklightUpdate>
 ---@field id          string|nil
 ---@field kind        BacklightKind
 ---@field state       BacklightState
 ---@field steps       integer|nil
----@field on_ready    fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
----@field on_control  fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
----@field subscribe   fun(self: BacklightHandle, fn: fun(update: BacklightUpdate)): fun()
----@field unsubscribe fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
 ---@field set_perc    fun(self: BacklightHandle, value: number)
 ---@field adjust_perc fun(self: BacklightHandle, delta: integer)
 ---@field set         fun(self: BacklightHandle, step: integer)
 ---@field adjust      fun(self: BacklightHandle, delta: integer)
+---@field unsubscribe fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
 
 ---@class BacklightDeviceInfo
 ---@field id         string
@@ -47,16 +44,14 @@ local gears = require("gears")
 ---@class BacklightOpts
 ---@field backend? BacklightBackend
 
----@class BacklightDevicesLifecycle
----@field on_added   fun(cb: fun(handle: BacklightHandle)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): BacklightHandle[]
+---@class BacklightDevices : Observable<BacklightHandle>
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
 local _handles = {} ---@type table<string, BacklightHandle>
 local _devices_added_subs = {}
 local _devices_removed_subs = {}
+local _devices_updated_subs = {}
 
 local function _on_control(handle, brightness, raw)
 	local changed = handle.state.brightness ~= brightness
@@ -66,6 +61,9 @@ local function _on_control(handle, brightness, raw)
 		---@diagnostic disable-next-line: undefined-field
 		for _, sub in ipairs(handle._private.subscribers) do
 			sub(handle.state)
+		end
+		for _, cb in ipairs(_devices_updated_subs) do
+			cb(handle)
 		end
 	end
 	---@diagnostic disable-next-line: undefined-field
@@ -103,6 +101,7 @@ local HandleMeta = {
 			end
 		end,
 
+		---@deprecated Use the function returned by subscribe() instead.
 		unsubscribe = function(self, fn)
 			for i, sub in ipairs(self._private.subscribers) do
 				if sub == fn then
@@ -217,6 +216,9 @@ local function _on_change(id, brightness, raw)
 		for _, sub in ipairs(handle._private.subscribers) do
 			sub(handle.state)
 		end
+		for _, cb in ipairs(_devices_updated_subs) do
+			cb(handle)
+		end
 	end
 end
 
@@ -236,7 +238,7 @@ function backlight.setup(opts)
 	})
 end
 
----@type BacklightDevicesLifecycle
+---@type BacklightDevices
 backlight.devices = {
 	on_added = function(cb)
 		_devices_added_subs[#_devices_added_subs + 1] = cb
@@ -244,6 +246,18 @@ backlight.devices = {
 			for i, sub in ipairs(_devices_added_subs) do
 				if sub == cb then
 					table.remove(_devices_added_subs, i)
+					return
+				end
+			end
+		end
+	end,
+
+	on_updated = function(cb)
+		_devices_updated_subs[#_devices_updated_subs + 1] = cb
+		return function()
+			for i, sub in ipairs(_devices_updated_subs) do
+				if sub == cb then
+					table.remove(_devices_updated_subs, i)
 					return
 				end
 			end
@@ -278,6 +292,7 @@ function backlight.stop()
 	end
 	_handles = {}
 	_devices_added_subs = {}
+	_devices_updated_subs = {}
 	_devices_removed_subs = {}
 	_setup_called = false
 	backlight.primary_display = make_handle("display")

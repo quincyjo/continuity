@@ -209,6 +209,70 @@ describe("audio (init)", function()
 		end)
 	end)
 
+	describe("Audio.Volume on_ready", function()
+		it("queues callback when not yet initialized", function()
+			local called = false
+			Audio.Volume:on_ready(function()
+				called = true
+			end)
+			assert.is_false(called)
+		end)
+
+		it("fires queued callback when on_sink fires", function()
+			local got = nil
+			Audio.Volume:on_ready(function(s)
+				got = s
+			end)
+			Audio.setup({ backend = make_backend() })
+			on_sink("57", { level = 40, muted = false }, {})
+			assert.is_not_nil(got)
+			assert.equals(40, got.level)
+		end)
+
+		it("fires immediately when already initialized", function()
+			Audio.setup({ backend = make_backend() })
+			on_sink("57", { level = 40, muted = false }, {})
+			local got = nil
+			Audio.Volume:on_ready(function(s)
+				got = s
+			end)
+			assert.is_not_nil(got)
+			assert.equals(40, got.level)
+		end)
+	end)
+
+	describe("Audio.Capture on_ready", function()
+		it("queues callback when not yet initialized", function()
+			local called = false
+			Audio.Capture:on_ready(function()
+				called = true
+			end)
+			assert.is_false(called)
+		end)
+
+		it("fires queued callback when on_source fires", function()
+			local got = nil
+			Audio.Capture:on_ready(function(s)
+				got = s
+			end)
+			Audio.setup({ backend = make_backend() })
+			on_source("12", { level = 80, muted = false }, {})
+			assert.is_not_nil(got)
+			assert.equals(80, got.level)
+		end)
+
+		it("fires immediately when already initialized", function()
+			Audio.setup({ backend = make_backend() })
+			on_source("12", { level = 80, muted = false }, {})
+			local got = nil
+			Audio.Capture:on_ready(function(s)
+				got = s
+			end)
+			assert.is_not_nil(got)
+			assert.equals(80, got.level)
+		end)
+	end)
+
 	describe("Audio.Volume refresh (post-init change detection)", function()
 		before_each(function()
 			Audio.setup({ backend = make_backend() })
@@ -344,6 +408,91 @@ describe("audio (init)", function()
 			end)
 			on_sink("57", s, meta)
 			assert.equals(0, count)
+		end)
+	end)
+
+	describe("proxy binding", function()
+		before_each(function()
+			Audio.setup({ backend = make_backend() })
+		end)
+
+		it("Audio.Volume subscriber fires on rebind (default switch)", function()
+			on_sink("57", { level = 40, muted = false }, {})
+			local received
+			Audio.Volume:subscribe(function(s)
+				received = s
+			end)
+			on_sink("60", { level = 70, muted = true }, {})
+			assert.is_not_nil(received)
+			assert.equals(70, received.level)
+			assert.is_true(received.muted)
+		end)
+
+		it("Audio.Volume.id updates to new default on rebind", function()
+			on_sink("57", { level = 40, muted = false }, {})
+			on_sink("60", { level = 70, muted = true }, {})
+			assert.equals("60", Audio.Volume.id)
+		end)
+
+		it("Audio.Volume subscriber registered before first bind persists across rebind", function()
+			local states = {}
+			Audio.Volume:subscribe(function(s)
+				states[#states + 1] = s
+			end)
+			on_sink("57", { level = 40, muted = false }, {})
+			on_sink("60", { level = 70, muted = true }, {})
+			assert.equals(1, #states)
+			assert.equals(70, states[1].level)
+		end)
+
+		it("control on Audio.Volume propagates to sinks collection handle subscriber", function()
+			on_sink("57", { level = 40, muted = false, is_default = true }, {})
+			local received
+			Audio.sinks.all()[1]:subscribe(function(s)
+				received = s
+			end)
+			Audio.Volume:adjust_perc(10)
+			sink_api_calls[1].cb(50, false)
+			assert.is_not_nil(received)
+			assert.equals(50, received.level)
+		end)
+
+		it("on_control fires on Audio.Volume via delegation through collection handle", function()
+			on_sink("57", { level = 40, muted = false, is_default = true }, {})
+			local control_states = {}
+			Audio.Volume:on_control(function(s)
+				control_states[#control_states + 1] = s
+			end)
+			Audio.Volume:toggle_mute()
+			sink_api_calls[1].cb(40, true)
+			assert.equals(1, #control_states)
+			assert.is_true(control_states[1].muted)
+		end)
+
+		it("rebind does not fire on_control subscribers", function()
+			on_sink("57", { level = 40, muted = false }, {})
+			local count = 0
+			Audio.Volume:on_control(function()
+				count = count + 1
+			end)
+			on_sink("60", { level = 70, muted = true }, {})
+			assert.equals(0, count)
+		end)
+	end)
+
+	describe("Audio.Volume on_ready (proxy)", function()
+		before_each(function()
+			Audio.setup({ backend = make_backend() })
+		end)
+
+		it("fires once on first bind, not on subsequent rebind", function()
+			local count = 0
+			Audio.Volume:on_ready(function()
+				count = count + 1
+			end)
+			on_sink("57", { level = 40, muted = false }, {})
+			on_sink("60", { level = 70, muted = true }, {})
+			assert.equals(1, count)
 		end)
 	end)
 end)
