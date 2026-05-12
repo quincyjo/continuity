@@ -20,6 +20,7 @@ build = {
     modules = {
         ["continuity.alttab"]                        = "lua/continuity/alttab/init.lua",
         ["continuity.audio"]                         = "lua/continuity/audio/init.lua",
+        ["continuity.audio.devices"]                 = "lua/continuity/audio/devices.lua",
         ["continuity.audio.inputs"]                  = "lua/continuity/audio/inputs.lua",
         ["continuity.audio.backends.alsa"]           = "lua/continuity/audio/backends/alsa.lua",
         ["continuity.audio.backends.pulse"]          = "lua/continuity/audio/backends/pulse.lua",
@@ -51,7 +52,10 @@ build = {
         ["continuity.tools.grep"]                    = "lua/continuity/tools/grep/init.lua",
         ["continuity.tools.grep.backends.grep"]      = "lua/continuity/tools/grep/backends/grep.lua",
         ["continuity.tools.grep.backends.rg"]        = "lua/continuity/tools/grep/backends/rg.lua",
+        ["continuity.types"]                         = "lua/continuity/types.lua",
         ["continuity.util.app_icon"]                 = "lua/continuity/util/app_icon.lua",
+        ["continuity.util.json"]                     = "lua/continuity/util/json/init.lua",
+        ["continuity.util.json.json_lua"]            = "lua/continuity/util/json/json_lua.lua",
         ["continuity.util.process"]                  = "lua/continuity/util/process.lua",
     },
 }
