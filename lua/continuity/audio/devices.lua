@@ -149,6 +149,27 @@ function devices.new()
 		fire(state.on_removed_cbs, id)
 	end
 
+	function device_handles.patch(id, partial)
+		local handle = state.handles[id]
+		if not handle then
+			return nil, nil
+		end
+		local changed = false
+		for k, v in pairs(partial) do
+			if handle.state[k] ~= v then
+				changed = true
+			end
+		end
+		if changed then
+			for k, v in pairs(partial) do
+				handle.state[k] = v
+			end
+			fire(state.subscribers[id] or {}, handle.state)
+			fire(state.on_updated_cbs, handle)
+		end
+		return handle.state, { name = handle.name, description = handle.description }
+	end
+
 	local function bind(api_sub)
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted

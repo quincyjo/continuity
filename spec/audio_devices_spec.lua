@@ -514,6 +514,59 @@ describe("audio.devices registry", function()
 		end)
 	end)
 
+	describe("handles.patch", function()
+		it("fires subscriber when field changes and preserves other fields", function()
+			local states = {}
+			handles.add("57", { level = 40, muted = false, is_default = false })
+			inst.all()[1]:subscribe(function(s)
+				states[#states + 1] = s
+			end)
+			handles.patch("57", { is_default = true })
+			assert.equals(1, #states)
+			assert.is_true(states[1].is_default)
+			assert.equals(40, states[1].level)
+			assert.is_false(states[1].muted)
+		end)
+
+		it("does not fire subscriber when value is unchanged", function()
+			local count = 0
+			handles.add("57", { level = 40, muted = false, is_default = true })
+			inst.all()[1]:subscribe(function()
+				count = count + 1
+			end)
+			handles.patch("57", { is_default = true })
+			assert.equals(0, count)
+		end)
+
+		it("fires on_updated when changed, not when unchanged", function()
+			local updated = {}
+			inst.on_updated(function(h)
+				updated[#updated + 1] = h
+			end)
+			handles.add("57", { level = 40, muted = false, is_default = false })
+			handles.patch("57", { is_default = true })
+			assert.equals(1, #updated)
+			handles.patch("57", { is_default = true })
+			assert.equals(1, #updated)
+		end)
+
+		it("returns current state and meta when handle exists", function()
+			handles.add("57", { level = 40, muted = false }, { name = "alsa_out", description = "Built-in" })
+			local s, meta = handles.patch("57", { is_default = true })
+			assert.is_not_nil(s)
+			assert.is_true(s.is_default)
+			assert.equals(40, s.level)
+			assert.equals("alsa_out", meta.name)
+			assert.equals("Built-in", meta.description)
+		end)
+
+		it("returns nil, nil for unknown id", function()
+			local s, meta = handles.patch("unknown", { is_default = true })
+			assert.is_nil(s)
+			assert.is_nil(meta)
+		end)
+	end)
+
 	describe("set_default uses api_sub regardless of device type", function()
 		it("set_default calls api_sub.set_default with handle idx", function()
 			local calls = {}
