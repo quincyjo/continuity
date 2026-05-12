@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.2.1
+
+### Changes
+
+**Backlight:** `backlight.devices` gains `on_updated`
+
+Backlight `devices` no fully complies with the `Observable` contract with the
+addition of `on_updated`.
+
+**Audio:** Simplified Pulse default sink/source change detection
+
+A new `DeviceHandle:patch(id, partial)` API merges partial field updates,
+fires subscribers and `on_updated` if changed, and returns the updated state
+and meta by reference. The Pulse backend now handles server events with
+`get-default-X` instead of a list, and `set_default` performs an optimistic
+handle patch before the confirmation callback arrives, working around
+inconsistent `pactl` subscribe event emission for default changes.
+
+**Shared generic type hierarchy**
+
+A new `lua/continuity/types.lua` module defines the primary API contracts as
+generic EmmyLua types: `Subscribable<T>`, `Monitor<T>`, `ReadyAware<T>`,
+`Controllable<T>`, and `Observable<T>`. Annotations across Audio, Backlight,
+Media, and Sysinfo modules have been updated to reference these types.
+
+### Bug Fixes
+
+- **Audio:** `Audio.Volume` / `Audio.Capture` now immediately dispatch
+  `on_ready` when subscribed after initialization rather causing an error.
+- **Audio:** Pre built handles `Volume` and `Capture` now correctly bind to
+  the current default sink/source represented by `audio.sinks` and
+  `audio.sources`. Control actions and updates to the current default now
+  correctly trigger subscriptions on both handles.
+- **Audio:** control actions now fires `on_updated` callbacks consistently
+  alongside subscribe callbacks for control actions as well as external
+  poll/subscribe events.
+- **Audio:** Pulse default sink/source change detection now works regardless
+  of whether sink/source change events are emitted for the effected devices.
+
+### Breaking Changes
+
+*(none)*
+
 ## v0.2.0
 
 ### Changes
