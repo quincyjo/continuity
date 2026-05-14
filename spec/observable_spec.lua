@@ -318,6 +318,133 @@ describe("Observable", function()
 			end)
 		end)
 
+		describe("get()", function()
+			it("returns the group for a known key", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+
+				local group = grouped.get("sink")
+				assert.is_not_nil(group)
+				assert.equals("sink", group.id)
+			end)
+
+			it("returns nil for an unknown key", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				assert.is_nil(grouped.get("does_not_exist"))
+			end)
+
+			it("returned group reflects subsequent additions", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+				local group = grouped.get("sink")
+				add({ id = "b", kind = "sink" })
+
+				assert.equals(2, #group.entries)
+			end)
+		end)
+
+		describe("group:subscribe", function()
+			it("fires when a second item is added to the group", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+				local group = grouped.get("sink")
+
+				local fired
+				group:subscribe(function(g)
+					fired = g
+				end)
+
+				add({ id = "b", kind = "sink" })
+
+				assert.is_not_nil(fired)
+				assert.equals(2, #fired)
+			end)
+
+			it("fires when an item is removed from the group but the group survives", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+				add({ id = "b", kind = "sink" })
+				local group = grouped.get("sink")
+
+				local fired
+				group:subscribe(function(g)
+					fired = g
+				end)
+
+				remove("a")
+
+				assert.is_not_nil(fired)
+				assert.equals(1, #fired)
+			end)
+
+			it("does not fire when the first item is added (group just created)", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+
+				local called = false
+				grouped.on_added(function(group)
+					group:subscribe(function()
+						called = true
+					end)
+				end)
+
+				add({ id = "a", kind = "sink" })
+
+				assert.is_false(called)
+			end)
+
+			it("supports multiple independent subscribers on the same group", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+				local group = grouped.get("sink")
+
+				local count_a, count_b = 0, 0
+				group:subscribe(function()
+					count_a = count_a + 1
+				end)
+				group:subscribe(function()
+					count_b = count_b + 1
+				end)
+
+				add({ id = "b", kind = "sink" })
+
+				assert.equals(1, count_a)
+				assert.equals(1, count_b)
+			end)
+
+			it("unsubscribing stops further callbacks", function()
+				local grouped = obs:group_by(function(item)
+					return item.kind
+				end)
+				add({ id = "a", kind = "sink" })
+				local group = grouped.get("sink")
+
+				local count = 0
+				local unsub = group:subscribe(function()
+					count = count + 1
+				end)
+
+				add({ id = "b", kind = "sink" })
+				unsub()
+				add({ id = "c", kind = "sink" })
+
+				assert.equals(1, count)
+			end)
+		end)
+
 		describe("unsubscribe", function()
 			it("on_added unsub stops further callbacks", function()
 				local grouped = obs:group_by(function(item)
@@ -701,6 +828,120 @@ describe("Observable", function()
 				local result = unique.all()
 				assert.equals(1, #result)
 				assert.equals("a1", result[1].id)
+			end)
+		end)
+
+		describe("get()", function()
+			it("returns the representative item for a known id (First strategy)", function()
+				local unique = obs:unique(function(item)
+					return item.name
+				end)
+				add({ id = "a1", name = "alpha" })
+				add({ id = "a2", name = "alpha" })
+
+				assert.equals("a1", unique.get("a1").id)
+			end)
+
+			it("returns the representative even when queried via a non-shown item id (First strategy)", function()
+				local unique = obs:unique(function(item)
+					return item.name
+				end)
+				add({ id = "a1", name = "alpha" })
+				add({ id = "a2", name = "alpha" })
+
+				assert.equals("a1", unique.get("a2").id)
+			end)
+
+			it("returns the last-added item for a known id (Last strategy)", function()
+				local unique = obs:unique(function(item)
+					return item.name
+				end, Observable.UniqueStrategy.Last)
+				add({ id = "a1", name = "alpha" })
+				add({ id = "a2", name = "alpha" })
+
+				assert.equals("a2", unique.get("a1").id)
+			end)
+
+			it("returns nil for an unknown id", function()
+				local unique = obs:unique(function(item)
+					return item.name
+				end)
+				assert.is_nil(unique.get("does_not_exist"))
+			end)
+		end)
+
+		describe("on_updated fires for the shown item when it is updated", function()
+			it("fires when the First-shown item is updated", function()
+				local item_a1 = { id = "a1", name = "alpha" }
+				local unique = obs:unique(function(item)
+					return item.name
+				end)
+				add(item_a1)
+
+				local fired
+				unique.on_updated(function(item)
+					fired = item
+				end)
+
+				update(item_a1)
+
+				assert.is_not_nil(fired)
+				assert.equals("a1", fired.id)
+			end)
+
+			it("does not fire when a non-First item is updated (First strategy)", function()
+				local item_a2 = { id = "a2", name = "alpha" }
+				local unique = obs:unique(function(item)
+					return item.name
+				end)
+				add({ id = "a1", name = "alpha" })
+				add(item_a2)
+
+				local called = false
+				unique.on_updated(function()
+					called = true
+				end)
+
+				update(item_a2)
+
+				assert.is_false(called)
+			end)
+
+			it("fires when the Last-shown item is updated", function()
+				local item_a2 = { id = "a2", name = "alpha" }
+				local unique = obs:unique(function(item)
+					return item.name
+				end, Observable.UniqueStrategy.Last)
+				add({ id = "a1", name = "alpha" })
+				add(item_a2)
+
+				local fired
+				unique.on_updated(function(item)
+					fired = item
+				end)
+
+				update(item_a2)
+
+				assert.is_not_nil(fired)
+				assert.equals("a2", fired.id)
+			end)
+
+			it("does not fire when a non-Last item is updated (Last strategy)", function()
+				local item_a1 = { id = "a1", name = "alpha" }
+				local unique = obs:unique(function(item)
+					return item.name
+				end, Observable.UniqueStrategy.Last)
+				add(item_a1)
+				add({ id = "a2", name = "alpha" })
+
+				local called = false
+				unique.on_updated(function()
+					called = true
+				end)
+
+				update(item_a1)
+
+				assert.is_false(called)
 			end)
 		end)
 
