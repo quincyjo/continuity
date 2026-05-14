@@ -46,6 +46,8 @@ local gears = require("gears")
 
 ---@class BacklightDevices : Observable<BacklightHandle>
 
+local Observable = require("continuity.observable")
+
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
 local _handles = {} ---@type table<string, BacklightHandle>
@@ -239,7 +241,7 @@ function backlight.setup(opts)
 end
 
 ---@type BacklightDevices
-backlight.devices = {
+backlight.devices = Observable({
 	on_added = function(cb)
 		_devices_added_subs[#_devices_added_subs + 1] = cb
 		return function()
@@ -283,7 +285,11 @@ backlight.devices = {
 		end
 		return result
 	end,
-}
+
+	get = function(id)
+		return _handles[id]
+	end,
+})
 
 function backlight.stop()
 	if _backend then

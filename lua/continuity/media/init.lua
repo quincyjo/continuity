@@ -69,6 +69,8 @@ local notification_mod = require("continuity.media.notification")
 ---@field on_removed    fun(self, cb: fun(source_id: string)): fun()
 ---@field active        fun(self: MediaSource): boolean
 
+local Observable = require("continuity.observable")
+
 local _registry = nil
 local _notifications = nil
 
@@ -109,7 +111,7 @@ end
 --- Source lifecycle subscriptions and snapshot accessor.
 --- on_updated debounce opts allow multi-backend coalescing to settle before firing.
 ---@type MediaSources
-media.sources = {
+media.sources = Observable({
 	on_added = function(cb)
 		assert(_registry, "media.sources.on_added() called before media.setup()")
 		return _registry.on_source_added(cb)
@@ -131,7 +133,14 @@ media.sources = {
 		end
 		return _registry.sources()
 	end,
-}
+
+	get = function(id)
+		if not _registry then
+			return nil
+		end
+		return _registry.source(id)
+	end,
+})
 
 --- Toggle playback of the most recently registered media source.
 function media.play_pause()
