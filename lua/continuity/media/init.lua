@@ -138,7 +138,7 @@ media.sources = Observable({
 		if not _registry then
 			return nil
 		end
-		return _registry.source(id)
+		return _registry.get(id)
 	end,
 })
 
