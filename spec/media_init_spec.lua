@@ -90,6 +90,37 @@ describe("media module", function()
 		assert.equals("fake:1", sources[1].id)
 	end)
 
+	it("sources.get() returns the source for a known id", function()
+		local media = fresh_media()
+		local fake_backend = {
+			name = "fake",
+			start = function(_self, reg)
+				reg.add("fake:1", "fake", { title = "Track" })
+			end,
+			stop = function(_self) end,
+		}
+		media.setup({ backends = { fake_backend } })
+		local source = media.sources.get("fake:1")
+		assert.is_not_nil(source)
+		assert.equals("fake:1", source.id)
+	end)
+
+	it("sources.get() returns nil for an unknown id", function()
+		local media = fresh_media()
+		local fake_backend = {
+			name = "fake",
+			start = function(_self, _reg) end,
+			stop = function(_self) end,
+		}
+		media.setup({ backends = { fake_backend } })
+		assert.is_nil(media.sources.get("does_not_exist"))
+	end)
+
+	it("sources.get() returns nil before setup", function()
+		local media = fresh_media()
+		assert.is_nil(media.sources.get("any"))
+	end)
+
 	it("notification fires when backend adds a playing source", function()
 		local media = fresh_media()
 		local fake_backend = {

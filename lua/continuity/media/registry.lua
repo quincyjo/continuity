@@ -51,6 +51,7 @@
 ---@field on_source_removed     fun(cb: fun(source_id: string)): fun()
 ---@field on_playback_action    fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
 ---@field registrar             fun(): SourceRegistrar
+---@field get                   fun(source_id: string): MediaSource|nil
 ---@field PlaybackAction        table<string, PlaybackAction>
 
 ---@class RegistrySubscribeOpts
@@ -591,6 +592,12 @@ function registry.new()
 			remove = r.remove,
 			add_dbus_sender = r.add_dbus_sender,
 		}
+	end
+
+	---@param id string
+	---@return MediaSource|nil
+	function r.get(id)
+		return state.sources[id]
 	end
 
 	return r

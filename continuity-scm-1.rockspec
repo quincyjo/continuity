@@ -36,6 +36,7 @@ build = {
         ["continuity.media.registry"]                = "lua/continuity/media/registry.lua",
         ["continuity.media.backends.mpd"]            = "lua/continuity/media/backends/mpd.lua",
         ["continuity.media.backends.mpris"]          = "lua/continuity/media/backends/mpris.lua",
+        ["continuity.observable"]                    = "lua/continuity/observable.lua",
         ["continuity.sysinfo.bat"]                   = "lua/continuity/sysinfo/bat/init.lua",
         ["continuity.sysinfo.bat.backends.udevadm"]  = "lua/continuity/sysinfo/bat/backends/udevadm.lua",
         ["continuity.sysinfo.cpu"]                   = "lua/continuity/sysinfo/cpu/init.lua",

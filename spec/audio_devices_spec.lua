@@ -120,6 +120,17 @@ describe("audio.devices registry", function()
 			assert.equals(2, #inst.all())
 		end)
 
+		it("get() returns the handle for a known id", function()
+			handles.add("alsa_output.pci", { level = 50, muted = false, is_default = true })
+			local handle = inst.get("alsa_output.pci")
+			assert.is_not_nil(handle)
+			assert.equals("alsa_output.pci", handle.id)
+		end)
+
+		it("get() returns nil for an unknown id", function()
+			assert.is_nil(inst.get("does_not_exist"))
+		end)
+
 		describe("idempotent (handle already exists)", function()
 			local meta = { name = "alsa_output.pci", description = "Built-in Audio" }
 
