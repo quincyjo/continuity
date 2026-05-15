@@ -4,8 +4,8 @@
 ---@field on_removed fun(cb: fun(id: string)): fun()
 ---@field all        fun(): T[]
 ---@field get        fun(id: string): T|nil
----@field group_by   fun(group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
----@field unique     fun(unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
+---@field group_by   fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
+---@field unique     fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
 
 ---@class Group<K, T> : Subscribable<T[]>
 ---@field id K
