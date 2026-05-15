@@ -1,5 +1,4 @@
-local gears = require("gears")
-local ipmonitor = require("continuity.sysinfo.net.backends.ipmonitor")
+local Monitor = require("continuity.monitor")
 
 ---@alias DeviceState "up"|"down"
 local DeviceState = {
@@ -22,72 +21,25 @@ local DeviceState = {
 ---@field tx_rate  number                         Bytes per second total across all devices
 ---@field rx_rate  number                         Bytes per second total across all devices
 
----@class NetBackend
----@field start fun(self, cb: fun(state: NetState))
----@field stop  fun(self)
+---@class NetBackend : MonitorBackend<NetState>
 
----@class NetOptions
+---@class NetOptions : MonitorOptions<NetState>
 ---@field backend? NetBackend  The backend to provide network monitoring, defaults to ipmonitor backend.
 
-local _subscribers = {}
-local _backend = nil
-local _setup_called = false
+---@class NetMonitor : Monitor<NetState, NetOptions>
+---@field setup       fun(opts: NetOptions?)
+---@field DeviceState table<string, DeviceState>
 
-local net = {}
+---@type NetMonitor
+local net = Monitor({
+	name = "net",
+	configure = function(_, opts)
+		opts = opts or {}
+		return opts.backend or require("continuity.sysinfo.net.backends.ipmonitor")()
+	end,
+})
 
 net.DeviceState = DeviceState
 
----@type NetState|nil
-net.state = nil
-
-local function _on_update(data)
-	net.state = data
-	for _, sub in ipairs(_subscribers) do
-		sub(net.state)
-	end
-end
-
---- Initiate network monitoring.
----@param opts? NetOptions
-function net.setup(opts)
-	if _setup_called then
-		gears.debug.print_warning("sysinfo.net: setup() called more than once; ignoring")
-		return
-	end
-	_setup_called = true
-	opts = opts or {}
-	_backend = opts.backend or ipmonitor()
-	_backend:start(_on_update)
-end
-
---- Subscribe to receive network state updates as available.
----@param fn fun(state: NetState)  Callback to receive updates.
----@return fun()                   Unsubscribe function.
-function net:subscribe(fn)
-	_subscribers[#_subscribers + 1] = fn
-	if net.state ~= nil then
-		fn(net.state)
-	end
-	return function()
-		for i, sub in ipairs(_subscribers) do
-			if sub == fn then
-				table.remove(_subscribers, i)
-				return
-			end
-		end
-	end
-end
-
---- Stop network monitoring.
-function net.stop()
-	if _backend then
-		_backend:stop()
-		_backend = nil
-	end
-	_subscribers = {}
-	net.state = nil
-	_setup_called = false
-end
-
----@type Monitor<NetState>
+---@type NetMonitor
 return net

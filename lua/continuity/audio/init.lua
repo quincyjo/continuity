@@ -3,6 +3,8 @@
 
 local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
+local ReadyAware = require("continuity.readyaware")
+local Controllable = require("continuity.controllable")
 
 ---@alias AudioCallback fun(state: AudioState)
 
@@ -74,87 +76,62 @@ local Audio = {}
 
 -- Pre setup metatable for handles. Allows subscribing to events without a
 -- backend. All mutation functions do nothing.
-local HandleMT = {
-	__index = {
-		on_ready = function(self, cb)
-			if self._private.initialized then
-				cb(self.state)
-				return
-			end
-			self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = cb
-		end,
-		subscribe = function(self, cb)
-			self._private.subscribers[#self._private.subscribers + 1] = cb
-			return function()
-				self:unsubscribe(cb)
-			end
-		end,
-		on_control = function(self, cb)
-			self._private.on_control_cbs[#self._private.on_control_cbs + 1] = cb
-			return function()
-				for i, sub in ipairs(self._private.on_control_cbs) do
-					if sub == cb then
-						table.remove(self._private.on_control_cbs, i)
-						return
-					end
-				end
-			end
-		end,
-		---@deprecated Use the function returned by subscribe() instead.
-		unsubscribe = function(self, cb)
-			for i, sub in ipairs(self._private.subscribers) do
-				if sub == cb then
-					table.remove(self._private.subscribers, i)
-					return
-				end
-			end
-		end,
-		adjust_perc = function(_, _) end,
-		set_perc = function(_, _) end,
-		toggle_mute = function(_) end,
-		set_default = function(_) end,
-	},
-}
+local HandleMT = { __index = {} }
+for k, v in pairs(ReadyAware.methods) do
+	HandleMT.__index[k] = v
+end
+for k, v in pairs(Controllable.methods) do
+	HandleMT.__index[k] = v
+end
+
+---@deprecated Use the function returned by subscribe() instead.
+HandleMT.__index.unsubscribe = function(self, cb)
+	for i, sub in ipairs(self._subs) do
+		if sub == cb then
+			table.remove(self._subs, i)
+			return
+		end
+	end
+end
+
+HandleMT.__index.adjust_perc = function(_, _) end
+HandleMT.__index.set_perc = function(_, _) end
+HandleMT.__index.toggle_mute = function(_) end
+HandleMT.__index.set_default = function(_) end
 
 ---@type SinkHandle
-Audio.Volume = setmetatable({
-	id = "Master",
-	name = nil,
-	description = nil,
-	state = {
-		muted = false,
-		level = 0,
-	},
-	_private = {
-		initialized = false,
-		on_ready_cbs = {},
-		on_control_cbs = {},
-		subscribers = {},
+Audio.Volume = setmetatable(
+	ReadyAware.init(Controllable.init({
+		id = "Master",
+		name = nil,
+		description = nil,
+		state = {
+			muted = false,
+			level = 0,
+		},
 		bound_handle = nil,
 		bound_unsub = nil,
 		bound_control_unsub = nil,
-	},
-}, HandleMT)
+	})),
+	HandleMT
+)
 
 ---@type SourceHandle
-Audio.Capture = setmetatable({
-	id = "Capture",
-	name = nil,
-	description = nil,
-	state = {
-		muted = false,
-		level = 0,
-	},
-	_private = {
-		initialized = false,
-		on_ready_cbs = {},
-		on_control_cbs = {},
-		subscribers = {},
+Audio.Capture = setmetatable(
+	ReadyAware.init(Controllable.init({
+		id = "Capture",
+		name = nil,
+		description = nil,
+		state = {
+			muted = false,
+			level = 0,
+		},
 		bound_handle = nil,
 		bound_unsub = nil,
 		bound_control_unsub = nil,
-	},
-}, HandleMT)
+	})),
+	HandleMT
+)
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
@@ -187,47 +164,34 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 
 	local new_name = meta and meta.name or nil
 	local new_desc = meta and meta.description or nil
-	local is_first_bind = not handle._private.initialized
-	local is_device_switch = handle._private.bound_handle ~= collection_handle
+	local is_device_switch = handle.bound_handle ~= collection_handle
 
 	if is_device_switch then
-		if handle._private.bound_unsub then
-			handle._private.bound_unsub()
+		if handle.bound_unsub then
+			handle.bound_unsub()
 		end
-		if handle._private.bound_control_unsub then
-			handle._private.bound_control_unsub()
+		if handle.bound_control_unsub then
+			handle.bound_control_unsub()
 		end
 
-		handle._private.bound_handle = collection_handle
+		handle.bound_handle = collection_handle
 		handle.id = id
 		handle.name = new_name
 		handle.description = new_desc
 		handle.state = collection_handle.state
 
-		handle._private.bound_unsub = collection_handle:subscribe(function(s)
-			handle.state = s
-			for _, cb in ipairs(handle._private.subscribers) do
-				cb(s)
-			end
+		handle.bound_unsub = collection_handle:subscribe(function(s)
+			---@cast handle ReadyAwareInternal<AudioState>
+			handle:push(s)
 		end)
 
-		handle._private.bound_control_unsub = collection_handle:on_control(function(s)
-			for _, cb in ipairs(handle._private.on_control_cbs) do
-				cb(s)
-			end
+		handle.bound_control_unsub = collection_handle:on_control(function(s)
+			---@cast handle ControllableInternal<AudioState>
+			handle:control_event(s)
 		end)
 
-		if is_first_bind then
-			handle._private.initialized = true
-			for _, cb in ipairs(handle._private.on_ready_cbs) do
-				cb(handle.state)
-			end
-			handle._private.on_ready_cbs = nil
-		else
-			for _, cb in ipairs(handle._private.subscribers) do
-				cb(handle.state)
-			end
-		end
+		---@cast handle ReadyAwareInternal<AudioState>
+		handle:push(handle.state)
 	else
 		-- Same device. State changes propagate via the collection forwarder.
 		-- Only explicitly notify if metadata changed.
@@ -235,9 +199,8 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 		if handle.name ~= new_name or handle.description ~= new_desc then
 			handle.name = new_name
 			handle.description = new_desc
-			for _, cb in ipairs(handle._private.subscribers) do
-				cb(handle.state)
-			end
+			---@cast handle ReadyAwareInternal<AudioState>
+			handle:push(handle.state)
 		end
 	end
 end
@@ -252,23 +215,23 @@ function Audio.setup(opts)
 	local source_handles = bind_sources(backend.api.source)
 
 	HandleMT.__index.adjust_perc = function(self, delta)
-		if self._private.bound_handle then
-			self._private.bound_handle:adjust_perc(delta)
+		if self.bound_handle then
+			self.bound_handle:adjust_perc(delta)
 		end
 	end
 	HandleMT.__index.set_perc = function(self, value)
-		if self._private.bound_handle then
-			self._private.bound_handle:set_perc(value)
+		if self.bound_handle then
+			self.bound_handle:set_perc(value)
 		end
 	end
 	HandleMT.__index.toggle_mute = function(self)
-		if self._private.bound_handle then
-			self._private.bound_handle:toggle_mute()
+		if self.bound_handle then
+			self.bound_handle:toggle_mute()
 		end
 	end
 	HandleMT.__index.set_default = function(self)
-		if self._private.bound_handle then
-			self._private.bound_handle:set_default()
+		if self.bound_handle then
+			self.bound_handle:set_default()
 		end
 	end
 

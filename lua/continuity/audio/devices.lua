@@ -8,14 +8,14 @@
 local devices = {}
 
 local Observable = require("continuity.observable")
+local ReadyAware = require("continuity.readyaware")
+local Controllable = require("continuity.controllable")
 
 ---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
-	---@type { handles: table<string, AudioHandle>, subscribers: table<string, fun(state: AudioState)[]>, on_control_cbs: table<string, fun(state: AudioState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
+	---@type { handles: table<string, AudioHandle>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
 		handles = {},
-		subscribers = {},
-		on_control_cbs = {},
 		handle_removed_cbs = {},
 		on_added_cbs = {},
 		on_updated_cbs = {},
@@ -39,29 +39,24 @@ function devices.new()
 		end
 	end
 
-	local HandleMT = {
-		__index = {
-			subscribe = function(self, cb)
-				local cbs = state.subscribers[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
-			on_control = function(self, cb)
-				local cbs = state.on_control_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
-			on_removed = function(self, cb)
-				local cbs = state.handle_removed_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
-			adjust_perc = function() end,
-			set_perc = function() end,
-			toggle_mute = function() end,
-			set_default = function() end,
-		},
-	}
+	local HandleMT = { __index = {} }
+	for k, v in pairs(ReadyAware.methods) do
+		HandleMT.__index[k] = v
+	end
+	for k, v in pairs(Controllable.methods) do
+		HandleMT.__index[k] = v
+	end
+
+	HandleMT.__index.on_removed = function(self, cb)
+		local cbs = state.handle_removed_cbs[self.id]
+		cbs[#cbs + 1] = cb
+		return make_unsub(cbs, cb)
+	end
+
+	HandleMT.__index.adjust_perc = function() end
+	HandleMT.__index.set_perc = function() end
+	HandleMT.__index.toggle_mute = function() end
+	HandleMT.__index.set_default = function() end
 
 	local inst = {}
 
@@ -115,16 +110,21 @@ function devices.new()
 			device_handles.update(id, initial_state or {})
 			return
 		end
-		local handle = setmetatable({
-			id = id,
-			name = meta and meta.name,
-			description = meta and meta.description,
-			state = initial_state or {},
-		}, HandleMT)
+		local handle = setmetatable(
+			ReadyAware.init(Controllable.init({
+				id = id,
+				name = meta and meta.name,
+				description = meta and meta.description,
+				state = { level = 0, muted = false },
+			})),
+			HandleMT
+		)
 		state.handles[id] = handle
-		state.subscribers[id] = {}
-		state.on_control_cbs[id] = {}
 		state.handle_removed_cbs[id] = {}
+		if initial_state then
+			---@cast handle ReadyAwareInternal<AudioState>
+			handle:push(initial_state)
+		end
 		fire(state.on_added_cbs, handle)
 	end
 
@@ -134,8 +134,8 @@ function devices.new()
 			return
 		end
 		if full_state_changed(handle.state, new_state) then
-			handle.state = new_state
-			fire(state.subscribers[id] or {}, handle.state)
+			---@cast handle ReadyAwareInternal<AudioState>
+			handle:push(new_state)
 			fire(state.on_updated_cbs, handle)
 		end
 	end
@@ -146,8 +146,6 @@ function devices.new()
 		end
 		fire(state.handle_removed_cbs[id] or {}, id)
 		state.handles[id] = nil
-		state.subscribers[id] = nil
-		state.on_control_cbs[id] = nil
 		state.handle_removed_cbs[id] = nil
 		fire(state.on_removed_cbs, id)
 	end
@@ -167,7 +165,8 @@ function devices.new()
 			for k, v in pairs(partial) do
 				handle.state[k] = v
 			end
-			fire(state.subscribers[id] or {}, handle.state)
+			---@cast handle ReadyAwareInternal<AudioState>
+			handle:push(handle.state)
 			fire(state.on_updated_cbs, handle)
 		end
 		return handle.state, { name = handle.name, description = handle.description }
@@ -179,10 +178,12 @@ function devices.new()
 			handle.state.level = level
 			handle.state.muted = muted
 			if changed then
-				fire(state.subscribers[handle.id] or {}, handle.state)
+				---@cast handle ReadyAwareInternal<AudioState>
+				handle:push(handle.state)
 				fire(state.on_updated_cbs, handle)
 			end
-			fire(state.on_control_cbs[handle.id] or {}, handle.state)
+			---@cast handle ControllableInternal<AudioState>
+			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
@@ -192,7 +193,8 @@ function devices.new()
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				fire(state.on_control_cbs[self.id] or {}, self.state)
+				---@cast self ControllableInternal<AudioState>
+				self:control_event(self.state)
 				return
 			end
 			api_sub.adjust_perc(self.id, delta, function(level, muted)
@@ -215,7 +217,8 @@ function devices.new()
 
 		HandleMT.__index.set_default = function(self)
 			api_sub.set_default(self.id, function()
-				fire(state.on_control_cbs[self.id] or {}, self.state)
+				---@cast self ControllableInternal<AudioState>
+				self:control_event(self.state)
 			end)
 		end
 
