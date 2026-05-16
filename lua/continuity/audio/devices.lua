@@ -10,9 +10,11 @@ local devices = {}
 local Observable = require("continuity.observable")
 local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local extend = require("continuity.util.extend")
 
 ---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
+	local AudioHandle = extend(ReadyAware, Controllable)
 	---@type { handles: table<string, AudioHandle>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
 		handles = {},
@@ -39,13 +41,7 @@ function devices.new()
 		end
 	end
 
-	local HandleMT = { __index = {} }
-	for k, v in pairs(ReadyAware.methods) do
-		HandleMT.__index[k] = v
-	end
-	for k, v in pairs(Controllable.methods) do
-		HandleMT.__index[k] = v
-	end
+	local HandleMT = AudioHandle.MT
 
 	HandleMT.__index.on_removed = function(self, cb)
 		local cbs = state.handle_removed_cbs[self.id]
@@ -111,12 +107,12 @@ function devices.new()
 			return
 		end
 		local handle = setmetatable(
-			ReadyAware.init(Controllable.init({
+			AudioHandle.init({
 				id = id,
 				name = meta and meta.name,
 				description = meta and meta.description,
 				state = { level = 0, muted = false },
-			})),
+			}),
 			HandleMT
 		)
 		state.handles[id] = handle
@@ -141,10 +137,12 @@ function devices.new()
 	end
 
 	function device_handles.remove(id)
-		if not state.handles[id] then
+		local handle = state.handles[id]
+		if not handle then
 			return
 		end
 		fire(state.handle_removed_cbs[id] or {}, id)
+		AudioHandle.init(handle)
 		state.handles[id] = nil
 		state.handle_removed_cbs[id] = nil
 		fire(state.on_removed_cbs, id)

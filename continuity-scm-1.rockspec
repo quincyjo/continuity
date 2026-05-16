@@ -58,6 +58,7 @@ build = {
         ["continuity.tools.grep.backends.rg"]        = "lua/continuity/tools/grep/backends/rg.lua",
         ["continuity.types"]                         = "lua/continuity/types.lua",
         ["continuity.util.app_icon"]                 = "lua/continuity/util/app_icon.lua",
+        ["continuity.util.extend"]                   = "lua/continuity/util/extend.lua",
         ["continuity.util.json"]                     = "lua/continuity/util/json/init.lua",
         ["continuity.util.json.json_lua"]            = "lua/continuity/util/json/json_lua.lua",
         ["continuity.util.process"]                  = "lua/continuity/util/process.lua",

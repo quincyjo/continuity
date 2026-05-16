@@ -149,10 +149,13 @@ function inputs.new()
 	end
 
 	function handles.remove(id)
-		if not state.inputs[id] then
+		local handle = state.inputs[id]
+		if not handle then
 			return
 		end
 		fire(state.handle_removed_cbs[id] or {}, id)
+		handle._subs = {}
+		Controllable.init(handle)
 		state.inputs[id] = nil
 		state.handle_removed_cbs[id] = nil
 		fire(state.on_removed_cbs, id)

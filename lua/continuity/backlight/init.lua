@@ -49,6 +49,9 @@ local gears = require("gears")
 local Observable = require("continuity.observable")
 local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local extend = require("continuity.util.extend")
+
+local BacklightHandle = extend(ReadyAware, Controllable)
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
@@ -72,13 +75,7 @@ local function _on_control(handle, brightness, raw)
 	handle:control_event(handle.state)
 end
 
-local HandleMeta = { __index = {} }
-for k, v in pairs(ReadyAware.methods) do
-	HandleMeta.__index[k] = v
-end
-for k, v in pairs(Controllable.methods) do
-	HandleMeta.__index[k] = v
-end
+local HandleMeta = BacklightHandle.MT
 
 ---@deprecated Use the function returned by subscribe() instead.
 HandleMeta.__index.unsubscribe = function(self, fn)
@@ -134,7 +131,7 @@ local function make_handle(kind)
 		state = { brightness = 0, raw = nil },
 		steps = nil,
 	}
-	ReadyAware.init(Controllable.init(handle))
+	BacklightHandle.init(handle)
 	return setmetatable(handle, HandleMeta)
 end
 
@@ -162,7 +159,11 @@ local function _on_device_added(info)
 end
 
 local function _on_device_removed(id)
-	_handles[id] = nil
+	local handle = _handles[id]
+	if handle then
+		BacklightHandle.init(handle)
+		_handles[id] = nil
+	end
 	for _, sub in ipairs(_devices_removed_subs) do
 		sub(id)
 	end

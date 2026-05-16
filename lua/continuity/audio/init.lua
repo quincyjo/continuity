@@ -5,6 +5,9 @@ local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
 local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local extend = require("continuity.util.extend")
+
+local AudioProxyHandle = extend(ReadyAware, Controllable)
 
 ---@alias AudioCallback fun(state: AudioState)
 
@@ -76,13 +79,7 @@ local Audio = {}
 
 -- Pre setup metatable for handles. Allows subscribing to events without a
 -- backend. All mutation functions do nothing.
-local HandleMT = { __index = {} }
-for k, v in pairs(ReadyAware.methods) do
-	HandleMT.__index[k] = v
-end
-for k, v in pairs(Controllable.methods) do
-	HandleMT.__index[k] = v
-end
+local HandleMT = AudioProxyHandle.MT
 
 ---@deprecated Use the function returned by subscribe() instead.
 HandleMT.__index.unsubscribe = function(self, cb)
@@ -101,7 +98,7 @@ HandleMT.__index.set_default = function(_) end
 
 ---@type SinkHandle
 Audio.Volume = setmetatable(
-	ReadyAware.init(Controllable.init({
+	AudioProxyHandle.init({
 		id = "Master",
 		name = nil,
 		description = nil,
@@ -112,13 +109,13 @@ Audio.Volume = setmetatable(
 		bound_handle = nil,
 		bound_unsub = nil,
 		bound_control_unsub = nil,
-	})),
+	}),
 	HandleMT
 )
 
 ---@type SourceHandle
 Audio.Capture = setmetatable(
-	ReadyAware.init(Controllable.init({
+	AudioProxyHandle.init({
 		id = "Capture",
 		name = nil,
 		description = nil,
@@ -129,7 +126,7 @@ Audio.Capture = setmetatable(
 		bound_handle = nil,
 		bound_unsub = nil,
 		bound_control_unsub = nil,
-	})),
+	}),
 	HandleMT
 )
 
