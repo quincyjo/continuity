@@ -7,6 +7,8 @@
 
 local devices = {}
 
+local Observable = require("continuity.observable")
+
 ---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
 	---@type { handles: table<string, AudioHandle>, subscribers: table<string, fun(state: AudioState)[]>, on_control_cbs: table<string, fun(state: AudioState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
@@ -85,6 +87,11 @@ function devices.new()
 			list[#list + 1] = h
 		end
 		return list
+	end
+
+	---@param id string
+	function inst.get(id)
+		return state.handles[id]
 	end
 
 	local function full_state_changed(old, new)
@@ -215,7 +222,7 @@ function devices.new()
 		return device_handles
 	end
 
-	return inst, bind
+	return Observable(inst), bind
 end
 
 return devices

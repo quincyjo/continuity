@@ -30,6 +30,8 @@
 
 ---@class InputCollection : Observable<SinkInputHandle>
 
+local Observable = require("continuity.observable")
+
 local inputs = {}
 
 ---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
@@ -113,6 +115,10 @@ function inputs.new()
 			list[#list + 1] = h
 		end
 		return list
+	end
+
+	function inst.get(id)
+		return state.inputs[id]
 	end
 
 	local handles = {}
@@ -213,7 +219,7 @@ function inputs.new()
 		return handles
 	end
 
-	return inst, bind
+	return Observable(inst), bind
 end
 
 return inputs

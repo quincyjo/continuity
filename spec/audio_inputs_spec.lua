@@ -50,6 +50,17 @@ describe("audio.inputs registry", function()
 			assert.equals(2, #inst.all())
 		end)
 
+		it("get() returns the handle for a known id", function()
+			handles.add("263", { level = 41, muted = false })
+			local handle = inst.get("263")
+			assert.is_not_nil(handle)
+			assert.equals("263", handle.id)
+		end)
+
+		it("get() returns nil for an unknown id", function()
+			assert.is_nil(inst.get("does_not_exist"))
+		end)
+
 		it("handle has correct initial state and metadata", function()
 			handles.add(
 				"263",
