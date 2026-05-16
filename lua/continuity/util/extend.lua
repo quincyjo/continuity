@@ -1,12 +1,13 @@
----@class CombinedClass
+---@class CombinableClass
 ---@field MT        { __index: table }
 ---@field methods   table
 ---@field init      fun(inst?: table): table
+---@overload        fun(inst?: table): table
 
 --- Combines class extensions into a single class with merged MT and chained init.
 --- Asserts at call time that no method key is defined by more than one extension.
----@param ... table Classes with `.MT.__index` and `.init` fields
----@return CombinedClass
+---@param ... CombinableClass Classes with `.MT.__index` and `.init` fields
+---@return CombinableClass
 local function extend(...)
 	local classes = { ... }
 	local result = {}
