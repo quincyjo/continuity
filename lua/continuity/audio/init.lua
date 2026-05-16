@@ -87,23 +87,23 @@ AudioProxyHandle.MT.__index.unsubscribe = function(self, cb)
 	end
 end
 AudioProxyHandle.MT.__index.adjust_perc = function(self, delta)
-	if self.bound_handle then
-		self.bound_handle:adjust_perc(delta)
+	if self._bound_handle then
+		self._bound_handle:adjust_perc(delta)
 	end
 end
 AudioProxyHandle.MT.__index.set_perc = function(self, value)
-	if self.bound_handle then
-		self.bound_handle:set_perc(value)
+	if self._bound_handle then
+		self._bound_handle:set_perc(value)
 	end
 end
 AudioProxyHandle.MT.__index.toggle_mute = function(self)
-	if self.bound_handle then
-		self.bound_handle:toggle_mute()
+	if self._bound_handle then
+		self._bound_handle:toggle_mute()
 	end
 end
 AudioProxyHandle.MT.__index.set_default = function(self)
-	if self.bound_handle then
-		self.bound_handle:set_default()
+	if self._bound_handle then
+		self._bound_handle:set_default()
 	end
 end
 
@@ -116,9 +116,9 @@ Audio.Volume = AudioProxyHandle({
 		muted = false,
 		level = 0,
 	},
-	bound_handle = nil,
-	bound_unsub = nil,
-	bound_control_unsub = nil,
+	_bound_handle = nil,
+	_bound_unsub = nil,
+	_bound_control_unsub = nil,
 })
 
 ---@type SourceHandle
@@ -130,9 +130,9 @@ Audio.Capture = AudioProxyHandle({
 		muted = false,
 		level = 0,
 	},
-	bound_handle = nil,
-	bound_unsub = nil,
-	bound_control_unsub = nil,
+	_bound_handle = nil,
+	_bound_unsub = nil,
+	_bound_control_unsub = nil,
 })
 
 local bind_inputs, bind_sinks, bind_sources
@@ -164,27 +164,27 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 
 	local new_name = meta and meta.name or nil
 	local new_desc = meta and meta.description or nil
-	local is_device_switch = handle.bound_handle ~= collection_handle
+	local is_device_switch = handle._bound_handle ~= collection_handle
 
 	if is_device_switch then
-		if handle.bound_unsub then
-			handle.bound_unsub()
+		if handle._bound_unsub then
+			handle._bound_unsub()
 		end
-		if handle.bound_control_unsub then
-			handle.bound_control_unsub()
+		if handle._bound_control_unsub then
+			handle._bound_control_unsub()
 		end
 
-		handle.bound_handle = collection_handle
+		handle._bound_handle = collection_handle
 		handle.id = id
 		handle.name = new_name
 		handle.description = new_desc
 		handle.state = collection_handle.state
 
-		handle.bound_unsub = collection_handle:subscribe(function(s)
+		handle._bound_unsub = collection_handle:subscribe(function(s)
 			handle:push(s)
 		end)
 
-		handle.bound_control_unsub = collection_handle:on_control(function(s)
+		handle._bound_control_unsub = collection_handle:on_control(function(s)
 			handle:control_event(s)
 		end)
 
