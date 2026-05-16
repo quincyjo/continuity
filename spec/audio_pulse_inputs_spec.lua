@@ -12,6 +12,7 @@ describe("audio.backends.pulse (sink-input parsing)", function()
 		"Sink Input #263",
 		"\tDriver: protocol-native.c",
 		"\tSink: 57",
+		"\tCorked: no",
 		"\tMute: no",
 		"\tVolume: front-left: 26542 /  41% / -23.56 dB,   front-right: 26542 /  41% / -23.56 dB",
 		"\t        balance 0.00",
@@ -19,6 +20,7 @@ describe("audio.backends.pulse (sink-input parsing)", function()
 		'\t\tapplication.name = "spotify"',
 		'\t\tmedia.name = "Spotify"',
 		'\t\tapplication.process.binary = "spotify"',
+		'\t\tmedia.role = "music"',
 	}, "\n") .. "\n"
 
 	local MULTI_INPUT_LIST = table.concat({
@@ -70,6 +72,29 @@ describe("audio.backends.pulse (sink-input parsing)", function()
 			assert.is_nil(meta.icon_name)
 		end)
 
+		it("parses corked=false when Corked: no", function()
+			local block = pulse._private.find_sink_input_block(SINGLE_INPUT_LIST, "263")
+			local state = pulse._private.parse_sink_input_block(block)
+			assert.is_false(state.corked)
+		end)
+
+		it("parses corked=true when Corked: yes", function()
+			local block = table.concat({
+				"\tCorked: yes",
+				"\tMute: no",
+				"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+			}, "\n") .. "\n"
+			local state = pulse._private.parse_sink_input_block(block)
+			assert.is_true(state.corked)
+		end)
+
+		it("parses role and binary from properties", function()
+			local block = pulse._private.find_sink_input_block(SINGLE_INPUT_LIST, "263")
+			local _, meta = pulse._private.parse_sink_input_block(block)
+			assert.equals("music", meta.role)
+			assert.equals("spotify", meta.binary)
+		end)
+
 		it("parses muted=true", function()
 			local block = pulse._private.find_sink_input_block(MULTI_INPUT_LIST, "264")
 			local state, meta = pulse._private.parse_sink_input_block(block)
@@ -90,6 +115,8 @@ describe("audio.backends.pulse (sink-input parsing)", function()
 			assert.is_false(state.muted)
 			assert.is_nil(meta.app_name)
 			assert.is_nil(meta.icon_name)
+			assert.is_nil(meta.role)
+			assert.is_nil(meta.binary)
 		end)
 
 		it("parses icon_name from application.icon_name property", function()
@@ -168,6 +195,34 @@ describe("audio.backends.pulse (sink-input parsing)", function()
 			local entries = pulse._private.parse_all_sink_inputs_json(input)
 			assert.equals("Google Chrome", entries[1].meta.app_name)
 			assert.equals("google-chrome", entries[1].meta.icon_name)
+		end)
+
+		it("parses corked=false from corked field", function()
+			local input =
+				'[{"index":263,"sink":57,"corked":false,"mute":false,"volume":{"front-left":{"value":26542,"value_percent":"41%","db":"-23.56 dB"}},"properties":{}}]' -- luacheck: ignore
+			local entries = pulse._private.parse_all_sink_inputs_json(input)
+			assert.is_false(entries[1].state.corked)
+		end)
+
+		it("parses corked=true from corked field", function()
+			local input =
+				'[{"index":263,"sink":57,"corked":true,"mute":false,"volume":{"front-left":{"value":26542,"value_percent":"41%","db":"-23.56 dB"}},"properties":{}}]' -- luacheck: ignore
+			local entries = pulse._private.parse_all_sink_inputs_json(input)
+			assert.is_true(entries[1].state.corked)
+		end)
+
+		it("parses role and binary from properties", function()
+			local input =
+				'[{"index":263,"sink":57,"corked":false,"mute":false,"volume":{"front-left":{"value":26542,"value_percent":"41%","db":"-23.56 dB"}},"properties":{"media.role":"music","application.process.binary":"spotify"}}]' -- luacheck: ignore
+			local entries = pulse._private.parse_all_sink_inputs_json(input)
+			assert.equals("music", entries[1].meta.role)
+			assert.equals("spotify", entries[1].meta.binary)
+		end)
+
+		it("returns nil role and binary when absent from properties", function()
+			local entries = pulse._private.parse_all_sink_inputs_json(SINGLE_INPUT_JSON)
+			assert.is_nil(entries[1].meta.role)
+			assert.is_nil(entries[1].meta.binary)
 		end)
 	end)
 

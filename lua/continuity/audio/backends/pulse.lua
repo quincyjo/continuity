@@ -210,18 +210,24 @@ end
 local function parse_sink_input_block(block)
 	local level = tonumber(block:match("/%s+(%d+)%%"))
 	local muted = block:match("\tMute: (%a+)") == "yes"
+	local corked = block:match("\tCorked: (%a+)") == "yes"
 	local sink = tonumber(block:match("\tSink: (%d+)"))
 	local name = block:match('\tmedia%.name = "([^"]+)"')
 	local app_name = block:match('\tapplication%.name = "([^"]+)"')
 	local icon_name = block:match('\tapplication%.icon_name = "([^"]+)"')
+	local role = block:match('\tmedia%.role = "([^"]+)"')
+	local binary = block:match('\tapplication%.process%.binary = "([^"]+)"')
 	return {
 		level = level or 0,
 		muted = muted,
+		corked = corked,
 		sink = sink,
 		name = name,
 	}, {
 		app_name = app_name,
 		icon_name = icon_name,
+		role = role,
+		binary = binary,
 	}
 end
 
@@ -349,17 +355,24 @@ end
 ---@return { id: string, state: SinkInputState, meta: SinkInputMeta }
 local function input_from_json(inp)
 	local props = inp.properties ~= json.null and inp.properties or {}
+	local function prop(key)
+		local v = props[key]
+		return (v ~= nil and v ~= json.null) and v or nil
+	end
 	return {
 		id = tostring(inp.index),
 		state = {
 			level = volume_level_json(inp.volume),
 			muted = inp.mute == true,
+			corked = inp.corked == true,
 			sink = inp.sink,
-			name = props["media.name"] ~= json.null and props["media.name"] or nil,
+			name = prop("media.name"),
 		},
 		meta = {
-			app_name = props["application.name"] ~= json.null and props["application.name"] or nil,
-			icon_name = props["application.icon_name"] ~= json.null and props["application.icon_name"] or nil,
+			app_name = prop("application.name"),
+			icon_name = prop("application.icon_name"),
+			role = prop("media.role"),
+			binary = prop("application.process.binary"),
 		},
 	}
 end
