@@ -10,7 +10,6 @@ local Monitor = require("continuity.monitor")
 ---@field backend? TempBackend  The backend to provide temperature monitoring, defaults to sysfs backend.
 
 ---@class TempMonitor : Monitor<TempState, TempOptions>
----@field setup fun(opts: TempOptions?)
 
 ---@type TempMonitor
 local temp = Monitor({

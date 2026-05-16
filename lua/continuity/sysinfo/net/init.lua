@@ -27,7 +27,6 @@ local DeviceState = {
 ---@field backend? NetBackend  The backend to provide network monitoring, defaults to ipmonitor backend.
 
 ---@class NetMonitor : Monitor<NetState, NetOptions>
----@field setup       fun(opts: NetOptions?)
 ---@field DeviceState table<string, DeviceState>
 
 ---@type NetMonitor

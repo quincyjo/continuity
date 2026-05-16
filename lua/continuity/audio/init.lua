@@ -7,8 +7,6 @@ local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
 local extend = require("continuity.util.extend")
 
-local AudioProxyHandle = extend(ReadyAware, Controllable)
-
 ---@alias AudioCallback fun(state: AudioState)
 
 ---@class AudioControls<T> : Controllable<T>
@@ -77,12 +75,10 @@ local AudioProxyHandle = extend(ReadyAware, Controllable)
 
 local Audio = {}
 
--- Pre setup metatable for handles. Allows subscribing to events without a
--- backend. All mutation functions do nothing.
-local HandleMT = AudioProxyHandle.MT
+local AudioProxyHandle = extend(ReadyAware, Controllable)
 
 ---@deprecated Use the function returned by subscribe() instead.
-HandleMT.__index.unsubscribe = function(self, cb)
+AudioProxyHandle.MT.__index.unsubscribe = function(self, cb)
 	for i, sub in ipairs(self._subs) do
 		if sub == cb then
 			table.remove(self._subs, i)
@@ -90,45 +86,54 @@ HandleMT.__index.unsubscribe = function(self, cb)
 		end
 	end
 end
-
-HandleMT.__index.adjust_perc = function(_, _) end
-HandleMT.__index.set_perc = function(_, _) end
-HandleMT.__index.toggle_mute = function(_) end
-HandleMT.__index.set_default = function(_) end
+AudioProxyHandle.MT.__index.adjust_perc = function(self, delta)
+	if self.bound_handle then
+		self.bound_handle:adjust_perc(delta)
+	end
+end
+AudioProxyHandle.MT.__index.set_perc = function(self, value)
+	if self.bound_handle then
+		self.bound_handle:set_perc(value)
+	end
+end
+AudioProxyHandle.MT.__index.toggle_mute = function(self)
+	if self.bound_handle then
+		self.bound_handle:toggle_mute()
+	end
+end
+AudioProxyHandle.MT.__index.set_default = function(self)
+	if self.bound_handle then
+		self.bound_handle:set_default()
+	end
+end
 
 ---@type SinkHandle
-Audio.Volume = setmetatable(
-	AudioProxyHandle.init({
-		id = "Master",
-		name = nil,
-		description = nil,
-		state = {
-			muted = false,
-			level = 0,
-		},
-		bound_handle = nil,
-		bound_unsub = nil,
-		bound_control_unsub = nil,
-	}),
-	HandleMT
-)
+Audio.Volume = AudioProxyHandle({
+	id = "Master",
+	name = nil,
+	description = nil,
+	state = {
+		muted = false,
+		level = 0,
+	},
+	bound_handle = nil,
+	bound_unsub = nil,
+	bound_control_unsub = nil,
+})
 
 ---@type SourceHandle
-Audio.Capture = setmetatable(
-	AudioProxyHandle.init({
-		id = "Capture",
-		name = nil,
-		description = nil,
-		state = {
-			muted = false,
-			level = 0,
-		},
-		bound_handle = nil,
-		bound_unsub = nil,
-		bound_control_unsub = nil,
-	}),
-	HandleMT
-)
+Audio.Capture = AudioProxyHandle({
+	id = "Capture",
+	name = nil,
+	description = nil,
+	state = {
+		muted = false,
+		level = 0,
+	},
+	bound_handle = nil,
+	bound_unsub = nil,
+	bound_control_unsub = nil,
+})
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
@@ -137,24 +142,22 @@ Audio.sinks, bind_sinks = devices_mod.new()
 ---@type DeviceCollection<SourceHandle>
 Audio.sources, bind_sources = devices_mod.new()
 
-local function find_in_collection(collection_inst, id)
-	for _, h in ipairs(collection_inst.all()) do
-		if h.id == id then
-			return h
-		end
-	end
-	return nil
-end
-
 ---Bind a pre-made handle to the collection handle for the given device id.
 ---Creates the collection handle via self-heal if not yet present.
 ---On device switch: tears down old binding, sets up new one, notifies subscribers.
 ---On same-device update: only notifies subscribers if metadata changed (state
 ---changes propagate through the collection forwarder).
+---@param handle table
+---@param id string
+---@param new_state AudioState
+---@param meta AudioDeviceMeta?
+---@param collection_inst DeviceCollection
+---@param collection_device_handles DeviceHandles
 local function rebind(handle, id, new_state, meta, collection_inst, collection_device_handles)
+	---@cast handle ReadyAwareInternal<AudioState>|ControllableInternal<AudioState>|AudioHandle|table
 	-- Always sync to the collection: creates handle if absent, updates state/meta if present.
 	collection_device_handles.add(id, new_state, meta)
-	local collection_handle = find_in_collection(collection_inst, id)
+	local collection_handle = collection_inst.get(id)
 	if not collection_handle then
 		return
 	end
@@ -178,16 +181,13 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 		handle.state = collection_handle.state
 
 		handle.bound_unsub = collection_handle:subscribe(function(s)
-			---@cast handle ReadyAwareInternal<AudioState>
 			handle:push(s)
 		end)
 
 		handle.bound_control_unsub = collection_handle:on_control(function(s)
-			---@cast handle ControllableInternal<AudioState>
 			handle:control_event(s)
 		end)
 
-		---@cast handle ReadyAwareInternal<AudioState>
 		handle:push(handle.state)
 	else
 		-- Same device. State changes propagate via the collection forwarder.
@@ -196,7 +196,6 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 		if handle.name ~= new_name or handle.description ~= new_desc then
 			handle.name = new_name
 			handle.description = new_desc
-			---@cast handle ReadyAwareInternal<AudioState>
 			handle:push(handle.state)
 		end
 	end
@@ -210,27 +209,6 @@ function Audio.setup(opts)
 	local input_handles = bind_inputs(backend.api.sink_input)
 	local sink_handles = bind_sinks(backend.api.sink)
 	local source_handles = bind_sources(backend.api.source)
-
-	HandleMT.__index.adjust_perc = function(self, delta)
-		if self.bound_handle then
-			self.bound_handle:adjust_perc(delta)
-		end
-	end
-	HandleMT.__index.set_perc = function(self, value)
-		if self.bound_handle then
-			self.bound_handle:set_perc(value)
-		end
-	end
-	HandleMT.__index.toggle_mute = function(self)
-		if self.bound_handle then
-			self.bound_handle:toggle_mute()
-		end
-	end
-	HandleMT.__index.set_default = function(self)
-		if self.bound_handle then
-			self.bound_handle:set_default()
-		end
-	end
 
 	backend:start({
 		on_sink = function(id, state, meta)

@@ -17,7 +17,6 @@ local Monitor = require("continuity.monitor")
 ---@field backend? MemBackend  The backend to provide memory monitoring, defaults to procmeminfo backend.
 
 ---@class MemMonitor : Monitor<MemState, MemOptions>
----@field setup fun(opts: MemOptions?)
 
 ---@type MemMonitor
 local mem = Monitor({

@@ -25,7 +25,11 @@ local function extend(...)
 		end
 		return inst
 	end
-	return result
+	return setmetatable(result, {
+		__call = function(self, inst)
+			return setmetatable(self.init(inst), self.MT)
+		end,
+	})
 end
 
 return extend

@@ -23,7 +23,6 @@ local Monitor = require("continuity.monitor")
 ---@field backend? CpuBackend  The backend to provide CPU monitoring, defaults to procstat backend.
 
 ---@class CpuMonitor : Monitor<CpuState, CpuOptions>
----@field setup fun(opts: CpuOptions?)
 
 ---@type CpuMonitor
 local cpu = Monitor({
