@@ -31,19 +31,18 @@
 ---@class InputCollection : Observable<SinkInputHandle>
 
 local Observable = require("continuity.observable")
+local Controllable = require("continuity.controllable")
 
 local inputs = {}
 
 ---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
 function inputs.new()
-	---@type { inputs: table<string, SinkInputHandle>, subscribers: table<string, fun(state: SinkInputState)[]>, on_control_cbs: table<string, fun(state: SinkInputState)[]>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: SinkInputHandle)[], on_updated_cbs: fun(handle: SinkInputHandle)[], on_removed_cbs: fun(id: string)[] }
+	---@type { inputs: table<string, SinkInputHandle>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: SinkInputHandle)[], on_updated_cbs: fun(handle: SinkInputHandle)[], on_removed_cbs: fun(id: string)[] }
 	local state = {
 		inputs = {},
 		on_added_cbs = {},
 		on_updated_cbs = {},
 		on_removed_cbs = {},
-		subscribers = {},
-		on_control_cbs = {},
 		handle_removed_cbs = {},
 	}
 
@@ -64,32 +63,26 @@ function inputs.new()
 		end
 	end
 
-	local HandleMT = {
-		__index = {
-			subscribe = function(self, cb)
-				local cbs = state.subscribers[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
+	local HandleMT = { __index = {} }
+	for k, v in pairs(Controllable.methods) do
+		HandleMT.__index[k] = v
+	end
 
-			on_control = function(self, cb)
-				local cbs = state.on_control_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
+	HandleMT.__index.subscribe = function(self, cb)
+		self._subs[#self._subs + 1] = cb
+		return make_unsub(self._subs, cb)
+	end
 
-			on_removed = function(self, cb)
-				local cbs = state.handle_removed_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return make_unsub(cbs, cb)
-			end,
+	HandleMT.__index.on_removed = function(self, cb)
+		local cbs = state.handle_removed_cbs[self.id]
+		cbs[#cbs + 1] = cb
+		return make_unsub(cbs, cb)
+	end
 
-			adjust_perc = function() end,
-			set_perc = function() end,
-			toggle_mute = function() end,
-			move_to = function() end,
-		},
-	}
+	HandleMT.__index.adjust_perc = function() end
+	HandleMT.__index.set_perc = function() end
+	HandleMT.__index.toggle_mute = function() end
+	HandleMT.__index.move_to = function() end
 
 	local inst = {}
 
@@ -124,18 +117,20 @@ function inputs.new()
 	local handles = {}
 
 	function handles.add(id, initial_state, meta)
-		local handle = setmetatable({
-			id = id,
-			app_name = meta and meta.app_name,
-			icon_name = meta and meta.icon_name,
-			app_icon = meta and meta.app_icon,
-			role = meta and meta.role,
-			binary = meta and meta.binary,
-			state = initial_state or {},
-		}, HandleMT)
+		local handle = setmetatable(
+			Controllable.init({
+				id = id,
+				app_name = meta and meta.app_name,
+				icon_name = meta and meta.icon_name,
+				app_icon = meta and meta.app_icon,
+				role = meta and meta.role,
+				binary = meta and meta.binary,
+				state = initial_state or { level = 0, muted = false },
+				_subs = {},
+			}),
+			HandleMT
+		)
 		state.inputs[id] = handle
-		state.subscribers[id] = {}
-		state.on_control_cbs[id] = {}
 		state.handle_removed_cbs[id] = {}
 		fire(state.on_added_cbs, handle)
 	end
@@ -153,19 +148,22 @@ function inputs.new()
 			end
 		end
 		if changed then
-			fire(state.subscribers[id] or {}, handle.state)
+			for _, cb in ipairs(handle._subs) do
+				cb(handle.state)
+			end
 			fire(state.on_updated_cbs, handle)
 		end
 	end
 
 	function handles.remove(id)
-		if not state.inputs[id] then
+		local handle = state.inputs[id]
+		if not handle then
 			return
 		end
 		fire(state.handle_removed_cbs[id] or {}, id)
+		handle._subs = {}
+		Controllable.init(handle)
 		state.inputs[id] = nil
-		state.subscribers[id] = nil
-		state.on_control_cbs[id] = nil
 		state.handle_removed_cbs[id] = nil
 		fire(state.on_removed_cbs, id)
 	end
@@ -176,9 +174,12 @@ function inputs.new()
 			handle.state.level = level
 			handle.state.muted = muted
 			if changed then
-				fire(state.subscribers[handle.id] or {}, handle.state)
+				for _, cb in ipairs(handle._subs) do
+					cb(handle.state)
+				end
 			end
-			fire(state.on_control_cbs[handle.id] or {}, handle.state)
+			---@cast handle ControllableInternal<SinkInputState>
+			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
@@ -188,7 +189,8 @@ function inputs.new()
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				fire(state.on_control_cbs[self.id] or {}, self.state)
+				---@cast self ControllableInternal<SinkInputState>
+				self:control_event(self.state)
 				return
 			end
 			api_sub.adjust_perc(self.id, delta, function(level, muted)
@@ -212,7 +214,8 @@ function inputs.new()
 		HandleMT.__index.move_to = function(self, target)
 			local sink_id = type(target) == "table" and target.id or target
 			api_sub.move(self.id, sink_id, function()
-				fire(state.on_control_cbs[self.id] or {}, self.state)
+				---@cast self ControllableInternal<SinkInputState>
+				self:control_event(self.state)
 			end)
 		end
 
