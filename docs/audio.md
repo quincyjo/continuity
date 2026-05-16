@@ -165,8 +165,11 @@ Handles returned by `audio.inputs` expose:
 | `id` | `string` | Sink input index (as string) |
 | `app_name` | `string?` | Application name, if reported by the backend |
 | `icon_name` | `string?` | Icon name, if reported by the backend |
+| `role` | `string?` | Media role (e.g. `"music"`, `"notification"`, `"video"`) |
+| `binary` | `string?` | Process binary name (e.g. `"spotify"`, `"Discord"`) |
 | `state.level` | `integer` | Volume 0–100 |
 | `state.muted` | `boolean` | Mute state |
+| `state.corked` | `boolean` | Whether the stream is corked (explicitly paused by the application) |
 | `state.name` | `string?` | Stream name |
 | `state.sink` | `integer?` | Sink index this input is routed to |
 
