@@ -67,7 +67,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		media.sources.on_added(function(s)
+		media.sources:on_added(function(s)
 			added = s
 		end)
 		-- sources.on_added fires retroactively for already-known sources? No —
@@ -85,7 +85,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local sources = media.sources.all()
+		local sources = media.sources:all()
 		assert.equals(1, #sources)
 		assert.equals("fake:1", sources[1].id)
 	end)
@@ -100,7 +100,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local source = media.sources.get("fake:1")
+		local source = media.sources:get("fake:1")
 		assert.is_not_nil(source)
 		assert.equals("fake:1", source.id)
 	end)
@@ -113,12 +113,12 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		assert.is_nil(media.sources.get("does_not_exist"))
+		assert.is_nil(media.sources:get("does_not_exist"))
 	end)
 
 	it("sources.get() returns nil before setup", function()
 		local media = fresh_media()
-		assert.is_nil(media.sources.get("any"))
+		assert.is_nil(media.sources:get("any"))
 	end)
 
 	it("notification fires when backend adds a playing source", function()
@@ -137,21 +137,21 @@ describe("media module", function()
 	it("sources.on_added returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.sources.on_added(function() end)
+		local unsub = media.sources:on_added(function() end)
 		assert.is_function(unsub)
 	end)
 
 	it("sources.on_updated returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.sources.on_updated(function() end)
+		local unsub = media.sources:on_updated(function() end)
 		assert.is_function(unsub)
 	end)
 
 	it("sources.on_removed returns an unsubscribe function", function()
 		local media = fresh_media()
 		media.setup({ backends = {} })
-		local unsub = media.sources.on_removed(function() end)
+		local unsub = media.sources:on_removed(function() end)
 		assert.is_function(unsub)
 	end)
 
@@ -200,7 +200,7 @@ describe("media module", function()
 			},
 		})
 		local added_id
-		media.sources.on_added(function(s)
+		media.sources:on_added(function(s)
 			added_id = s.id
 		end)
 		reg_seen.add("raw:1", "raw", { title = "T" })
@@ -234,7 +234,7 @@ describe("media module", function()
 			sources = { { id = "unified", backends = { "fake:1" } } },
 		})
 
-		local src = media.sources.all()[1]
+		local src = media.sources:all()[1]
 		assert.is_not_nil(src)
 		local received = {}
 		src.position:subscribe(function(p)
@@ -260,7 +260,7 @@ describe("media module", function()
 			backends = { fake_backend },
 			sources = { { id = "unified", backends = { "fake:1" } } },
 		})
-		local src = media.sources.all()[1]
+		local src = media.sources:all()[1]
 		local result = "not_called"
 		src.position:get(function(p)
 			result = p
@@ -295,7 +295,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local src = media.sources.all()[1]
+		local src = media.sources:all()[1]
 		assert.is_table(src.playback)
 		assert.is_function(src.playback.play)
 		src.playback:play()
@@ -314,7 +314,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		assert.is_nil(media.sources.all()[1].playback)
+		assert.is_nil(media.sources:all()[1].playback)
 	end)
 
 	it("exports PlaybackAction enum", function()
@@ -346,7 +346,7 @@ describe("media module", function()
 			stop = function(_self) end,
 		}
 		media.setup({ backends = { fake_backend } })
-		local src = media.sources.all()[1]
+		local src = media.sources:all()[1]
 		local received_pos
 		src.position:subscribe(function(p)
 			received_pos = p

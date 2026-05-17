@@ -25,7 +25,7 @@ describe("audio.inputs registry", function()
 	describe("handles.add", function()
 		it("fires on_input_added with the handle", function()
 			local received
-			inst.on_added(function(h)
+			inst:on_added(function(h)
 				received = h
 			end)
 			handles.add("263", { level = 41, muted = false, name = "Spotify", sink = 57 }, { app_name = "spotify" })
@@ -37,28 +37,28 @@ describe("audio.inputs registry", function()
 
 		it("makes handle visible via all()", function()
 			handles.add("263", { level = 41, muted = false })
-			local all = inst.all()
+			local all = inst:all()
 			assert.equals(1, #all)
 			assert.equals("263", all[1].id)
 		end)
 
 		it("all() returns a snapshot — not a live reference", function()
 			handles.add("263", { level = 41, muted = false })
-			local snap = inst.all()
+			local snap = inst:all()
 			handles.add("264", { level = 50, muted = false })
 			assert.equals(1, #snap)
-			assert.equals(2, #inst.all())
+			assert.equals(2, #inst:all())
 		end)
 
 		it("get() returns the handle for a known id", function()
 			handles.add("263", { level = 41, muted = false })
-			local handle = inst.get("263")
+			local handle = inst:get("263")
 			assert.is_not_nil(handle)
 			assert.equals("263", handle.id)
 		end)
 
 		it("get() returns nil for an unknown id", function()
-			assert.is_nil(inst.get("does_not_exist"))
+			assert.is_nil(inst:get("does_not_exist"))
 		end)
 
 		it("handle has correct initial state and metadata", function()
@@ -67,7 +67,7 @@ describe("audio.inputs registry", function()
 				{ level = 41, muted = false, name = "Spotify", sink = 57 },
 				{ app_name = "spotify", icon_name = "spotify-client" }
 			)
-			local h = inst.all()[1]
+			local h = inst:all()[1]
 			assert.equals("263", h.id)
 			assert.equals(41, h.state.level)
 			assert.is_false(h.state.muted)
@@ -85,7 +85,7 @@ describe("audio.inputs registry", function()
 
 		it("fires on_input_removed with the id", function()
 			local removed_id
-			inst.on_removed(function(id)
+			inst:on_removed(function(id)
 				removed_id = id
 			end)
 			handles.remove("263")
@@ -94,12 +94,12 @@ describe("audio.inputs registry", function()
 
 		it("removes handle from all()", function()
 			handles.remove("263")
-			assert.equals(0, #inst.all())
+			assert.equals(0, #inst:all())
 		end)
 
 		it("does nothing for unknown id", function()
 			local called = false
-			inst.on_removed(function()
+			inst:on_removed(function()
 				called = true
 			end)
 			handles.remove("999")
@@ -110,7 +110,7 @@ describe("audio.inputs registry", function()
 	describe("on_input_added / on_input_removed unsubscribe", function()
 		it("on_input_added returns an unsubscribe function that stops callbacks", function()
 			local count = 0
-			local unsub = inst.on_added(function()
+			local unsub = inst:on_added(function()
 				count = count + 1
 			end)
 			handles.add("263", { level = 41, muted = false })
@@ -121,7 +121,7 @@ describe("audio.inputs registry", function()
 
 		it("on_input_removed returns an unsubscribe function", function()
 			local count = 0
-			local unsub = inst.on_removed(function()
+			local unsub = inst:on_removed(function()
 				count = count + 1
 			end)
 			handles.add("263", { level = 41, muted = false })
@@ -140,13 +140,13 @@ describe("audio.inputs registry", function()
 
 		it("merges partial state into the handle", function()
 			handles.update("263", { level = 60 })
-			assert.equals(60, inst.all()[1].state.level)
-			assert.is_false(inst.all()[1].state.muted) -- unchanged
+			assert.equals(60, inst:all()[1].state.level)
+			assert.is_false(inst:all()[1].state.muted) -- unchanged
 		end)
 
 		it("fires per-handle subscribe callback when state changes", function()
 			local received
-			inst.all()[1]:subscribe(function(s)
+			inst:all()[1]:subscribe(function(s)
 				received = s
 			end)
 			handles.update("263", { level = 60 })
@@ -156,7 +156,7 @@ describe("audio.inputs registry", function()
 
 		it("does not fire subscribe when state is unchanged", function()
 			local count = 0
-			inst.all()[1]:subscribe(function()
+			inst:all()[1]:subscribe(function()
 				count = count + 1
 			end)
 			handles.update("263", { level = 41 }) -- same value
@@ -165,7 +165,7 @@ describe("audio.inputs registry", function()
 
 		it("fires on_input_updated with the handle", function()
 			local updated
-			inst.on_updated(function(h)
+			inst:on_updated(function(h)
 				updated = h
 			end)
 			handles.update("263", { level = 60 })
@@ -175,7 +175,7 @@ describe("audio.inputs registry", function()
 
 		it("does not fire on_input_updated when state is unchanged", function()
 			local count = 0
-			inst.on_updated(function()
+			inst:on_updated(function()
 				count = count + 1
 			end)
 			handles.update("263", { level = 41 })
@@ -184,7 +184,7 @@ describe("audio.inputs registry", function()
 
 		it("does nothing for unknown id", function()
 			local count = 0
-			inst.on_updated(function()
+			inst:on_updated(function()
 				count = count + 1
 			end)
 			handles.update("999", { level = 50 })
@@ -193,7 +193,7 @@ describe("audio.inputs registry", function()
 
 		it("subscribe returns an unsubscribe function", function()
 			local count = 0
-			local h = inst.all()[1]
+			local h = inst:all()[1]
 			local unsub = h:subscribe(function()
 				count = count + 1
 			end)
@@ -211,7 +211,7 @@ describe("audio.inputs registry", function()
 
 		it("fires when handles.remove is called for this handle", function()
 			local called_id
-			inst.all()[1]:on_removed(function(id)
+			inst:all()[1]:on_removed(function(id)
 				called_id = id
 			end)
 			handles.remove("263")
@@ -220,7 +220,7 @@ describe("audio.inputs registry", function()
 
 		it("does not fire when a different handle is removed", function()
 			local called = false
-			inst.all()[1]:on_removed(function()
+			inst:all()[1]:on_removed(function()
 				called = true
 			end)
 			handles.add("264", { level = 50, muted = false })
@@ -230,7 +230,7 @@ describe("audio.inputs registry", function()
 
 		it("returns an unsubscribe function", function()
 			local count = 0
-			local unsub = inst.all()[1]:on_removed(function()
+			local unsub = inst:all()[1]:on_removed(function()
 				count = count + 1
 			end)
 			unsub()
@@ -266,7 +266,7 @@ describe("audio.inputs registry", function()
 		end)
 
 		local function handle()
-			return inst.all()[1]
+			return inst:all()[1]
 		end
 
 		it("adjust_perc calls api_sub.adjust_perc with clamped delta", function()

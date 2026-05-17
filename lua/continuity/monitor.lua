@@ -17,6 +17,7 @@
 ---@field protected cleanup?   fun(self) Cleanup after stop.
 
 local gears = require("gears")
+local Subscribable = require("continuity.subscribable")
 
 local Monitor = {}
 
@@ -36,12 +37,7 @@ Monitor.MT = {
 				end
 			end
 		end,
-		push = function(self, state)
-			self.state = state
-			for _, cb in ipairs(self._subs) do
-				cb(state)
-			end
-		end,
+		push = Subscribable.methods.push,
 	},
 }
 
@@ -49,7 +45,7 @@ Monitor.methods = Monitor.MT.__index
 
 function Monitor.init(inst)
 	inst = inst or {}
-	inst._subs = {}
+	Subscribable.init(inst)
 	inst.state = nil
 	inst._started = false
 	if not inst.setup then

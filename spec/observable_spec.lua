@@ -1,59 +1,251 @@
+require("spec.support.awesome_mocks")
+
 local Observable = require("continuity.observable")
+local Subscribable = require("continuity.subscribable")
+local Removable = require("continuity.removable")
+local extend = require("continuity.util.extend")
 
 -- Builds a controllable Observable for testing. Returns the Observable plus three
 -- fire functions: add(item), update(item), remove(id).
 local function make_observable()
-	local on_added_cbs = {}
-	local on_updated_cbs = {}
-	local on_removed_cbs = {}
-
 	local function fire(cbs, ...)
 		for _, cb in ipairs(cbs) do
 			cb(...)
 		end
 	end
 
-	local function make_unsub(cbs, cb)
-		return function()
-			for i = #cbs, 1, -1 do
-				if cbs[i] == cb then
-					table.remove(cbs, i)
-				end
-			end
-		end
-	end
-
-	local obs = Observable({
-		on_added = function(cb)
-			table.insert(on_added_cbs, cb)
-			return make_unsub(on_added_cbs, cb)
-		end,
-		on_updated = function(cb)
-			table.insert(on_updated_cbs, cb)
-			return make_unsub(on_updated_cbs, cb)
-		end,
-		on_removed = function(cb)
-			table.insert(on_removed_cbs, cb)
-			return make_unsub(on_removed_cbs, cb)
-		end,
-		all = function()
-			return {}
-		end,
-	})
+	local obs = Observable()
 
 	return obs,
 		function(item)
-			fire(on_added_cbs, item)
+			fire(obs.on_added_cbs, item)
 		end,
 		function(item)
-			fire(on_updated_cbs, item)
+			fire(obs.on_updated_cbs, item)
 		end,
 		function(id)
-			fire(on_removed_cbs, id)
+			fire(obs.on_removed_cbs, id)
 		end
 end
 
+-- Creates a minimal item compatible with the internal API (Subscribable + Removable).
+local Item = extend(Subscribable, Removable)
+local function make_item(id)
+	return setmetatable(Item.init({ id = id, state = nil }), Item.MT)
+end
+
 describe("Observable", function()
+	describe("internal API", function()
+		local obs
+
+		before_each(function()
+			obs = Observable()
+		end)
+
+		describe("add", function()
+			it("returns true on first add", function()
+				local item = make_item("a")
+				assert.is_true(obs:add(item))
+			end)
+
+			it("returns false when id already exists", function()
+				local item = make_item("a")
+				obs:add(item)
+				assert.is_false(obs:add(item))
+			end)
+
+			it("item is accessible via get after add", function()
+				local item = make_item("a")
+				obs:add(item)
+				assert.equals(item, obs:get("a"))
+			end)
+
+			it("fires on_added with the item", function()
+				local item = make_item("a")
+				local fired
+				obs:on_added(function(h)
+					fired = h
+				end)
+				obs:add(item)
+				assert.equals(item, fired)
+			end)
+
+			it("does not fire on_added for a duplicate", function()
+				local item = make_item("a")
+				obs:add(item)
+				local count = 0
+				obs:on_added(function()
+					count = count + 1
+				end)
+				obs:add(item)
+				assert.equals(0, count)
+			end)
+		end)
+
+		describe("update", function()
+			it("returns false when id not found", function()
+				assert.is_false(obs:update("missing", {}))
+			end)
+
+			it("calls push on the item with new state", function()
+				local item = make_item("a")
+				obs:add(item)
+				obs:update("a", { level = 75 })
+				assert.equals(75, item.state.level)
+			end)
+
+			it("fires on_updated with the item", function()
+				local item = make_item("a")
+				obs:add(item)
+				local fired
+				obs:on_updated(function(h)
+					fired = h
+				end)
+				obs:update("a", { level = 50 })
+				assert.equals(item, fired)
+			end)
+		end)
+
+		describe("remove", function()
+			it("returns nil when id not found", function()
+				assert.is_nil(obs:remove("missing"))
+			end)
+
+			it("returns the item on success", function()
+				local item = make_item("a")
+				obs:add(item)
+				assert.equals(item, obs:remove("a"))
+			end)
+
+			it("item is no longer accessible via get after remove", function()
+				local item = make_item("a")
+				obs:add(item)
+				obs:remove("a")
+				assert.is_nil(obs:get("a"))
+			end)
+
+			it("fires item _removed_cbs before clearing them", function()
+				local item = make_item("a")
+				obs:add(item)
+				local received
+				item:on_removed(function(id)
+					received = id
+				end)
+				obs:remove("a")
+				assert.equals("a", received)
+			end)
+
+			it("clears item _removed_cbs after firing", function()
+				local item = make_item("a")
+				obs:add(item)
+				item:on_removed(function() end)
+				obs:remove("a")
+				assert.equals(0, #item._removed_cbs)
+			end)
+
+			it("clears item _subs after removal", function()
+				local item = make_item("a")
+				obs:add(item)
+				item:subscribe(function() end)
+				obs:remove("a")
+				assert.equals(0, #item._subs)
+			end)
+
+			it("fires on_removed with the id", function()
+				local item = make_item("a")
+				obs:add(item)
+				local received
+				obs:on_removed(function(id)
+					received = id
+				end)
+				obs:remove("a")
+				assert.equals("a", received)
+			end)
+
+			it("item _removed_cbs fire before observable on_removed", function()
+				local item = make_item("a")
+				obs:add(item)
+				local order = {}
+				item:on_removed(function()
+					order[#order + 1] = "item"
+				end)
+				obs:on_removed(function()
+					order[#order + 1] = "obs"
+				end)
+				obs:remove("a")
+				assert.same({ "item", "obs" }, order)
+			end)
+		end)
+
+		describe("all", function()
+			it("returns empty table when no items", function()
+				assert.equals(0, #obs:all())
+			end)
+
+			it("returns all added items", function()
+				obs:add(make_item("a"))
+				obs:add(make_item("b"))
+				assert.equals(2, #obs:all())
+			end)
+
+			it("does not include removed items", function()
+				obs:add(make_item("a"))
+				obs:add(make_item("b"))
+				obs:remove("a")
+				assert.equals(1, #obs:all())
+			end)
+		end)
+
+		describe("get", function()
+			it("returns nil for unknown id", function()
+				assert.is_nil(obs:get("nope"))
+			end)
+
+			it("returns the item for a known id", function()
+				local item = make_item("a")
+				obs:add(item)
+				assert.equals(item, obs:get("a"))
+			end)
+		end)
+
+		describe("on_added / on_updated / on_removed unsub", function()
+			it("on_added unsub stops callbacks", function()
+				local count = 0
+				local unsub = obs:on_added(function()
+					count = count + 1
+				end)
+				obs:add(make_item("a"))
+				unsub()
+				obs:add(make_item("b"))
+				assert.equals(1, count)
+			end)
+
+			it("on_updated unsub stops callbacks", function()
+				obs:add(make_item("a"))
+				local count = 0
+				local unsub = obs:on_updated(function()
+					count = count + 1
+				end)
+				obs:update("a", {})
+				unsub()
+				obs:update("a", {})
+				assert.equals(1, count)
+			end)
+
+			it("on_removed unsub stops callbacks", function()
+				obs:add(make_item("a"))
+				obs:add(make_item("b"))
+				local count = 0
+				local unsub = obs:on_removed(function()
+					count = count + 1
+				end)
+				obs:remove("a")
+				unsub()
+				obs:remove("b")
+				assert.equals(1, count)
+			end)
+		end)
+	end)
 	describe("group_by", function()
 		local obs, add, update, remove
 
@@ -67,7 +259,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local fired
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					fired = group
 				end)
 
@@ -81,7 +273,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local fired
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					fired = group
 				end)
 
@@ -97,7 +289,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local fired = {}
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					fired[#fired + 1] = group.id
 				end)
 
@@ -112,7 +304,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local count = 0
-				grouped.on_added(function()
+				grouped:on_added(function()
 					count = count + 1
 				end)
 
@@ -129,7 +321,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local fired
-				grouped.on_updated(function(group)
+				grouped:on_updated(function(group)
 					fired = group
 				end)
 
@@ -146,7 +338,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local called = false
-				grouped.on_updated(function()
+				grouped:on_updated(function()
 					called = true
 				end)
 
@@ -163,7 +355,7 @@ describe("Observable", function()
 				add({ id = "b", kind = "sink" })
 
 				local fired
-				grouped.on_updated(function(group)
+				grouped:on_updated(function(group)
 					fired = group
 				end)
 
@@ -184,10 +376,10 @@ describe("Observable", function()
 				add(item_b)
 
 				local fired_ids = {}
-				grouped.on_updated(function(group)
+				grouped:on_updated(function(group)
 					fired_ids[#fired_ids + 1] = group.id
 				end)
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					fired_ids[#fired_ids + 1] = group.id
 				end)
 
@@ -216,7 +408,7 @@ describe("Observable", function()
 				add(item_b)
 
 				local added_key
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					added_key = group.id
 				end)
 
@@ -235,7 +427,7 @@ describe("Observable", function()
 				add({ id = "a", kind = "sink" })
 
 				local removed_key
-				grouped.on_removed(function(key)
+				grouped:on_removed(function(key)
 					removed_key = key
 				end)
 
@@ -252,7 +444,7 @@ describe("Observable", function()
 				add({ id = "b", kind = "sink" })
 
 				local called = false
-				grouped.on_removed(function()
+				grouped:on_removed(function()
 					called = true
 				end)
 
@@ -269,7 +461,7 @@ describe("Observable", function()
 				add(item_a)
 
 				local removed_key
-				grouped.on_removed(function(key)
+				grouped:on_removed(function(key)
 					removed_key = key
 				end)
 
@@ -285,7 +477,7 @@ describe("Observable", function()
 				local grouped = obs:group_by(function(item)
 					return item.kind
 				end)
-				assert.equals(0, #grouped.all())
+				assert.equals(0, #grouped:all())
 			end)
 
 			it("returns one group per distinct key", function()
@@ -296,7 +488,7 @@ describe("Observable", function()
 				add({ id = "b", kind = "sink" })
 				add({ id = "c", kind = "source" })
 
-				assert.equals(2, #grouped.all())
+				assert.equals(2, #grouped:all())
 			end)
 
 			it("each group contains the correct entries", function()
@@ -306,7 +498,7 @@ describe("Observable", function()
 				add({ id = "a", kind = "sink" })
 				add({ id = "b", kind = "sink" })
 
-				local groups = grouped.all()
+				local groups = grouped:all()
 				local sink_group
 				for _, g in ipairs(groups) do
 					if g.id == "sink" then
@@ -325,7 +517,7 @@ describe("Observable", function()
 				end)
 				add({ id = "a", kind = "sink" })
 
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 				assert.is_not_nil(group)
 				assert.equals("sink", group.id)
 			end)
@@ -334,7 +526,7 @@ describe("Observable", function()
 				local grouped = obs:group_by(function(item)
 					return item.kind
 				end)
-				assert.is_nil(grouped.get("does_not_exist"))
+				assert.is_nil(grouped:get("does_not_exist"))
 			end)
 
 			it("returned group reflects subsequent additions", function()
@@ -342,7 +534,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				add({ id = "a", kind = "sink" })
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 				add({ id = "b", kind = "sink" })
 
 				assert.equals(2, #group.entries)
@@ -355,7 +547,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				add({ id = "a", kind = "sink" })
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 
 				local fired
 				group:subscribe(function(g)
@@ -374,7 +566,7 @@ describe("Observable", function()
 				end)
 				add({ id = "a", kind = "sink" })
 				add({ id = "b", kind = "sink" })
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 
 				local fired
 				group:subscribe(function(g)
@@ -393,7 +585,7 @@ describe("Observable", function()
 				end)
 
 				local called = false
-				grouped.on_added(function(group)
+				grouped:on_added(function(group)
 					group:subscribe(function()
 						called = true
 					end)
@@ -409,7 +601,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				add({ id = "a", kind = "sink" })
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 
 				local count_a, count_b = 0, 0
 				group:subscribe(function()
@@ -430,7 +622,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				add({ id = "a", kind = "sink" })
-				local group = grouped.get("sink")
+				local group = grouped:get("sink")
 
 				local count = 0
 				local unsub = group:subscribe(function()
@@ -451,7 +643,7 @@ describe("Observable", function()
 					return item.kind
 				end)
 				local count = 0
-				local unsub = grouped.on_added(function()
+				local unsub = grouped:on_added(function()
 					count = count + 1
 				end)
 
@@ -469,7 +661,7 @@ describe("Observable", function()
 				add({ id = "a", kind = "sink" })
 
 				local count = 0
-				local unsub = grouped.on_updated(function()
+				local unsub = grouped:on_updated(function()
 					count = count + 1
 				end)
 
@@ -488,7 +680,7 @@ describe("Observable", function()
 				add({ id = "b", kind = "source" })
 
 				local count = 0
-				local unsub = grouped.on_removed(function()
+				local unsub = grouped:on_removed(function()
 					count = count + 1
 				end)
 
@@ -514,7 +706,7 @@ describe("Observable", function()
 					return item.name
 				end)
 				local fired
-				unique.on_added(function(item)
+				unique:on_added(function(item)
 					fired = item
 				end)
 
@@ -529,10 +721,10 @@ describe("Observable", function()
 					return item.name
 				end)
 				local added_count, updated_count = 0, 0
-				unique.on_added(function()
+				unique:on_added(function()
 					added_count = added_count + 1
 				end)
-				unique.on_updated(function()
+				unique:on_updated(function()
 					updated_count = updated_count + 1
 				end)
 
@@ -550,7 +742,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local removed_key
-				unique.on_removed(function(key)
+				unique:on_removed(function(key)
 					removed_key = key
 				end)
 
@@ -567,7 +759,7 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -585,10 +777,10 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 
 				local called = false
-				unique.on_updated(function()
+				unique:on_updated(function()
 					called = true
 				end)
-				unique.on_removed(function()
+				unique:on_removed(function()
 					called = true
 				end)
 
@@ -604,7 +796,7 @@ describe("Observable", function()
 					return item.name
 				end, Observable.UniqueStrategy.Last)
 				local fired
-				unique.on_added(function(item)
+				unique:on_added(function(item)
 					fired = item
 				end)
 
@@ -620,7 +812,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -637,7 +829,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local removed_key
-				unique.on_removed(function(key)
+				unique:on_removed(function(key)
 					removed_key = key
 				end)
 
@@ -654,7 +846,7 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -672,10 +864,10 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 
 				local called = false
-				unique.on_updated(function()
+				unique:on_updated(function()
 					called = true
 				end)
-				unique.on_removed(function()
+				unique:on_removed(function()
 					called = true
 				end)
 
@@ -691,7 +883,7 @@ describe("Observable", function()
 					return item.name
 				end, Observable.UniqueStrategy.Recent)
 				local fired
-				unique.on_added(function(item)
+				unique:on_added(function(item)
 					fired = item
 				end)
 
@@ -707,7 +899,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -725,7 +917,7 @@ describe("Observable", function()
 				add(item_a1)
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -745,7 +937,7 @@ describe("Observable", function()
 				add(item_a2) -- a2 is now shown (most recently added)
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -762,7 +954,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local removed_key
-				unique.on_removed(function(key)
+				unique:on_removed(function(key)
 					removed_key = key
 				end)
 
@@ -777,7 +969,7 @@ describe("Observable", function()
 				local unique = obs:unique(function(item)
 					return item.name
 				end)
-				assert.equals(0, #unique.all())
+				assert.equals(0, #unique:all())
 			end)
 
 			it("returns one item per distinct key (First strategy)", function()
@@ -788,7 +980,7 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 				add({ id = "b1", name = "beta" })
 
-				assert.equals(2, #unique.all())
+				assert.equals(2, #unique:all())
 			end)
 
 			it("returns the first item for each key (First strategy)", function()
@@ -798,7 +990,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 				add({ id = "a2", name = "alpha" })
 
-				local result = unique.all()
+				local result = unique:all()
 				assert.equals(1, #result)
 				assert.equals("a1", result[1].id)
 			end)
@@ -810,7 +1002,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 				add({ id = "a2", name = "alpha" })
 
-				local result = unique.all()
+				local result = unique:all()
 				assert.equals(1, #result)
 				assert.equals("a2", result[1].id)
 			end)
@@ -825,7 +1017,7 @@ describe("Observable", function()
 				add(item_a2)
 				update(item_a1) -- a1 is now most recent
 
-				local result = unique.all()
+				local result = unique:all()
 				assert.equals(1, #result)
 				assert.equals("a1", result[1].id)
 			end)
@@ -839,7 +1031,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 				add({ id = "a2", name = "alpha" })
 
-				assert.equals("a1", unique.get("a1").id)
+				assert.equals("a1", unique:get("a1").id)
 			end)
 
 			it("returns the representative even when queried via a non-shown item id (First strategy)", function()
@@ -849,7 +1041,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 				add({ id = "a2", name = "alpha" })
 
-				assert.equals("a1", unique.get("a2").id)
+				assert.equals("a1", unique:get("a2").id)
 			end)
 
 			it("returns the last-added item for a known id (Last strategy)", function()
@@ -859,14 +1051,14 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 				add({ id = "a2", name = "alpha" })
 
-				assert.equals("a2", unique.get("a1").id)
+				assert.equals("a2", unique:get("a1").id)
 			end)
 
 			it("returns nil for an unknown id", function()
 				local unique = obs:unique(function(item)
 					return item.name
 				end)
-				assert.is_nil(unique.get("does_not_exist"))
+				assert.is_nil(unique:get("does_not_exist"))
 			end)
 		end)
 
@@ -879,7 +1071,7 @@ describe("Observable", function()
 				add(item_a1)
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -898,7 +1090,7 @@ describe("Observable", function()
 				add(item_a2)
 
 				local called = false
-				unique.on_updated(function()
+				unique:on_updated(function()
 					called = true
 				end)
 
@@ -916,7 +1108,7 @@ describe("Observable", function()
 				add(item_a2)
 
 				local fired
-				unique.on_updated(function(item)
+				unique:on_updated(function(item)
 					fired = item
 				end)
 
@@ -935,7 +1127,7 @@ describe("Observable", function()
 				add({ id = "a2", name = "alpha" })
 
 				local called = false
-				unique.on_updated(function()
+				unique:on_updated(function()
 					called = true
 				end)
 
@@ -954,10 +1146,10 @@ describe("Observable", function()
 				add(item_a)
 
 				local removed_key, added_item
-				unique.on_removed(function(key)
+				unique:on_removed(function(key)
 					removed_key = key
 				end)
-				unique.on_added(function(item)
+				unique:on_added(function(item)
 					added_item = item
 				end)
 
@@ -975,7 +1167,7 @@ describe("Observable", function()
 					return item.name
 				end)
 				local count = 0
-				local unsub = unique.on_added(function()
+				local unsub = unique:on_added(function()
 					count = count + 1
 				end)
 
@@ -993,7 +1185,7 @@ describe("Observable", function()
 				add({ id = "a1", name = "alpha" })
 
 				local count = 0
-				local unsub = unique.on_updated(function()
+				local unsub = unique:on_updated(function()
 					count = count + 1
 				end)
 
@@ -1012,7 +1204,7 @@ describe("Observable", function()
 				add({ id = "b1", name = "beta" })
 
 				local count = 0
-				local unsub = unique.on_removed(function()
+				local unsub = unique:on_removed(function()
 					count = count + 1
 				end)
 

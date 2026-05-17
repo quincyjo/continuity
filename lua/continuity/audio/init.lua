@@ -157,7 +157,7 @@ local function rebind(handle, id, new_state, meta, collection_inst, collection_d
 	---@cast handle ReadyAwareInternal<AudioState>|ControllableInternal<AudioState>|AudioHandle|table
 	-- Always sync to the collection: creates handle if absent, updates state/meta if present.
 	collection_device_handles.add(id, new_state, meta)
-	local collection_handle = collection_inst.get(id)
+	local collection_handle = collection_inst:get(id)
 	if not collection_handle then
 		return
 	end

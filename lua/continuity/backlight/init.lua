@@ -10,7 +10,7 @@ local gears = require("gears")
 ---@field brightness number
 ---@field raw        integer|nil
 
----@class BacklightHandle : ReadyAware<BacklightUpdate>, Controllable<BacklightUpdate>
+---@class BacklightHandle : ReadyAware<BacklightUpdate>, Controllable<BacklightUpdate>, Removable
 ---@field id          string|nil
 ---@field kind        BacklightKind
 ---@field state       BacklightState
@@ -49,27 +49,21 @@ local gears = require("gears")
 local Observable = require("continuity.observable")
 local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local Removable = require("continuity.removable")
 local extend = require("continuity.util.extend")
 
-local BacklightHandle = extend(ReadyAware, Controllable)
+local BacklightHandle = extend(ReadyAware, Controllable, Removable)
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
-local _handles = {} ---@type table<string, BacklightHandle>
-local _devices_added_subs = {}
-local _devices_removed_subs = {}
-local _devices_updated_subs = {}
+local observable = Observable()
 
 local function _on_control(handle, brightness, raw)
 	local changed = handle.state.brightness ~= brightness
 	handle.state.brightness = brightness
 	handle.state.raw = raw
 	if changed then
-		---@cast handle ReadyAwareInternal<BacklightUpdate>
-		handle:push(handle.state)
-		for _, cb in ipairs(_devices_updated_subs) do
-			cb(handle)
-		end
+		observable:update(handle.id, handle.state)
 	end
 	---@cast handle ControllableInternal<BacklightUpdate>
 	handle:control_event(handle.state)
@@ -152,25 +146,18 @@ local function _on_device_added(info)
 	handle.steps = info.steps
 	---@cast handle ReadyAwareInternal<BacklightUpdate>
 	handle:push({ brightness = info.brightness, raw = info.raw })
-	_handles[info.id] = handle
-	for _, sub in ipairs(_devices_added_subs) do
-		sub(handle)
-	end
+	observable:add(handle)
 end
 
 local function _on_device_removed(id)
-	local handle = _handles[id]
+	local handle = observable:remove(id)
 	if handle then
-		BacklightHandle.init(handle)
-		_handles[id] = nil
-	end
-	for _, sub in ipairs(_devices_removed_subs) do
-		sub(id)
+		ReadyAware.init(handle)
 	end
 end
 
 local function _on_change(id, brightness, raw)
-	local handle = _handles[id]
+	local handle = observable:get(id)
 	if handle then
 		if handle.state.brightness == brightness then
 			return
@@ -178,10 +165,7 @@ local function _on_change(id, brightness, raw)
 		handle.state.brightness = brightness
 		handle.state.raw = raw
 		---@cast handle ReadyAwareInternal<BacklightUpdate>
-		handle:push(handle.state)
-		for _, cb in ipairs(_devices_updated_subs) do
-			cb(handle)
-		end
+		observable:update(id, handle.state)
 	end
 end
 
@@ -202,65 +186,14 @@ function backlight.setup(opts)
 end
 
 ---@type BacklightDevices
-backlight.devices = Observable({
-	on_added = function(cb)
-		_devices_added_subs[#_devices_added_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_added_subs) do
-				if sub == cb then
-					table.remove(_devices_added_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	on_updated = function(cb)
-		_devices_updated_subs[#_devices_updated_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_updated_subs) do
-				if sub == cb then
-					table.remove(_devices_updated_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	on_removed = function(cb)
-		_devices_removed_subs[#_devices_removed_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_removed_subs) do
-				if sub == cb then
-					table.remove(_devices_removed_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	all = function()
-		local result = {}
-		for _, handle in pairs(_handles) do
-			result[#result + 1] = handle
-		end
-		return result
-	end,
-
-	get = function(id)
-		return _handles[id]
-	end,
-})
+backlight.devices = observable
 
 function backlight.stop()
 	if _backend then
 		_backend:stop()
 		_backend = nil
 	end
-	_handles = {}
-	_devices_added_subs = {}
-	_devices_updated_subs = {}
-	_devices_removed_subs = {}
+	Observable.init(observable)
 	_setup_called = false
 	backlight.primary_display = make_handle("display")
 end

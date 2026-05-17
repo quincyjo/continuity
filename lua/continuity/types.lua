@@ -1,4 +1,4 @@
----@class Subscribable<T>
----@field subscribe fun(self, cb: fun(state: T)): fun()
+-- Subscribable<T> is defined in continuity.subscribable
+-- Removable is defined in continuity.removable
 
 return {}
