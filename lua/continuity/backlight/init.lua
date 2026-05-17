@@ -58,6 +58,9 @@ local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
 local observable = Observable()
 
+---@param handle BacklightHandle
+---@param brightness number
+---@param raw? integer
 local function _on_control(handle, brightness, raw)
 	local changed = handle.state.brightness ~= brightness
 	handle.state.brightness = brightness
@@ -65,7 +68,7 @@ local function _on_control(handle, brightness, raw)
 	if changed then
 		observable:update(handle.id, handle.state)
 	end
-	---@cast handle ControllableInternal<BacklightUpdate>
+	---@cast handle BacklightHandle|ControllableInternal<BacklightState>
 	handle:control_event(handle.state)
 end
 

@@ -10,9 +10,9 @@
 
 ---@generic T: Subscribable<S>, Removable
 ---@class ObservableInternal<T, S> : Observable<T>
----@field add    fun(item: T): boolean
----@field update fun(id: string, state: S): boolean
----@field remove fun(id: string): T|nil
+---@field add    fun(self: Observable<T>, item: T): boolean
+---@field update fun(self: Observable<T>, id: string, state: S): boolean
+---@field remove fun(self: Observable<T>, id: string): T|nil
 
 ---@class Group<K, T> : Subscribable<T[]>
 ---@field id K

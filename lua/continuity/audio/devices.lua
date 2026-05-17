@@ -23,6 +23,7 @@ function devices.new()
 	HandleMT.__index.toggle_mute = function() end
 	HandleMT.__index.set_default = function() end
 
+	---@type ObservableInternal<AudioHandle, AudioState>
 	local observable = Observable()
 
 	local function full_state_changed(old, new)
@@ -97,6 +98,9 @@ function devices.new()
 	end
 
 	local function bind(api_sub)
+		---@param handle AudioHandle|ControllableInternal<AudioState>
+		---@param level AudioLevel
+		---@param muted AudioMuted
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted
 			handle.state.level = level
@@ -104,18 +108,17 @@ function devices.new()
 			if changed then
 				observable:update(handle.id, handle.state)
 			end
-			---@cast handle ControllableInternal<AudioState>
 			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
+			---@cast self AudioHandle|ControllableInternal<AudioState>
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
 			elseif delta < 0 and delta + self.state.level < 0 then
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				---@cast self ControllableInternal<AudioState>
 				self:control_event(self.state)
 				return
 			end
@@ -138,8 +141,8 @@ function devices.new()
 		end
 
 		HandleMT.__index.set_default = function(self)
+			---@cast self AudioHandle|ControllableInternal<AudioState>
 			api_sub.set_default(self.id, function()
-				---@cast self ControllableInternal<AudioState>
 				self:control_event(self.state)
 			end)
 		end

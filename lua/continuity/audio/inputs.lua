@@ -47,6 +47,7 @@ function inputs.new()
 	HandleMT.__index.toggle_mute = function() end
 	HandleMT.__index.move_to = function() end
 
+	---@type ObservableInternal<SinkInputHandle, SinkInputState>
 	local observable = Observable()
 
 	local handles = {}
@@ -96,18 +97,18 @@ function inputs.new()
 			if changed then
 				observable:update(handle.id, handle.state)
 			end
-			---@cast handle ControllableInternal<SinkInputState>
+			---@cast handle SinkInputHandle|ControllableInternal<SinkInputState>
 			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
+			---@cast self SinkInputHandle|ControllableInternal<SinkInputState>
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
 			elseif delta < 0 and delta + self.state.level < 0 then
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				---@cast self ControllableInternal<SinkInputState>
 				self:control_event(self.state)
 				return
 			end
@@ -132,7 +133,7 @@ function inputs.new()
 		HandleMT.__index.move_to = function(self, target)
 			local sink_id = type(target) == "table" and target.id or target
 			api_sub.move(self.id, sink_id, function()
-				---@cast self ControllableInternal<SinkInputState>
+				---@cast self SinkInputHandle|ControllableInternal<SinkInputState>
 				self:control_event(self.state)
 			end)
 		end
