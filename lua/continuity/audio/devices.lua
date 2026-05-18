@@ -8,14 +8,14 @@
 local devices = {}
 
 local Observable = require("continuity.observable")
-local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
 local extend = require("continuity.util.extend")
 
 ---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
-	local AudioHandle = extend(ReadyAware, Controllable, Removable)
+	local AudioHandle = extend(Subscribable, Controllable, Removable)
 	local HandleMT = AudioHandle.MT
 
 	HandleMT.__index.adjust_perc = function() end
@@ -47,19 +47,12 @@ function devices.new()
 			device_handles.update(id, initial_state or {})
 			return
 		end
-		local handle = setmetatable(
-			AudioHandle.init({
-				id = id,
-				name = meta and meta.name,
-				description = meta and meta.description,
-				state = { level = 0, muted = false },
-			}),
-			HandleMT
-		)
-		if initial_state then
-			---@cast handle ReadyAwareInternal<AudioState>
-			handle:push(initial_state)
-		end
+		local handle = AudioHandle({
+			id = id,
+			name = meta and meta.name,
+			description = meta and meta.description,
+			state = initial_state or { level = 0, muted = false },
+		})
 		observable:add(handle)
 	end
 
@@ -74,7 +67,10 @@ function devices.new()
 	end
 
 	function device_handles.remove(id)
-		observable:remove(id)
+		local removed = observable:remove(id)
+		if removed then
+			Controllable.init(removed)
+		end
 	end
 
 	function device_handles.patch(id, partial)

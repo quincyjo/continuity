@@ -53,18 +53,15 @@ function inputs.new()
 	local handles = {}
 
 	function handles.add(id, initial_state, meta)
-		local handle = setmetatable(
-			SinkInputHandle.init({
-				id = id,
-				app_name = meta and meta.app_name,
-				icon_name = meta and meta.icon_name,
-				app_icon = meta and meta.app_icon,
-				role = meta and meta.role,
-				binary = meta and meta.binary,
-				state = initial_state or { level = 0, muted = false },
-			}),
-			HandleMT
-		)
+		local handle = SinkInputHandle({
+			id = id,
+			app_name = meta and meta.app_name,
+			icon_name = meta and meta.icon_name,
+			app_icon = meta and meta.app_icon,
+			role = meta and meta.role,
+			binary = meta and meta.binary,
+			state = initial_state or { level = 0, muted = false },
+		})
 		observable:add(handle)
 	end
 
@@ -86,7 +83,10 @@ function inputs.new()
 	end
 
 	function handles.remove(id)
-		observable:remove(id)
+		local removed = observable:remove(id)
+		if removed then
+			Controllable.init(removed)
+		end
 	end
 
 	local function bind(api_sub)

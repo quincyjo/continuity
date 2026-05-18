@@ -22,7 +22,7 @@ local extend = require("continuity.util.extend")
 ---@field connection? "analog"|"bluetooth"|"hdmi"|"usb"
 ---@field is_default? boolean
 
----@class AudioHandle : ReadyAware<AudioState>, AudioControls<AudioState>
+---@class AudioHandle : AudioControls<AudioState>, Subscribable<AudioState>
 ---@field id          string
 ---@field name        string?
 ---@field description string?
@@ -107,7 +107,7 @@ AudioProxyHandle.MT.__index.set_default = function(self)
 	end
 end
 
----@type SinkHandle
+---@type SinkHandle|ReadyAware<AudioState>
 Audio.Volume = AudioProxyHandle({
 	id = "Master",
 	name = nil,
@@ -121,7 +121,7 @@ Audio.Volume = AudioProxyHandle({
 	_bound_control_unsub = nil,
 })
 
----@type SourceHandle
+---@type SourceHandle|ReadyAware<AudioState>
 Audio.Capture = AudioProxyHandle({
 	id = "Capture",
 	name = nil,
@@ -137,9 +137,9 @@ Audio.Capture = AudioProxyHandle({
 
 local bind_inputs, bind_sinks, bind_sources
 Audio.inputs, bind_inputs = inputs_mod.new()
----@type DeviceCollection<SinkHandle>
+---@type DeviceCollection<SinkHandle|Removable>
 Audio.sinks, bind_sinks = devices_mod.new()
----@type DeviceCollection<SourceHandle>
+---@type DeviceCollection<SourceHandle|Removable>
 Audio.sources, bind_sources = devices_mod.new()
 
 ---Bind a pre-made handle to the collection handle for the given device id.
