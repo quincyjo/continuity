@@ -100,7 +100,8 @@ ln -s continuity/lua/continuity ~/.config/awesome/continuity
 
 ## Conventions
 
-**Streamed modules** (`bat`, `cpu`, `mem`, `net`, `temp`) provide a uniform interface:
+**Streamed modules** (`Monitor<T>`; EG, `bat`, `cpu`, `mem`, `net`, `temp`)
+provide a uniform interface:
 
 ```lua
 module.setup(opts)              -- call once in rc.lua; opts.backend overrides default
@@ -112,10 +113,13 @@ module.state                    -- last-known state (may be nil)
 module.stop()                   -- tear down backend and clear subscribers
 ```
 
-**Control modules** (`audio`, `backlight`) provide a uniform interface:
+**Control modules** (`Subscribable<T>&Controllable<T>`; EG, `audio`, `backlight`)
+provide a uniform interface:
 
 ```lua
 audio.Volume.state                      -- last-known state (may be placeholder values)
+-- Predefined default handles that are
+-- initialized asynchronously provide on_ready:
 audio.Volume:on_ready(                  -- fires exactly once when state is first known or immediately.
   function(state) ... end
 )
@@ -132,13 +136,17 @@ audio.Volume:set_perc(50)               -- absolute
 audio.Volume:toggle_mute()
 ```
 
-**Transient resources** (`media.sources`, `audio.inputs`) provide a uniform interface:
+**Transient resources** (`Observable<T>`; EG, `media.sources`, `audio.inputs`)
+provide a uniform interface:
 
 ```lua
 media.sources:all()                     -- snapshot of all sources
 media.sources:get(id)
 media.sources:on_added(                 -- fires when a new source is added
-    function(source) ... end
+    function(source)                              -- Per resource subscription:
+        source:subscribe(function(state) ... end) -- Subscribe to the individual resource
+        source:on_removed(function() ... end)     -- Subscribe for removal
+    end
 )
 media.sources:on_updated(               -- fires when a source is updated
     function(source) ... end
