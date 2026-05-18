@@ -135,14 +135,15 @@ audio.Volume:toggle_mute()
 **Transient resources** (`media.sources`, `audio.inputs`) provide a uniform interface:
 
 ```lua
-media.sources.all()                     -- snapshot of all sources
-media.sources.on_added(                 -- fires when a new source is added
+media.sources:all()                     -- snapshot of all sources
+media.sources:get(id)
+media.sources:on_added(                 -- fires when a new source is added
     function(source) ... end
 )
-media.sources.on_updated(               -- fires when a source is updated
+media.sources:on_updated(               -- fires when a source is updated
     function(source) ... end
 )
-media.sources.on_removed(               -- fires when a source is removed
+media.sources:on_removed(               -- fires when a source is removed
     function(id) ... end
 )
 ```
@@ -311,14 +312,14 @@ media.setup({
 })
 
 -- Each returns an unsub function if used in a temporary context, such as a popup or notification.
-media.sources.on_added(function(source) ... end)
+media.sources:on_added(function(source) ... end)
 -- Updates *should* only be fired when something has changed, but exact behaviour depends
 -- on the specific backend and upstream application.
-media.sources.on_updated(function(source)
+media.sources:on_updated(function(source)
     -- source.state.title, .artist, .album, .art_path
     -- source.playback.play_pause(), .next(), .previous(), .stop()
 end)
-media.sources.on_removed(function(source_id) ... end)
+media.sources:on_removed(function(source_id) ... end)
 
 media.play_pause() -- play/pause most-recent source
 media.next()       -- skip forward
