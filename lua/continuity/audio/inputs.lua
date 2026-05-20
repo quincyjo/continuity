@@ -12,7 +12,7 @@
 ---@field role      string?
 ---@field binary    string?
 
----@class SinkInputHandle : Subscribable<SinkInputState>, AudioControls<SinkInputState>
+---@class SinkInputHandle : Subscribable<SinkInputState>, Controllable<SinkInputState>, Removable
 ---@field id          string
 ---@field app_name    string?
 ---@field icon_name   string?
@@ -20,7 +20,6 @@
 ---@field role        string?
 ---@field binary      string?
 ---@field state       SinkInputState
----@field on_removed  fun(self: SinkInputHandle, cb: fun(id: string)): fun()
 ---@field move_to     fun(self: SinkInputHandle, target: SinkHandle|integer|string)
 
 ---@class InputHandles
@@ -31,112 +30,43 @@
 ---@class InputCollection : Observable<SinkInputHandle>
 
 local Observable = require("continuity.observable")
+local Subscribable = require("continuity.subscribable")
 local Controllable = require("continuity.controllable")
+local Removable = require("continuity.removable")
+local extend = require("continuity.util.extend")
 
 local inputs = {}
 
 ---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
 function inputs.new()
-	---@type { inputs: table<string, SinkInputHandle>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: SinkInputHandle)[], on_updated_cbs: fun(handle: SinkInputHandle)[], on_removed_cbs: fun(id: string)[] }
-	local state = {
-		inputs = {},
-		on_added_cbs = {},
-		on_updated_cbs = {},
-		on_removed_cbs = {},
-		handle_removed_cbs = {},
-	}
-
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
-
-	local function make_unsub(cbs, cb)
-		return function()
-			for i = #cbs, 1, -1 do
-				if cbs[i] == cb then
-					table.remove(cbs, i)
-					return
-				end
-			end
-		end
-	end
-
-	local HandleMT = { __index = {} }
-	for k, v in pairs(Controllable.methods) do
-		HandleMT.__index[k] = v
-	end
-
-	HandleMT.__index.subscribe = function(self, cb)
-		self._subs[#self._subs + 1] = cb
-		return make_unsub(self._subs, cb)
-	end
-
-	HandleMT.__index.on_removed = function(self, cb)
-		local cbs = state.handle_removed_cbs[self.id]
-		cbs[#cbs + 1] = cb
-		return make_unsub(cbs, cb)
-	end
+	local SinkInputHandle = extend(Subscribable, Controllable, Removable)
+	local HandleMT = SinkInputHandle.MT
 
 	HandleMT.__index.adjust_perc = function() end
 	HandleMT.__index.set_perc = function() end
 	HandleMT.__index.toggle_mute = function() end
 	HandleMT.__index.move_to = function() end
 
-	local inst = {}
-
-	function inst.on_added(cb)
-		state.on_added_cbs[#state.on_added_cbs + 1] = cb
-		return make_unsub(state.on_added_cbs, cb)
-	end
-
-	function inst.on_updated(cb)
-		state.on_updated_cbs[#state.on_updated_cbs + 1] = cb
-		return make_unsub(state.on_updated_cbs, cb)
-	end
-
-	function inst.on_removed(cb)
-		state.on_removed_cbs[#state.on_removed_cbs + 1] = cb
-		return make_unsub(state.on_removed_cbs, cb)
-	end
-
-	---@return SinkInputHandle[]
-	function inst.all()
-		local list = {}
-		for _, h in pairs(state.inputs) do
-			list[#list + 1] = h
-		end
-		return list
-	end
-
-	function inst.get(id)
-		return state.inputs[id]
-	end
+	---@type ObservableInternal<SinkInputHandle, SinkInputState>
+	local observable = Observable()
 
 	local handles = {}
 
 	function handles.add(id, initial_state, meta)
-		local handle = setmetatable(
-			Controllable.init({
-				id = id,
-				app_name = meta and meta.app_name,
-				icon_name = meta and meta.icon_name,
-				app_icon = meta and meta.app_icon,
-				role = meta and meta.role,
-				binary = meta and meta.binary,
-				state = initial_state or { level = 0, muted = false },
-				_subs = {},
-			}),
-			HandleMT
-		)
-		state.inputs[id] = handle
-		state.handle_removed_cbs[id] = {}
-		fire(state.on_added_cbs, handle)
+		local handle = SinkInputHandle({
+			id = id,
+			app_name = meta and meta.app_name,
+			icon_name = meta and meta.icon_name,
+			app_icon = meta and meta.app_icon,
+			role = meta and meta.role,
+			binary = meta and meta.binary,
+			state = initial_state or { level = 0, muted = false },
+		})
+		observable:add(handle)
 	end
 
 	function handles.update(id, partial_state)
-		local handle = state.inputs[id]
+		local handle = observable:get(id)
 		if not handle then
 			return
 		end
@@ -148,24 +78,15 @@ function inputs.new()
 			end
 		end
 		if changed then
-			for _, cb in ipairs(handle._subs) do
-				cb(handle.state)
-			end
-			fire(state.on_updated_cbs, handle)
+			observable:update(id, handle.state)
 		end
 	end
 
 	function handles.remove(id)
-		local handle = state.inputs[id]
-		if not handle then
-			return
+		local removed = observable:remove(id)
+		if removed then
+			Controllable.init(removed)
 		end
-		fire(state.handle_removed_cbs[id] or {}, id)
-		handle._subs = {}
-		Controllable.init(handle)
-		state.inputs[id] = nil
-		state.handle_removed_cbs[id] = nil
-		fire(state.on_removed_cbs, id)
 	end
 
 	local function bind(api_sub)
@@ -174,22 +95,20 @@ function inputs.new()
 			handle.state.level = level
 			handle.state.muted = muted
 			if changed then
-				for _, cb in ipairs(handle._subs) do
-					cb(handle.state)
-				end
+				observable:update(handle.id, handle.state)
 			end
-			---@cast handle ControllableInternal<SinkInputState>
+			---@cast handle SinkInputHandle|ControllableInternal<SinkInputState>
 			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
+			---@cast self SinkInputHandle|ControllableInternal<SinkInputState>
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
 			elseif delta < 0 and delta + self.state.level < 0 then
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				---@cast self ControllableInternal<SinkInputState>
 				self:control_event(self.state)
 				return
 			end
@@ -214,7 +133,7 @@ function inputs.new()
 		HandleMT.__index.move_to = function(self, target)
 			local sink_id = type(target) == "table" and target.id or target
 			api_sub.move(self.id, sink_id, function()
-				---@cast self ControllableInternal<SinkInputState>
+				---@cast self SinkInputHandle|ControllableInternal<SinkInputState>
 				self:control_event(self.state)
 			end)
 		end
@@ -222,7 +141,7 @@ function inputs.new()
 		return handles
 	end
 
-	return Observable(inst), bind
+	return observable, bind
 end
 
 return inputs

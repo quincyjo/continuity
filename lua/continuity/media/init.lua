@@ -112,29 +112,29 @@ end
 --- on_updated debounce opts allow multi-backend coalescing to settle before firing.
 ---@type MediaSources
 media.sources = Observable({
-	on_added = function(cb)
-		assert(_registry, "media.sources.on_added() called before media.setup()")
+	on_added = function(_, cb)
+		assert(_registry, "media.sources:on_added() called before media.setup()")
 		return _registry.on_source_added(cb)
 	end,
 
-	on_updated = function(cb, opts)
-		assert(_registry, "media.sources.on_updated() called before media.setup()")
+	on_updated = function(_, cb, opts)
+		assert(_registry, "media.sources:on_updated() called before media.setup()")
 		return _registry.on_source_updated(cb, opts)
 	end,
 
-	on_removed = function(cb)
-		assert(_registry, "media.sources.on_removed() called before media.setup()")
+	on_removed = function(_, cb)
+		assert(_registry, "media.sources:on_removed() called before media.setup()")
 		return _registry.on_source_removed(cb)
 	end,
 
-	all = function()
+	all = function(_)
 		if not _registry then
 			return {}
 		end
 		return _registry.sources()
 	end,
 
-	get = function(id)
+	get = function(_, id)
 		if not _registry then
 			return nil
 		end
@@ -144,7 +144,7 @@ media.sources = Observable({
 
 --- Toggle playback of the most recently registered media source.
 function media.play_pause()
-	local sources = media.sources.all()
+	local sources = media.sources:all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -156,7 +156,7 @@ end
 
 --- Stop playback of the most recently registered media source.
 function media.stop()
-	local sources = media.sources.all()
+	local sources = media.sources:all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -168,7 +168,7 @@ end
 
 --- Go to the next track of the most recently registered media source.
 function media.next()
-	local sources = media.sources.all()
+	local sources = media.sources:all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then
@@ -180,7 +180,7 @@ end
 
 --- Go to the previous track of the most recently registered media source.
 function media.previous()
-	local sources = media.sources.all()
+	local sources = media.sources:all()
 	for i = #sources, 1, -1 do
 		local source = sources[i]
 		if source:active() and source.playback then

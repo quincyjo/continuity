@@ -1,15 +1,25 @@
+---@generic T: Subscribable, Removable
 ---@class Observable<T>
----@field on_added   fun(cb: fun(handle: T)): fun()
----@field on_updated fun(cb: fun(handle: T)): fun()
----@field on_removed fun(cb: fun(id: string)): fun()
----@field all        fun(): T[]
----@field get        fun(id: string): T|nil
+---@field on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
+---@field all        fun(self: Observable<T>): T[]
+---@field get        fun(self: Observable<T>, id: string): T|nil
 ---@field group_by   fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
 ---@field unique     fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
+
+---@generic T: Subscribable<S>, Removable
+---@class ObservableInternal<T, S> : Observable<T>
+---@field add    fun(self: Observable<T>, item: T): boolean
+---@field update fun(self: Observable<T>, id: string, state: S): boolean
+---@field remove fun(self: Observable<T>, id: string): T|nil
 
 ---@class Group<K, T> : Subscribable<T[]>
 ---@field id K
 ---@field entries T[]
+
+local Subscribable = require("continuity.subscribable")
+local Removable = require("continuity.removable")
 
 local Observable = {}
 
@@ -20,43 +30,97 @@ Observable.UniqueStrategy = {
 	Recent = "recent",
 }
 
+local function fire(cbs, ...)
+	for _, cb in ipairs(cbs) do
+		cb(...)
+	end
+end
+
+local function make_unsub(cbs, cb)
+	return function()
+		for i = #cbs, 1, -1 do
+			if cbs[i] == cb then
+				table.remove(cbs, i)
+			end
+		end
+	end
+end
+
 Observable.MT = {
 	__index = {
-		---@generic K, T : {id: string}
-		---@param observable Observable<T>
-		---@param group_by fun(observed: T): K
-		---@return Observable<Group<K, T>>
+		on_added = function(self, cb)
+			self.on_added_cbs[#self.on_added_cbs + 1] = cb
+			return make_unsub(self.on_added_cbs, cb)
+		end,
+
+		on_updated = function(self, cb)
+			self.on_updated_cbs[#self.on_updated_cbs + 1] = cb
+			return make_unsub(self.on_updated_cbs, cb)
+		end,
+
+		on_removed = function(self, cb)
+			self.on_removed_cbs[#self.on_removed_cbs + 1] = cb
+			return make_unsub(self.on_removed_cbs, cb)
+		end,
+
+		add = function(self, item)
+			if self.items[item.id] then
+				return false
+			end
+			self.items[item.id] = item
+			fire(self.on_added_cbs, item)
+			return true
+		end,
+
+		update = function(self, id, state)
+			local item = self.items[id]
+			if not item then
+				return false
+			end
+			item:push(state)
+			fire(self.on_updated_cbs, item)
+			return true
+		end,
+
+		remove = function(self, id)
+			local item = self.items[id]
+			if not item then
+				return nil
+			end
+			fire(item._removed_cbs or {}, id)
+			Subscribable.init(item)
+			Removable.init(item)
+			self.items[id] = nil
+			fire(self.on_removed_cbs, id)
+			return item
+		end,
+
+		all = function(self)
+			local result = {}
+			for _, item in pairs(self.items) do
+				result[#result + 1] = item
+			end
+			return result
+		end,
+
+		get = function(self, id)
+			return self.items[id]
+		end,
+
+		---@param observable Observable<`T`>
+		---@param group_by fun(observed: `T`): `K`
+		---@return Observable<Group<`K`, `T`>>
 		group_by = function(observable, group_by)
+			local self = Observable({})
 			---@type table<`K`, fun(group: Group<`K`, `T`>)[]>
 			local group_subscribers = {}
-			---@type table<`K`, Group<`K`, `T`>>
-			local groups = {}
 			---@type table<string, `K`>
 			local group_for = {}
-			local on_added_cbs = {}
-			local on_updated_cbs = {}
-			local on_removed_cbs = {}
-
-			local function fire(cbs, ...)
-				for _, cb in ipairs(cbs) do
-					cb(...)
-				end
-			end
-
-			local function make_unsub(cbs, cb)
-				return function()
-					for i = #cbs, 1, -1 do
-						if cbs[i] == cb then
-							table.remove(cbs, i)
-						end
-					end
-				end
-			end
 
 			local groupMT = {
 				__index = {
-					subscribe = function(self, cb)
-						local key = self.id
+					subscribe = function(group, cb)
+						local key = group.id
 						if not group_subscribers[key] then
 							group_subscribers[key] = {}
 						end
@@ -71,7 +135,7 @@ Observable.MT = {
 			---@param key `K`
 			local function remove_from_group(id, key)
 				group_for[id] = nil
-				local group = groups[key]
+				local group = self.items[key]
 				if group then
 					for i, entry in ipairs(group.entries) do
 						if entry.id == id then
@@ -80,11 +144,11 @@ Observable.MT = {
 						end
 					end
 					if #group.entries == 0 then
-						groups[key] = nil
+						self.items[key] = nil
 						group_subscribers[key] = nil
-						fire(on_removed_cbs, key)
+						fire(self.on_removed_cbs, key)
 					else
-						fire(on_updated_cbs, group)
+						fire(self.on_updated_cbs, group)
 						fire(group_subscribers[key] or {}, group.entries)
 					end
 				end
@@ -92,17 +156,17 @@ Observable.MT = {
 
 			local function add_to_group(observed, key)
 				group_for[observed.id] = key
-				local group = groups[key]
+				local group = self.items[key]
 				if not group then
 					group = setmetatable({ id = key, entries = { observed } }, groupMT)
-					groups[key] = group
+					self.items[key] = group
 				else
 					table.insert(group.entries, observed)
 				end
 				if #group.entries == 1 then
-					fire(on_added_cbs, group)
+					fire(self.on_added_cbs, group)
 				else
-					fire(on_updated_cbs, group)
+					fire(self.on_updated_cbs, group)
 					fire(group_subscribers[key] or {}, group.entries)
 				end
 			end
@@ -126,65 +190,51 @@ Observable.MT = {
 				remove_from_group(id, key)
 			end
 
-			observable.on_added(on_added)
-			observable.on_updated(on_updated)
-			observable.on_removed(on_removed)
+			for _, observed in pairs(observable:all()) do
+				on_added(observed)
+			end
 
-			return Observable({
-				on_added = function(cb)
-					table.insert(on_added_cbs, cb)
-					return make_unsub(on_added_cbs, cb)
-				end,
-				on_updated = function(cb)
-					table.insert(on_updated_cbs, cb)
-					return make_unsub(on_updated_cbs, cb)
-				end,
-				on_removed = function(cb)
-					table.insert(on_removed_cbs, cb)
-					return make_unsub(on_removed_cbs, cb)
-				end,
-				all = function()
-					local result = {}
-					for _, group in pairs(groups) do
-						result[#result + 1] = group
-					end
-					return result
-				end,
-				get = function(id)
-					return groups[id]
-				end,
-			})
+			observable:on_added(on_added)
+			observable:on_updated(on_updated)
+			observable:on_removed(on_removed)
+
+			return self
 		end,
 
-		---@generic K, T
-		---@param observable Observable<T>
-		---@param unique_by fun(observed: T): K
+		---@param observable Observable<`T`>
+		---@param unique_by fun(observed: `T`): `K`
 		---@param strategy? UniqueStrategy
-		---@return Observable<T>
+		---@return Observable<`T`>
 		unique = function(observable, unique_by, strategy)
 			strategy = strategy or Observable.UniqueStrategy.First
 			local groups = {}
 			local key_for = {}
 
-			local on_added_cbs = {}
-			local on_updated_cbs = {}
-			local on_removed_cbs = {}
-
-			local function fire(cbs, ...)
-				for _, cb in ipairs(cbs) do
-					cb(...)
-				end
-			end
-
-			local function make_unsub(cbs, cb)
-				return function()
-					for i = #cbs, 1, -1 do
-						if cbs[i] == cb then
-							table.remove(cbs, i)
+			local self = Observable({
+				all = function(_)
+					local result = {}
+					if strategy == Observable.UniqueStrategy.First then
+						for _, group in pairs(groups) do
+							result[#result + 1] = group[1]
+						end
+					else
+						for _, group in pairs(groups) do
+							result[#result + 1] = group[#group]
 						end
 					end
-				end
-			end
+					return result
+				end,
+				get = function(_, id)
+					local group = groups[key_for[id]]
+					if group then
+						if strategy == Observable.UniqueStrategy.First then
+							return group[1]
+						else
+							return group[#group]
+						end
+					end
+				end,
+			})
 
 			---@param id string
 			---@param key `K`
@@ -202,11 +252,11 @@ Observable.MT = {
 									or strategy == Observable.UniqueStrategy.Recent
 								)
 							then
-								fire(on_updated_cbs, group[#group - 1])
+								fire(self.on_updated_cbs, group[#group - 1])
 							elseif i == 1 and #group > 1 and strategy == Observable.UniqueStrategy.First then
-								fire(on_updated_cbs, group[2])
+								fire(self.on_updated_cbs, group[2])
 							elseif #group == 1 then
-								fire(on_removed_cbs, key)
+								fire(self.on_removed_cbs, key)
 							end
 							table.remove(group, i)
 							break
@@ -225,9 +275,9 @@ Observable.MT = {
 					#group > 1
 					and (strategy == Observable.UniqueStrategy.Last or strategy == Observable.UniqueStrategy.Recent)
 				then
-					fire(on_updated_cbs, group[#group])
+					fire(self.on_updated_cbs, group[#group])
 				elseif #group == 1 then
-					fire(on_added_cbs, observed)
+					fire(self.on_added_cbs, observed)
 				end
 			end
 
@@ -254,13 +304,13 @@ Observable.MT = {
 								end
 							end
 							group[#group + 1] = observed
-							fire(on_updated_cbs, observed)
+							fire(self.on_updated_cbs, observed)
 						end
 					elseif strategy == Observable.UniqueStrategy.Last and observed.id == group[#group].id then
-						fire(on_updated_cbs, observed)
+						fire(self.on_updated_cbs, observed)
 					else
 						if strategy == Observable.UniqueStrategy.First and observed.id == group[1].id then
-							fire(on_updated_cbs, observed)
+							fire(self.on_updated_cbs, observed)
 						end
 					end
 				end
@@ -271,53 +321,32 @@ Observable.MT = {
 				remove_from_group(id, key)
 			end
 
-			observable.on_added(on_added)
-			observable.on_updated(on_updated)
-			observable.on_removed(on_removed)
+			for _, observed in pairs(observable:all()) do
+				on_added(observed)
+			end
 
-			return Observable({
-				on_added = function(cb)
-					table.insert(on_added_cbs, cb)
-					return make_unsub(on_added_cbs, cb)
-				end,
-				on_updated = function(cb)
-					table.insert(on_updated_cbs, cb)
-					return make_unsub(on_updated_cbs, cb)
-				end,
-				on_removed = function(cb)
-					table.insert(on_removed_cbs, cb)
-					return make_unsub(on_removed_cbs, cb)
-				end,
-				all = function()
-					local result = {}
-					if strategy == Observable.UniqueStrategy.First then
-						for _, group in pairs(groups) do
-							result[#result + 1] = group[1]
-						end
-					else
-						for _, group in pairs(groups) do
-							result[#result + 1] = group[#group]
-						end
-					end
-					return result
-				end,
-				get = function(id)
-					local group = groups[key_for[id]]
-					if group then
-						if strategy == Observable.UniqueStrategy.First then
-							return group[1]
-						else
-							return group[#group]
-						end
-					end
-				end,
-			})
+			observable:on_added(on_added)
+			observable:on_updated(on_updated)
+			observable:on_removed(on_removed)
+
+			return self
 		end,
 	},
 }
 
+function Observable.init(inst)
+	inst = inst or {}
+	inst.on_added_cbs = {}
+	inst.on_updated_cbs = {}
+	inst.on_removed_cbs = {}
+	inst.items = {}
+	return inst
+end
+
+---@generic T, S
+---@overload fun(inst: table): ObservableInternal<T, S>
 return setmetatable(Observable, {
 	__call = function(self, inst)
-		return setmetatable(inst, self.MT)
+		return setmetatable(self.init(inst), self.MT)
 	end,
 })

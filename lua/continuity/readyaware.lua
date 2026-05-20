@@ -4,6 +4,8 @@
 ---@class ReadyAwareInternal<T> : ReadyAware<T>
 ---@field push fun(self, state: T)
 
+local Subscribable = require("continuity.subscribable")
+
 local ReadyAware = {}
 
 ReadyAware.MT = {
@@ -48,7 +50,7 @@ ReadyAware.methods = ReadyAware.MT.__index
 function ReadyAware.init(inst)
 	inst._ready = false
 	inst._ready_cbs = {}
-	inst._subs = {}
+	Subscribable.init(inst)
 	return inst
 end
 

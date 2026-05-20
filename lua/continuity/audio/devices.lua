@@ -8,82 +8,23 @@
 local devices = {}
 
 local Observable = require("continuity.observable")
-local ReadyAware = require("continuity.readyaware")
 local Controllable = require("continuity.controllable")
+local Subscribable = require("continuity.subscribable")
+local Removable = require("continuity.removable")
 local extend = require("continuity.util.extend")
 
 ---@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
-	local AudioHandle = extend(ReadyAware, Controllable)
-	---@type { handles: table<string, AudioHandle>, handle_removed_cbs: table<string, fun(id: string)[]>, on_added_cbs: fun(handle: AudioHandle)[], on_updated_cbs: fun(handle: AudioHandle)[], on_removed_cbs: fun(id: string)[] }
-	local state = {
-		handles = {},
-		handle_removed_cbs = {},
-		on_added_cbs = {},
-		on_updated_cbs = {},
-		on_removed_cbs = {},
-	}
-
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
-
-	local function make_unsub(cbs, cb)
-		return function()
-			for i = #cbs, 1, -1 do
-				if cbs[i] == cb then
-					table.remove(cbs, i)
-					return
-				end
-			end
-		end
-	end
-
+	local AudioHandle = extend(Subscribable, Controllable, Removable)
 	local HandleMT = AudioHandle.MT
-
-	HandleMT.__index.on_removed = function(self, cb)
-		local cbs = state.handle_removed_cbs[self.id]
-		cbs[#cbs + 1] = cb
-		return make_unsub(cbs, cb)
-	end
 
 	HandleMT.__index.adjust_perc = function() end
 	HandleMT.__index.set_perc = function() end
 	HandleMT.__index.toggle_mute = function() end
 	HandleMT.__index.set_default = function() end
 
-	local inst = {}
-
-	function inst.on_added(cb)
-		state.on_added_cbs[#state.on_added_cbs + 1] = cb
-		return make_unsub(state.on_added_cbs, cb)
-	end
-
-	function inst.on_updated(cb)
-		state.on_updated_cbs[#state.on_updated_cbs + 1] = cb
-		return make_unsub(state.on_updated_cbs, cb)
-	end
-
-	function inst.on_removed(cb)
-		state.on_removed_cbs[#state.on_removed_cbs + 1] = cb
-		return make_unsub(state.on_removed_cbs, cb)
-	end
-
-	---@return AudioHandle[]
-	function inst.all()
-		local list = {}
-		for _, h in pairs(state.handles) do
-			list[#list + 1] = h
-		end
-		return list
-	end
-
-	---@param id string
-	function inst.get(id)
-		return state.handles[id]
-	end
+	---@type ObservableInternal<AudioHandle, AudioState>
+	local observable = Observable()
 
 	local function full_state_changed(old, new)
 		return old.level ~= new.level
@@ -97,8 +38,8 @@ function devices.new()
 	local device_handles = {}
 
 	function device_handles.add(id, initial_state, meta)
-		if state.handles[id] then
-			local handle = state.handles[id]
+		if observable:get(id) then
+			local handle = observable:get(id)
 			if meta then
 				handle.name = meta.name
 				handle.description = meta.description
@@ -106,50 +47,34 @@ function devices.new()
 			device_handles.update(id, initial_state or {})
 			return
 		end
-		local handle = setmetatable(
-			AudioHandle.init({
-				id = id,
-				name = meta and meta.name,
-				description = meta and meta.description,
-				state = { level = 0, muted = false },
-			}),
-			HandleMT
-		)
-		state.handles[id] = handle
-		state.handle_removed_cbs[id] = {}
-		if initial_state then
-			---@cast handle ReadyAwareInternal<AudioState>
-			handle:push(initial_state)
-		end
-		fire(state.on_added_cbs, handle)
+		local handle = AudioHandle({
+			id = id,
+			name = meta and meta.name,
+			description = meta and meta.description,
+			state = initial_state or { level = 0, muted = false },
+		})
+		observable:add(handle)
 	end
 
 	function device_handles.update(id, new_state)
-		local handle = state.handles[id]
+		local handle = observable:get(id)
 		if not handle then
 			return
 		end
 		if full_state_changed(handle.state, new_state) then
-			---@cast handle ReadyAwareInternal<AudioState>
-			handle:push(new_state)
-			fire(state.on_updated_cbs, handle)
+			observable:update(id, new_state)
 		end
 	end
 
 	function device_handles.remove(id)
-		local handle = state.handles[id]
-		if not handle then
-			return
+		local removed = observable:remove(id)
+		if removed then
+			Controllable.init(removed)
 		end
-		fire(state.handle_removed_cbs[id] or {}, id)
-		AudioHandle.init(handle)
-		state.handles[id] = nil
-		state.handle_removed_cbs[id] = nil
-		fire(state.on_removed_cbs, id)
 	end
 
 	function device_handles.patch(id, partial)
-		local handle = state.handles[id]
+		local handle = observable:get(id)
 		if not handle then
 			return nil, nil
 		end
@@ -163,35 +88,33 @@ function devices.new()
 			for k, v in pairs(partial) do
 				handle.state[k] = v
 			end
-			---@cast handle ReadyAwareInternal<AudioState>
-			handle:push(handle.state)
-			fire(state.on_updated_cbs, handle)
+			observable:update(id, handle.state)
 		end
 		return handle.state, { name = handle.name, description = handle.description }
 	end
 
 	local function bind(api_sub)
+		---@param handle AudioHandle|ControllableInternal<AudioState>
+		---@param level AudioLevel
+		---@param muted AudioMuted
 		local function update_level_muted(handle, level, muted)
 			local changed = handle.state.level ~= level or handle.state.muted ~= muted
 			handle.state.level = level
 			handle.state.muted = muted
 			if changed then
-				---@cast handle ReadyAwareInternal<AudioState>
-				handle:push(handle.state)
-				fire(state.on_updated_cbs, handle)
+				observable:update(handle.id, handle.state)
 			end
-			---@cast handle ControllableInternal<AudioState>
 			handle:control_event(handle.state)
 		end
 
 		HandleMT.__index.adjust_perc = function(self, delta)
+			---@cast self AudioHandle|ControllableInternal<AudioState>
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
 			elseif delta < 0 and delta + self.state.level < 0 then
 				delta = -self.state.level
 			end
 			if delta == 0 then
-				---@cast self ControllableInternal<AudioState>
 				self:control_event(self.state)
 				return
 			end
@@ -214,8 +137,8 @@ function devices.new()
 		end
 
 		HandleMT.__index.set_default = function(self)
+			---@cast self AudioHandle|ControllableInternal<AudioState>
 			api_sub.set_default(self.id, function()
-				---@cast self ControllableInternal<AudioState>
 				self:control_event(self.state)
 			end)
 		end
@@ -223,7 +146,7 @@ function devices.new()
 		return device_handles
 	end
 
-	return Observable(inst), bind
+	return observable, bind
 end
 
 return devices

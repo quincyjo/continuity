@@ -137,20 +137,20 @@ d:adjust(-2)        -- decrease by 2 raw steps
 table pattern.
 
 ```lua
-local unsub = backlight.devices.on_added(function(handle)
+local unsub = backlight.devices:on_added(function(handle)
     print("device added:", handle.id, handle.kind)
 end)
 unsub()
 
-backlight.devices.on_removed(function(id)
+backlight.devices:on_removed(function(id)
     print("device removed:", id)
 end)
 
 -- All currently known handles (displays and keyboards):
-local all = backlight.devices.all()
+local all = backlight.devices:all()
 
 -- Filter by kind if needed:
-for _, h in ipairs(backlight.devices.all()) do
+for _, h in ipairs(backlight.devices:all()) do
     if h.kind == "display" then
         print(h.id, h.state.brightness)
     end
