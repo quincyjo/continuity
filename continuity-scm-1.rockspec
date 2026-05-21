@@ -52,6 +52,7 @@ build = {
         ["continuity.sysinfo.net.backends.ipmonitor"] = "lua/continuity/sysinfo/net/backends/ipmonitor.lua",
         ["continuity.sysinfo.temp"]                  = "lua/continuity/sysinfo/temp/init.lua",
         ["continuity.sysinfo.temp.backends.sysfs"]   = "lua/continuity/sysinfo/temp/backends/sysfs.lua",
+        ["continuity.sysinfo.temp.backends.hwmon"]   = "lua/continuity/sysinfo/temp/backends/hwmon.lua",
         ["continuity.tools.find"]                    = "lua/continuity/tools/find/init.lua",
         ["continuity.tools.find.backends.fd"]        = "lua/continuity/tools/find/backends/fd.lua",
         ["continuity.tools.find.backends.find"]      = "lua/continuity/tools/find/backends/find.lua",

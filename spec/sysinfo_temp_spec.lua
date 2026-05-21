@@ -19,8 +19,14 @@ describe("sysinfo.temp module", function()
 	local function push(s)
 		captured_cb(s)
 	end
-	local function state(avg)
-		return { zones = { ["/sys/thermal_zone0/temp"] = avg }, avg = avg }
+
+	local function make_device(t)
+		return { name = "coretemp", label = "Package id 0", temp = t, sensors = {} }
+	end
+
+	local function state(t)
+		local d = make_device(t)
+		return { devices = { d }, cpu = d }
 	end
 
 	it("state delivers nil before any push", function()
@@ -36,10 +42,10 @@ describe("sysinfo.temp module", function()
 			r = s
 		end)
 		push(state(55))
-		assert.equals(55, r.avg)
+		assert.equals(55, r.cpu.temp)
 	end)
 
-	it("subscriber called when avg changes", function()
+	it("subscriber called when cpu temp changes", function()
 		temp.setup({ backend = mock_backend })
 		local calls = 0
 		temp:subscribe(function()
@@ -50,14 +56,17 @@ describe("sysinfo.temp module", function()
 		assert.equals(2, calls)
 	end)
 
-	it("subscriber called when a zone value changes", function()
+	it("subscriber called when a device temp changes", function()
 		temp.setup({ backend = mock_backend })
 		local calls = 0
 		temp:subscribe(function()
 			calls = calls + 1
 		end)
-		push({ zones = { z1 = 50, z2 = 60 }, avg = 55 })
-		push({ zones = { z1 = 50, z2 = 65 }, avg = 57.5 })
+		local d1 = { name = "coretemp", label = "Package id 0", temp = 50, sensors = {} }
+		local d2 = { name = "nvme", label = "Composite", temp = 35, sensors = {} }
+		push({ devices = { d1, d2 }, cpu = d1 })
+		d1 = { name = "coretemp", label = "Package id 0", temp = 55, sensors = {} }
+		push({ devices = { d1, d2 }, cpu = d1 })
 		assert.equals(2, calls)
 	end)
 
@@ -79,7 +88,7 @@ describe("sysinfo.temp module", function()
 			r2 = s
 		end)
 		new_cb(state(70))
-		assert.equals(70, r2.avg)
+		assert.equals(70, r2.cpu.temp)
 	end)
 
 	it("subscribe replays current state immediately if available", function()
@@ -89,7 +98,7 @@ describe("sysinfo.temp module", function()
 		temp:subscribe(function(s)
 			replayed = s
 		end)
-		assert.equals(55, replayed.avg)
+		assert.equals(55, replayed.cpu.temp)
 	end)
 
 	it("subscribe returns a callable unsubscribe function", function()
@@ -103,7 +112,7 @@ describe("sysinfo.temp module", function()
 		temp.setup({ backend = mock_backend })
 		push(state(55))
 		local r = temp.state
-		assert.equals(55, r.avg)
+		assert.equals(55, r.cpu.temp)
 	end)
 
 	it("unsubscribe stops delivery", function()
