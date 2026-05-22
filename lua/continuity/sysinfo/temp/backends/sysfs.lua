@@ -22,7 +22,7 @@ local function valid_temp(t)
 	return t ~= nil and t >= MIN_TEMP and t <= MAX_TEMP
 end
 
----@param zones table<string, table>  Raw zone data keyed by zone path
+---@param zones_list table<string, table>  Raw zone data keyed by zone path
 ---@param cpu_device? string
 ---@return TempDevice|nil
 local function select_cpu(zones_list, cpu_device)
@@ -81,8 +81,8 @@ function sysfs._parse_sysfs_lines(lines, cpu_device, exclude)
 					z.zone_type = value
 				else
 					local idx, ftype = filename:match("^trip_point_(%d+)_(.+)$")
+					idx = tonumber(idx)
 					if idx and ftype then
-						idx = tonumber(idx)
 						if ftype == "type" then
 							z.trip_types[idx] = value
 						elseif ftype == "temp" then

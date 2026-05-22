@@ -89,8 +89,8 @@ function hwmon._parse_hwmon_lines(lines, cpu_device, exclude)
 					d.dev_name = value
 				else
 					local idx, ftype = filename:match("^temp(%d+)_(.+)$")
+					idx = tonumber(idx)
 					if idx and ftype then
-						idx = tonumber(idx)
 						if not d.sensors[idx] then
 							d.sensors[idx] = {}
 						end
