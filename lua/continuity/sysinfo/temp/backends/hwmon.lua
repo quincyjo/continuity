@@ -8,7 +8,11 @@ local Process = require("continuity.util.process")
 local MIN_TEMP = -40
 local MAX_TEMP = 200
 
-local CPU_LABELS = { "Package id 0", "Tdie", "Tctl" }
+local CPU_LABELS = {
+	["Package id 0"] = true,
+	Tdie = true,
+	Tctl = true,
+}
 
 local hwmon = {}
 
@@ -40,12 +44,8 @@ local function select_cpu(devices_list, cpu_device)
 		end
 		return nil
 	end
-	local label_set = {}
-	for _, l in ipairs(CPU_LABELS) do
-		label_set[l] = true
-	end
 	for _, d in ipairs(devices_list) do
-		if d.label and label_set[d.label] then
+		if d.label and CPU_LABELS[d.label] then
 			return d
 		end
 	end

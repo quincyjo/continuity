@@ -8,7 +8,11 @@ local Process = require("continuity.util.process")
 local MIN_TEMP = -40
 local MAX_TEMP = 200
 
-local CPU_LABELS = { "x86_pkg_temp", "cpu-thermal", "soc-thermal" }
+local CPU_LABELS = {
+	x86_pkg_temp = true,
+	["cpu-thermal"] = true,
+	["soc-thermal"] = true,
+}
 
 local sysfs = {}
 
@@ -30,12 +34,8 @@ local function select_cpu(zones_list, cpu_device)
 		end
 		return nil
 	end
-	local label_set = {}
-	for _, l in ipairs(CPU_LABELS) do
-		label_set[l] = true
-	end
 	for _, d in ipairs(zones_list) do
-		if label_set[d.label] then
+		if CPU_LABELS[d.label] then
 			return d
 		end
 	end
