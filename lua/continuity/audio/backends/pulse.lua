@@ -62,6 +62,62 @@ local function derive_connection(device_name)
 end
 
 -- ----------------------------------------------------------------------------
+-- Parse ports
+-- ----------------------------------------------------------------------------
+
+---@param avail_str string  Raw availability string from pactl
+---@return "available"|"not available"|"unknown"
+local function normalize_availability(avail_str)
+	if avail_str:match("^availability ") then
+		return avail_str:sub(14)
+	end
+	return avail_str
+end
+
+--- Parses port lines from a device block (text format).
+--- Returns nil if no port lines are found.
+---@param block string
+---@return AudioPort[]?
+local function parse_ports_text(block)
+	local ports = {}
+	for line in block:gmatch("[^\n]+") do
+		local name, desc, prio, avail_str =
+			line:match("^\t\t([^:]+): ([^(]+)%(type: [^,]+, priority: (%d+), availability group: [^,]+, ([^)]+)%)")
+		if name then
+			ports[#ports + 1] = {
+				name = name,
+				description = desc:match("^%s*(.-)%s*$"),
+				type = derive_port_type(name),
+				priority = tonumber(prio),
+				availability = normalize_availability(avail_str),
+			}
+		end
+	end
+	return #ports > 0 and ports or nil
+end
+
+--- Parses ports from a pactl JSON ports array.
+--- Returns nil if array is nil, json.null, or empty.
+---@param ports_arr table?
+---@return AudioPort[]?
+local function parse_ports_json(ports_arr)
+	if not ports_arr or ports_arr == json.null then
+		return nil
+	end
+	local ports = {}
+	for _, p in ipairs(ports_arr) do
+		ports[#ports + 1] = {
+			name = p.name,
+			description = p.description,
+			type = derive_port_type(p.name),
+			priority = p.priority,
+			availability = normalize_availability(p.availability or "availability unknown"),
+		}
+	end
+	return #ports > 0 and ports or nil
+end
+
+-- ----------------------------------------------------------------------------
 -- Parse volume/mute
 -- ----------------------------------------------------------------------------
 
@@ -119,6 +175,7 @@ local function parse_device_block(block, default_name)
 			muted = muted or false,
 			port = port,
 			port_type = port and derive_port_type(port) or nil,
+			ports = parse_ports_text(block),
 			connection = name and derive_connection(name) or nil,
 			is_default = name == default_name,
 		},
@@ -295,6 +352,7 @@ local function audio_form_json(default_name, dev)
 			muted = dev.mute == true,
 			port = port,
 			port_type = port and derive_port_type(port) or nil,
+			ports = parse_ports_json(dev.ports),
 			connection = name and derive_connection(name) or nil,
 			is_default = name == default_name,
 		},
@@ -935,6 +993,42 @@ local function create()
 		end)
 	end
 
+	sink_api.set_port = function(idx, port_name, cb)
+		pending_sinks[idx] = (pending_sinks[idx] or 0) + 1
+		awful.spawn.easy_async({ "pactl", "set-sink-port", idx, port_name }, function(_, _, _, exitcode)
+			if exitcode ~= 0 then
+				if pending_sinks[idx] and pending_sinks[idx] > 0 then
+					pending_sinks[idx] = pending_sinks[idx] - 1
+				end
+				return
+			end
+			if sink_handles then
+				sink_handles.patch(idx, { port = port_name, port_type = derive_port_type(port_name) })
+			end
+			if cb then
+				cb()
+			end
+		end)
+	end
+
+	source_api.set_port = function(idx, port_name, cb)
+		pending_sources[idx] = (pending_sources[idx] or 0) + 1
+		awful.spawn.easy_async({ "pactl", "set-source-port", idx, port_name }, function(_, _, _, exitcode)
+			if exitcode ~= 0 then
+				if pending_sources[idx] and pending_sources[idx] > 0 then
+					pending_sources[idx] = pending_sources[idx] - 1
+				end
+				return
+			end
+			if source_handles then
+				source_handles.patch(idx, { port = port_name, port_type = derive_port_type(port_name) })
+			end
+			if cb then
+				cb()
+			end
+		end)
+	end
+
 	local function after_set_input(id, cb)
 		awful.spawn.easy_async(INPUT_CMD, function(stdout, _, _, exitcode)
 			if exitcode ~= 0 then
@@ -1016,6 +1110,8 @@ Pulse._private = {
 	derive_port_type = derive_port_type,
 	derive_connection = derive_connection,
 	parse_volume_mute = parse_volume_mute,
+	-- port parse functions
+	parse_ports_text = parse_ports_text,
 	-- text parse functions
 	parse_all_devices = parse_all_devices_text,
 	find_device_block_by_index = find_device_block_by_index,

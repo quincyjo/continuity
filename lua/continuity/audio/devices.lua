@@ -22,9 +22,29 @@ function devices.new()
 	HandleMT.__index.set_perc = function() end
 	HandleMT.__index.toggle_mute = function() end
 	HandleMT.__index.set_default = function() end
+	HandleMT.__index.set_port = function() end
 
 	---@type ObservableInternal<AudioHandle, AudioState>
 	local observable = Observable()
+
+	local function ports_changed(old_ports, new_ports)
+		if old_ports == nil and new_ports == nil then
+			return false
+		end
+		if old_ports == nil or new_ports == nil then
+			return true
+		end
+		if #old_ports ~= #new_ports then
+			return true
+		end
+		for i, p in ipairs(old_ports) do
+			local np = new_ports[i]
+			if p.name ~= np.name or p.availability ~= np.availability then
+				return true
+			end
+		end
+		return false
+	end
 
 	local function full_state_changed(old, new)
 		return old.level ~= new.level
@@ -33,6 +53,7 @@ function devices.new()
 			or old.port_type ~= new.port_type
 			or old.connection ~= new.connection
 			or old.is_default ~= new.is_default
+			or ports_changed(old.ports, new.ports)
 	end
 
 	local device_handles = {}
@@ -139,6 +160,14 @@ function devices.new()
 		HandleMT.__index.set_default = function(self)
 			---@cast self AudioHandle|ControllableInternal<AudioState>
 			api_sub.set_default(self.id, function()
+				self:control_event(self.state)
+			end)
+		end
+
+		HandleMT.__index.set_port = function(self, port)
+			---@cast self AudioHandle|ControllableInternal<AudioState>
+			local port_name = type(port) == "table" and port.name or port
+			api_sub.set_port(self.id, port_name, function()
 				self:control_event(self.state)
 			end)
 		end

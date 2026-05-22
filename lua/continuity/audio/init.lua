@@ -1,5 +1,6 @@
 ---@alias AudioLevel    integer   Volume level 0–100.
 ---@alias AudioMuted    boolean   True when the channel is muted.
+---@alias AudioPortType "headset-mic"|"headset"|"headphones"|"speaker"|"hdmi"|"mic"
 
 local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
@@ -14,11 +15,19 @@ local extend = require("continuity.util.extend")
 ---@field set_perc    fun(self, value: AudioLevel)
 ---@field toggle_mute fun(self)
 
+---@class AudioPort
+---@field name         string
+---@field description  string
+---@field type         AudioPortType?
+---@field priority     integer
+---@field availability "available"|"not available"|"unknown"
+
 ---@class AudioState
 ---@field level       AudioLevel
 ---@field muted       AudioMuted
 ---@field port        string?  Raw active port name e.g. "analog-input-internal-mic"
----@field port_type?  "headset-mic"|"headset"|"headphones"|"speaker"|"hdmi"|"mic"
+---@field port_type?  AudioPortType
+---@field ports       AudioPort[]?
 ---@field connection? "analog"|"bluetooth"|"hdmi"|"usb"
 ---@field is_default? boolean
 
@@ -28,6 +37,7 @@ local extend = require("continuity.util.extend")
 ---@field description string?
 ---@field state       AudioState
 ---@field set_default fun(self: AudioHandle)
+---@field set_port    fun(self: AudioHandle, port: AudioPort|string)
 ---@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
 
 ---@alias SinkHandle   AudioHandle
@@ -40,6 +50,7 @@ local extend = require("continuity.util.extend")
 ---@field mute        fun(idx: string, cb: fun(level: AudioLevel, muted: AudioMuted))
 ---@field unmute      fun(idx: string, cb: fun(level: AudioLevel, muted: AudioMuted))
 ---@field set_default fun(idx: string, cb: fun())
+---@field set_port    fun(idx: string, port_name: string, cb: fun())
 
 ---@alias SourceApi SinkApi
 
@@ -104,6 +115,11 @@ end
 AudioProxyHandle.MT.__index.set_default = function(self)
 	if self._bound_handle then
 		self._bound_handle:set_default()
+	end
+end
+AudioProxyHandle.MT.__index.set_port = function(self, port_name)
+	if self._bound_handle then
+		self._bound_handle:set_port(port_name)
 	end
 end
 

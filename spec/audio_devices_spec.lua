@@ -9,6 +9,7 @@ local function make_mock_api_sub()
 				cb()
 			end
 		end,
+		set_port = function() end,
 		adjust_perc = function() end,
 		set_perc = function() end,
 		toggle = function() end,
@@ -597,6 +598,125 @@ describe("audio.devices registry", function()
 			sinst:all()[1]:set_default()
 			assert.equals(1, #calls)
 			assert.equals("alsa_input.pci", calls[1].idx)
+		end)
+	end)
+
+	describe("ports_changed detection", function()
+		it("no change when both old and new ports are nil", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = nil })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = nil })
+			assert.equals(0, sub_count)
+		end)
+
+		it("fires subscriber when ports count changes", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = { { name = "a", availability = "unknown" } } })
+			sub_count = 0
+			handles.update("57", {
+				level = 50,
+				muted = false,
+				ports = {
+					{ name = "a", availability = "unknown" },
+					{ name = "b", availability = "available" },
+				},
+			})
+			assert.equals(1, sub_count)
+		end)
+
+		it("fires subscriber when port availability changes", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = { { name = "a", availability = "not available" } } })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = { { name = "a", availability = "available" } } })
+			assert.equals(1, sub_count)
+		end)
+
+		it("no change when ports are identical", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			local ports = { { name = "a", availability = "unknown" } }
+			handles.add("57", { level = 50, muted = false, ports = ports })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = { { name = "a", availability = "unknown" } } })
+			assert.equals(0, sub_count)
+		end)
+	end)
+
+	describe("set_port dispatch", function()
+		it("set_port calls api_sub.set_port with the handle id and port name", function()
+			local calls = {}
+			api_sub.set_port = function(idx, port_name, cb)
+				calls[#calls + 1] = { idx = idx, port_name = port_name }
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:set_port("analog-output-headphones")
+			assert.equals(1, #calls)
+			assert.equals("57", calls[1].idx)
+			assert.equals("analog-output-headphones", calls[1].port_name)
+		end)
+
+		it("set_port cb fires on_control", function()
+			local control_count = 0
+			api_sub.set_port = function(_idx, _port, cb)
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:on_control(function()
+				control_count = control_count + 1
+			end)
+			inst:all()[1]:set_port("analog-output-headphones")
+			assert.equals(1, control_count)
+		end)
+
+		it("set_port accepts an AudioPort table and extracts .name", function()
+			local calls = {}
+			api_sub.set_port = function(idx, port_name, cb)
+				calls[#calls + 1] = { idx = idx, port_name = port_name }
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:set_port({ name = "analog-output-headphones", availability = "available" })
+			assert.equals(1, #calls)
+			assert.equals("analog-output-headphones", calls[1].port_name)
+		end)
+
+		it("set_port is a no-op before bind", function()
+			local inst2, bind2 = devices_mod.new()
+			inst2:on_added(function() end)
+			local handles2 = bind2(api_sub)
+			handles2.add("57", { level = 50, muted = false })
+			-- Should not error
+			assert.has_no_errors(function()
+				inst2:all()[1]:set_port("analog-output-headphones")
+			end)
 		end)
 	end)
 end)
