@@ -16,7 +16,7 @@
 
 ---@class Group<K, T> : Subscribable<T[]>
 ---@field id K
----@field entries T[]
+---@field state T[]
 
 local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
@@ -137,19 +137,19 @@ Observable.MT = {
 				group_for[id] = nil
 				local group = self.items[key]
 				if group then
-					for i, entry in ipairs(group.entries) do
+					for i, entry in ipairs(group.state) do
 						if entry.id == id then
-							table.remove(group.entries, i)
+							table.remove(group.state, i)
 							break
 						end
 					end
-					if #group.entries == 0 then
+					if #group.state == 0 then
 						self.items[key] = nil
 						group_subscribers[key] = nil
 						fire(self.on_removed_cbs, key)
 					else
 						fire(self.on_updated_cbs, group)
-						fire(group_subscribers[key] or {}, group.entries)
+						fire(group_subscribers[key] or {}, group.state)
 					end
 				end
 			end
@@ -158,16 +158,16 @@ Observable.MT = {
 				group_for[observed.id] = key
 				local group = self.items[key]
 				if not group then
-					group = setmetatable({ id = key, entries = { observed } }, groupMT)
+					group = setmetatable({ id = key, state = { observed } }, groupMT)
 					self.items[key] = group
 				else
-					table.insert(group.entries, observed)
+					table.insert(group.state, observed)
 				end
-				if #group.entries == 1 then
+				if #group.state == 1 then
 					fire(self.on_added_cbs, group)
 				else
 					fire(self.on_updated_cbs, group)
-					fire(group_subscribers[key] or {}, group.entries)
+					fire(group_subscribers[key] or {}, group.state)
 				end
 			end
 

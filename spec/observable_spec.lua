@@ -268,7 +268,7 @@ describe("Observable", function()
 				assert.is_not_nil(fired)
 			end)
 
-			it("fires with correct group id and entries", function()
+			it("fires with correct group id and state", function()
 				local grouped = obs:group_by(function(item)
 					return item.kind
 				end)
@@ -280,8 +280,8 @@ describe("Observable", function()
 				add({ id = "a", kind = "sink" })
 
 				assert.equals("sink", fired.id)
-				assert.equals(1, #fired.entries)
-				assert.equals("a", fired.entries[1].id)
+				assert.equals(1, #fired.state)
+				assert.equals("a", fired.state[1].id)
 			end)
 
 			it("fires separately for each new key", function()
@@ -330,7 +330,7 @@ describe("Observable", function()
 
 				assert.is_not_nil(fired)
 				assert.equals("sink", fired.id)
-				assert.equals(2, #fired.entries)
+				assert.equals(2, #fired.state)
 			end)
 
 			it("does not fire when the first item for a key is added", function()
@@ -363,7 +363,7 @@ describe("Observable", function()
 
 				assert.is_not_nil(fired)
 				assert.equals("sink", fired.id)
-				assert.equals(1, #fired.entries)
+				assert.equals(1, #fired.state)
 			end)
 
 			it("fires for old group when an item moves to a different key", function()
@@ -491,7 +491,7 @@ describe("Observable", function()
 				assert.equals(2, #grouped:all())
 			end)
 
-			it("each group contains the correct entries", function()
+			it("each group contains the correct state", function()
 				local grouped = obs:group_by(function(item)
 					return item.kind
 				end)
@@ -506,7 +506,7 @@ describe("Observable", function()
 					end
 				end
 				assert.is_not_nil(sink_group)
-				assert.equals(2, #sink_group.entries)
+				assert.equals(2, #sink_group.state)
 			end)
 		end)
 
@@ -537,7 +537,7 @@ describe("Observable", function()
 				local group = grouped:get("sink")
 				add({ id = "b", kind = "sink" })
 
-				assert.equals(2, #group.entries)
+				assert.equals(2, #group.state)
 			end)
 		end)
 
