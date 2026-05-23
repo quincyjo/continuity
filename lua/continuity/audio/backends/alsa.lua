@@ -147,6 +147,7 @@ local function create()
 				cb()
 			end
 		end,
+		set_port = function() end,
 	}
 
 	local backend = {}

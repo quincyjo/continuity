@@ -46,14 +46,18 @@ local capture = audio.Capture  -- default source
 ### Reading State
 
 The handle exposes a `state` table. See [Device Handle](#device-handle) for all
-fields. With the PulseAudio backend, `port`, `port_type`, and `connection` are
-also populated when the device reports them.
+fields. With the PulseAudio backend, `port`, `port_type`, `ports`, and
+`connection` are also populated when the device reports them.
 
 ```lua
 print(volume.state.level, volume.state.muted)
 -- port_type: "speaker"|"headphones"|"headset"|"hdmi"|nil
 -- connection: "analog"|"bluetooth"|"hdmi"|"usb"|nil
 print(volume.state.port_type, volume.state.connection)
+-- ports: list of available ports with name, description, type, priority, availability
+for _, port in ipairs(volume.state.ports or {}) do
+    print(port.name, port.availability)  -- e.g. "analog-output-headphones", "not available"
+end
 ```
 
 Because the first backend event is asynchronous, `level` and `muted` are `0` /
@@ -69,8 +73,8 @@ end)
 ### Subscribing to Changes
 
 `subscribe` fires only when at least one state field has changed (`level`,
-`muted`, `port`, `port_type`, or `connection`). Backend events that repeat the
-same state do not trigger subscribers.
+`muted`, `port`, `port_type`, `ports`, or `connection`). Backend events that
+repeat the same state do not trigger subscribers.
 
 ```lua
 volume:subscribe(function(state)
@@ -133,6 +137,30 @@ volume:toggle_mute()     -- toggle mute state
 
 `adjust_perc` clamps the delta to keep the result in [0, 100]. If the clamped
 delta is 0, `on_control` is still fired with the current state.
+
+### Switching Ports (PulseAudio)
+
+When a device has multiple ports (e.g. speakers and headphones on a built-in
+audio chip), `set_port` switches the active port by name. The state update is
+optimistic — `state.port` and `state.port_type` are patched immediately on
+success and `on_control` fires before the next pactl event arrives.
+
+```lua
+audio.sinks:on_added(function(handle)
+    -- Inspect available ports.
+    for _, port in ipairs(handle.state.ports or {}) do
+        print(port.name, port.description, port.availability)
+    end
+
+    -- Switch to the first available port, passing the port object directly.
+    for _, port in ipairs(handle.state.ports or {}) do
+        if port.availability ~= "not available" then
+            handle:set_port(port)
+            break
+        end
+    end
+end)
+```
 
 ## Handle Types
 
