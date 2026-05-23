@@ -120,6 +120,30 @@ Observable.MT = {
 		unique = function(self, unique_by, strategy)
 			return require("continuity.observable.transformation.unique").new(self, unique_by, strategy)
 		end,
+
+		---@generic T, S
+		---@param self Observable<T>
+		---@param mapper fun(observed: T): S
+		---@return Observable<S>
+		map = function(self, mapper)
+			return require("continuity.observable.transformation.map").new(self, mapper)
+		end,
+
+		---@generic T, S
+		---@param self Observable<T>
+		---@param mapper fun(observed: T): S[]
+		---@return Observable<S>
+		flatmap = function(self, mapper)
+			return require("continuity.observable.transformation.flatmap").new(self, mapper)
+		end,
+
+		---@generic T
+		---@param self Observable<T>
+		---@param predicate fun(observed: T): boolean
+		---@return Observable<T>
+		filter = function(self, predicate)
+			return require("continuity.observable.transformation.filter").new(self, predicate)
+		end,
 	},
 }
 
