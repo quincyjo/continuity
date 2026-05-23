@@ -571,6 +571,7 @@ local function create()
 						end
 						local parsed = _parse_device_by_index(stdout, idx_str)
 						if parsed then
+							parsed.state.is_default = (parsed.meta.name == current_default_sink)
 							sink_handles.add(idx_str, parsed.state, parsed.meta)
 							if parsed.meta.name then
 								sink_name_to_idx[parsed.meta.name] = idx_str
@@ -590,9 +591,10 @@ local function create()
 							end
 							local parsed = _parse_device_by_index(stdout, idx_str)
 							if parsed then
+								parsed.state.is_default = (idx_str == current_default_sink_idx)
 								sink_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_sink then
-									on_sink(current_default_sink_idx, parsed.state, parsed.meta)
+									on_sink(idx_str, parsed.state, parsed.meta)
 								end
 							end
 						end)
@@ -623,6 +625,7 @@ local function create()
 						end
 						local parsed = _parse_device_by_index(stdout, idx_str)
 						if parsed then
+							parsed.state.is_default = (parsed.meta.name == current_default_source)
 							source_handles.add(idx_str, parsed.state, parsed.meta)
 							if parsed.meta.name then
 								source_name_to_idx[parsed.meta.name] = idx_str
@@ -642,9 +645,10 @@ local function create()
 							end
 							local parsed = _parse_device_by_index(stdout, idx_str)
 							if parsed then
+								parsed.state.is_default = (idx_str == current_default_source_idx)
 								source_handles.update(idx_str, parsed.state)
 								if parsed.state.is_default and on_source then
-									on_source(current_default_source_idx, parsed.state, parsed.meta)
+									on_source(idx_str, parsed.state, parsed.meta)
 								end
 							end
 						end)
