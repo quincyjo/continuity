@@ -282,14 +282,17 @@ end)
 
 ### temp — Temperature
 
-Reads thermal zone temperatures from sysfs.
+Reads temperatures from the Linux thermal framework or hwmon subsystem.
 
 ```lua
 local temp = require("continuity.sysinfo.temp")
 temp.setup()
 temp:subscribe(function(state)
-    -- state.avg                  (mean °C across all zones)
-    -- state.zones["/sys/..."]    (°C per zone path)
+    -- state.cpu              (TempDevice for the CPU, or nil)
+    -- state.cpu.temp         (°C)
+    -- state.cpu.crit         (shutdown threshold °C, or nil)
+    -- state.cpu.max          (high-water mark °C, or nil)
+    -- state.devices          (TempDevice[] — all reported devices)
 end)
 ```
 
