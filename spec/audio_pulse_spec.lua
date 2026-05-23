@@ -592,9 +592,9 @@ describe("audio.backends.pulse (instance)", function()
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
 		package.loaded["continuity.util.json"] = nil
-		local saved_json = package.loaded["json"]
-		package.loaded["json"] = nil
-		package.preload["json"] = function()
+		local saved_json = package.loaded["cjson"]
+		package.loaded["cjson"] = nil
+		package.preload["cjson"] = function()
 			error("disabled")
 		end -- luacheck: ignore
 		easy_cmds = {}
@@ -608,8 +608,8 @@ describe("audio.backends.pulse (instance)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
-		package.preload["json"] = nil
-		package.loaded["json"] = saved_json
+		package.preload["cjson"] = nil
+		package.loaded["cjson"] = saved_json
 	end)
 
 	describe("start", function()
