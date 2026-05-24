@@ -346,7 +346,7 @@ local function audio_form_json(default_name, dev)
 	local name = dev.name
 	local port = dev.active_port and dev.active_port ~= json.null and dev.active_port or nil
 	return {
-		id = tostring(dev.index),
+		id = string.format("%d", dev.index),
 		state = {
 			level = volume_level_json(dev.volume),
 			muted = dev.mute == true,
@@ -418,7 +418,7 @@ local function input_from_json(inp)
 		return (v ~= nil and v ~= json.null) and v or nil
 	end
 	return {
-		id = tostring(inp.index),
+		id = string.format("%d", inp.index),
 		state = {
 			level = volume_level_json(inp.volume),
 			muted = inp.mute == true,
