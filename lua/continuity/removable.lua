@@ -26,8 +26,12 @@ function Removable.init(inst)
 	return inst
 end
 
+function Removable.new(inst)
+	return setmetatable(Removable.init(inst or {}), Removable.MT)
+end
+
 return setmetatable(Removable, {
 	__call = function(self, inst)
-		return setmetatable(self.init(inst or {}), self.MT)
+		return self.new(inst)
 	end,
 })

@@ -1,11 +1,5 @@
 local Monitor = require("continuity.monitor")
 
----@alias DeviceState "up"|"down"
-local DeviceState = {
-	Up = "up",
-	Down = "down",
-}
-
 ---@class NetDeviceState
 ---@field state    DeviceState "up" or "down"
 ---@field carrier  boolean     Physical link present
@@ -27,9 +21,6 @@ local DeviceState = {
 ---@field backend? NetBackend  The backend to provide network monitoring, defaults to ipmonitor backend.
 
 ---@class NetMonitor : Monitor<NetState, NetOptions>
----@field DeviceState table<string, DeviceState>
-
----@type NetMonitor
 local net = Monitor({
 	name = "net",
 	configure = function(_, opts)
@@ -38,7 +29,10 @@ local net = Monitor({
 	end,
 })
 
-net.DeviceState = DeviceState
+---@enum DeviceState
+net.DeviceState = {
+	Up = "up",
+	Down = "down",
+}
 
----@type NetMonitor
 return net

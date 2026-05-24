@@ -54,8 +54,12 @@ function ReadyAware.init(inst)
 	return inst
 end
 
+function ReadyAware.new(inst)
+	return setmetatable(ReadyAware.init(inst), ReadyAware.MT)
+end
+
 return setmetatable(ReadyAware, {
 	__call = function(self, inst)
-		return setmetatable(self.init(inst), self.MT)
+		return self.new(inst)
 	end,
 })

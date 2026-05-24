@@ -34,8 +34,12 @@ function Controllable.init(inst)
 	return inst
 end
 
+function Controllable.new(inst)
+	return setmetatable(Controllable.init(inst), Controllable.MT)
+end
+
 return setmetatable(Controllable, {
 	__call = function(self, inst)
-		return setmetatable(self.init(inst), self.MT)
+		return self.new(inst)
 	end,
 })
