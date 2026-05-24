@@ -132,6 +132,7 @@ local function make_handle(kind)
 	return setmetatable(handle, HandleMeta)
 end
 
+---@class continuity.backlight
 local backlight = {}
 
 ---@type BacklightHandle

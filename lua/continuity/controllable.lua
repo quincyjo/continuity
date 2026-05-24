@@ -4,6 +4,7 @@
 ---@class ControllableInternal<T> : Controllable<T>
 ---@field control_event fun(self, state: T)
 
+---@type CombinableClass<ControllableInternal>
 local Controllable = {}
 
 Controllable.MT = {
@@ -38,8 +39,11 @@ function Controllable.new(inst)
 	return setmetatable(Controllable.init(inst), Controllable.MT)
 end
 
-return setmetatable(Controllable, {
+---@diagnostic disable-next-line: param-type-mismatch
+setmetatable(Controllable, {
 	__call = function(self, inst)
 		return self.new(inst)
 	end,
 })
+
+return Controllable

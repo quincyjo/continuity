@@ -74,6 +74,7 @@ local Observable = require("continuity.observable")
 local _registry = nil
 local _notifications = nil
 
+---@class continuity.media
 local media = {}
 
 media.PlaybackAction = registry_mod.PlaybackAction

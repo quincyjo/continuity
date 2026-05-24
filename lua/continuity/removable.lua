@@ -1,6 +1,7 @@
 ---@class Removable
 ---@field on_removed fun(self, cb: fun(id: string)): fun()
 
+---@type CombinableClass<Removable>
 local Removable = {}
 
 Removable.MT = {
@@ -30,8 +31,11 @@ function Removable.new(inst)
 	return setmetatable(Removable.init(inst or {}), Removable.MT)
 end
 
-return setmetatable(Removable, {
+---@diagnostic disable-next-line: param-type-mismatch
+setmetatable(Removable, {
 	__call = function(self, inst)
 		return self.new(inst)
 	end,
 })
+
+return Removable

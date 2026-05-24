@@ -5,6 +5,7 @@
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
 
+---@type  CombinableClass<SubscribableInternal>
 local Subscribable = {}
 
 Subscribable.MT = {
@@ -40,6 +41,7 @@ function Subscribable.new(inst)
 	return setmetatable(Subscribable.init(inst), Subscribable.MT)
 end
 
+---@diagnostic disable-next-line: param-type-mismatch
 setmetatable(Subscribable, {
 	__call = function(self, inst)
 		return self.new(inst)

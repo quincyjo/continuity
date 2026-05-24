@@ -1,3 +1,4 @@
+---@generic T
 ---@class DeviceCollection<T> : Observable<T>
 
 ---@class DeviceHandles
@@ -13,7 +14,8 @@ local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
 local extend = require("continuity.util.extend")
 
----@return DeviceCollection, fun(api_sub: SinkApi|SourceApi): DeviceHandles
+---@generic T
+---@return DeviceCollection<T>, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
 	local AudioHandle = extend(Subscribable, Controllable, Removable)
 	local HandleMT = AudioHandle.MT
