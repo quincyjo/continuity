@@ -84,11 +84,11 @@ Then add the LuaRocks loader at the top of your `rc.lua`:
 require("luarocks.loader")
 ```
 
-> Optional: Install [lua-json](https://github.com/neoxic/lua-json) C extension.
+> Optional: Install [lua-cjson](https://github.com/openresty/lua-cjson) C extension
 > to enable faster parsing where applicable (currently in Pulse audio backend).
 >
 > ```sh
-> luarocks install lua-json
+> luarocks install lua-cjson
 > ```
 
 **Via git:**

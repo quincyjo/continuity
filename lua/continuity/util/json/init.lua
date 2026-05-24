@@ -1,4 +1,4 @@
---- If luarocks lua-json c extension is installed and luarocks are loaded, use
+--- If lua-cjson c extension is installed and luarocks are loaded, use
 --- it. Otherwise, use json.lua lua module by rxi.
 
 ---@class Json
@@ -6,7 +6,7 @@
 ---@field encode fun(value: any): string
 ---@field decode fun(str: string): any
 
-local ok, json = pcall(require, "json")
+local ok, json = pcall(require, "cjson")
 if ok then
 	json.is_c_extension = true
 else

@@ -295,9 +295,9 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 				cb(nil)
 			end,
 		}
-		local saved_json = package.loaded["json"]
-		package.loaded["json"] = nil
-		package.preload["json"] = function()
+		local saved_json = package.loaded["cjson"]
+		package.loaded["cjson"] = nil
+		package.preload["cjson"] = function()
 			error("disabled")
 		end -- luacheck: ignore
 		easy_cmds = {}
@@ -311,8 +311,8 @@ describe("audio.backends.pulse (sink-input dispatch)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
-		package.preload["json"] = nil
-		package.loaded["json"] = saved_json
+		package.preload["cjson"] = nil
+		package.loaded["cjson"] = saved_json
 	end)
 
 	it("polls sink-inputs on start when inputs callbacks are provided", function()
@@ -480,9 +480,9 @@ describe("audio.backends.pulse (sink-input control)", function()
 				cb(nil)
 			end,
 		}
-		local saved_json = package.loaded["json"]
-		package.loaded["json"] = nil
-		package.preload["json"] = function()
+		local saved_json = package.loaded["cjson"]
+		package.loaded["cjson"] = nil
+		package.preload["cjson"] = function()
 			error("disabled")
 		end -- luacheck: ignore
 		easy_cmds = {}
@@ -496,8 +496,8 @@ describe("audio.backends.pulse (sink-input control)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
-		package.preload["json"] = nil
-		package.loaded["json"] = saved_json
+		package.preload["cjson"] = nil
+		package.loaded["cjson"] = saved_json
 	end)
 
 	local function fire(n, stdout)
@@ -612,9 +612,9 @@ describe("audio.backends.pulse (register_input icon resolution)", function()
 			end,
 		}
 		package.loaded["continuity.util.app_icon"] = app_icon_mock
-		local saved_json = package.loaded["json"]
-		package.loaded["json"] = nil
-		package.preload["json"] = function()
+		local saved_json = package.loaded["cjson"]
+		package.loaded["cjson"] = nil
+		package.preload["cjson"] = function()
 			error("disabled")
 		end -- luacheck: ignore
 		easy_cmds = {}
@@ -626,8 +626,8 @@ describe("audio.backends.pulse (register_input icon resolution)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
-		package.preload["json"] = nil
-		package.loaded["json"] = saved_json
+		package.preload["cjson"] = nil
+		package.loaded["cjson"] = saved_json
 	end)
 
 	it("resolves icon via by_icon_name when icon_name is present", function()
