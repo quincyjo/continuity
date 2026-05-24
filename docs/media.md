@@ -223,7 +223,7 @@ media.enable_notifications()
 ### Art
 
 When a backend emits a source with an `art_uri` that is not a local file, the
-module will attempt to download the art to `~/.cache/awesome/media-art/`. This
+module will attempt to download the art to `/tmp/awesome-media-art/`. This
 local file URI is passed to the `notifications.notify_callback`.
 
 ### Client Focus
