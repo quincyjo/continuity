@@ -36,8 +36,14 @@ function Subscribable.init(inst)
 	return inst
 end
 
-return setmetatable(Subscribable, {
+function Subscribable.new(inst)
+	return setmetatable(Subscribable.init(inst), Subscribable.MT)
+end
+
+setmetatable(Subscribable, {
 	__call = function(self, inst)
-		return setmetatable(self.init(inst or {}), self.MT)
+		return self.new(inst)
 	end,
 })
+
+return Subscribable

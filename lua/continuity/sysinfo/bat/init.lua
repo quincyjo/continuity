@@ -1,20 +1,5 @@
 local Monitor = require("continuity.monitor")
 
----@alias BatteryStatus "Discharging"|"Charging"|"NotCharging"|"Unknown"
-
-local BatteryStatus = {
-	Discharging = "Discharging",
-	Charging = "Charging",
-	NotCharging = "NotCharging",
-	Unknown = "Unknown",
-}
-
----@class BatteryMonitor : Monitor<BatState, BatteryOptions>
----@field setup           fun(opts: BatteryOptions?)
----@field time_remaining  fun(): number|nil     Time remaining in seconds; nil if not discharging
----@field time_until_full fun(): number|nil     Time until fully charged in seconds; nil if not charging
----@field BatteryStatus   table<string, BatteryStatus>
-
 ---@class BatteryState
 ---@field name         string         e.g. "BAT0"
 ---@field status       BatteryStatus  "Discharging" or "Charging".
@@ -25,8 +10,7 @@ local BatteryStatus = {
 ---@field charge_control_end_threshold    number|nil  End threshold %; nil if unsupported
 
 ---@class BatState
----@field status          BatteryStatus  Aggregate: "Discharging" if any battery discharging; else "Charging", "Full",
----                                      or "Unknown"
+---@field status          BatteryStatus  Aggregate status.
 ---@field ac_online       boolean        True if any AC adapter is online
 ---@field perc            number         Aggregate percentage (0-100)
 ---@field energy_now      number         Watt-hours, sum across batteries
@@ -35,7 +19,7 @@ local BatteryStatus = {
 ---@field power_now       number         Watts, instantaneous draw (discharging) or charge rate
 ---@field power_average   number         Watts, EMA-smoothed draw or charge rate
 ---@field capacity        number         Health percentage (energy_full / energy_design * 100)
----@field charge_controlled boolean       True if any battery's perc is within its charge control window
+---@field charge_controlled boolean      True if any battery's perc is within its charge control window
 ---@field time_remaining  number|nil     Time remaining in seconds; nil if not discharging
 ---@field time_until_full number|nil     Time until fully charged in seconds; nil if not charging
 ---@field batteries       BatteryState[] Per-battery breakdown
@@ -49,29 +33,7 @@ local BatteryStatus = {
 local _power_average = nil ---@type number|nil
 local _power_alpha = 0.1 -- EMA weight for the newest sample
 
---- Calculate the time remaining based of the rolling average power.
---- If the state is not Discharging or there is power, nil is returned.
----@param state BatState
----@return number|nil
-local function calculate_time_remaining(state)
-	if not state or state.status ~= BatteryStatus.Discharging or state.power_now == 0 then
-		return
-	end
-	return (state.energy_now / state.power_average) * 3600
-end
-
---- Calculate the until fully charged based of the rolling average power.
---- If the state is not Charging or there is power, nil is returned.
----@param state BatState
----@return number|nil
-local function calculate_time_until_full(state)
-	if not state or state.status ~= BatteryStatus.Charging or state.power_now == 0 then
-		return
-	end
-	return ((state.energy_full - state.energy_now) / state.power_average) * 3600
-end
-
----@type BatteryMonitor
+---@class BatteryMonitor : Monitor<BatState, BatteryOptions>
 local bat = Monitor({
 	name = "bat",
 	configure = function(_, opts)
@@ -90,8 +52,16 @@ local bat = Monitor({
 			_power_average = _power_alpha * data.power_now + (1 - _power_alpha) * _power_average
 		end
 		data.power_average = _power_average
-		data.time_remaining = calculate_time_remaining(data)
-		data.time_until_full = calculate_time_until_full(data)
+		if data.status == self.BatteryStatus.Discharging and data.power_now > 0 then
+			data.time_remaining = (data.energy_now / data.power_average) * 3600
+		else
+			data.time_remaining = nil
+		end
+		if data.status == self.BatteryStatus.Charging and data.power_now > 0 then
+			data.time_until_full = ((data.energy_full - data.energy_now) / data.power_average) * 3600
+		else
+			data.time_until_full = nil
+		end
 		return data
 	end,
 	cleanup = function(_)
@@ -116,6 +86,12 @@ function bat.time_until_full()
 	return bat.state and bat.state.time_until_full
 end
 
-bat.BatteryStatus = BatteryStatus
+---@enum BatteryStatus
+bat.BatteryStatus = {
+	Discharging = "Discharging",
+	Charging = "Charging",
+	NotCharging = "NotCharging",
+	Unknown = "Unknown",
+}
 
 return bat

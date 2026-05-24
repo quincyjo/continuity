@@ -22,8 +22,6 @@ local Monitor = require("continuity.monitor")
 ---@field exclude?    string[]     Lua patterns matched against device name; matching devices are omitted.
 
 ---@class TempMonitor : Monitor<TempState, TempOptions>
-
----@type TempMonitor
 local temp = Monitor({
 	name = "temp",
 	configure = function(_, opts)
@@ -32,5 +30,4 @@ local temp = Monitor({
 	end,
 })
 
----@type TempMonitor
 return temp
