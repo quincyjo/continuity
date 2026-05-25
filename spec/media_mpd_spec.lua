@@ -455,5 +455,4 @@ describe("volume capability", function()
 		caps.volume.set_perc(nil, 75)
 		assert.equals(0, #update_calls)
 	end)
-
 end)
