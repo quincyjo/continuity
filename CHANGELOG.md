@@ -1,5 +1,102 @@
 # Changelog
 
+## v0.3.0
+
+### Changes
+
+**Media: Volume control**
+
+Media sources now expose a `Playback.volume` field typed as `AudioControls`,
+enabling volume control directly from the media module. Both the MPD and MPRIS
+backends implement the control.
+
+**Audio: Device port enumeration (Pulse)**
+
+`AudioHandle.state.ports` now lists all ports for a sink or source as
+`AudioPort` values (name, description, availability). A new
+`AudioHandle:set_port(port)` method switches the active port by name or
+`AudioPort` reference. ALSA stubs the field as an empty list.
+
+**Observable: `map`, `flatmap`, `filter`, `group_by`, and `unique`
+transformations**
+
+Five transformation methods are now available on `Observable`:
+
+- `map`: 1:1 id-tracked transform; re-keys (remove + add) when the mapper
+  returns a different id on update.
+- `flatmap`: 1:N transform with full diff on update (add new, update
+  intersecting, remove dropped ids).
+- `filter`: predicate pass-through that preserves source-item subscriber
+  state.
+- `group_by`: partitions items into keyed groups.
+- `unique`: deduplicates items by a key function. Provides three strategies:
+  `First` (default), `Last`, and `Recent`.
+
+**Sysinfo: Temperature module rework**
+
+`TempState` is replaced by a richer `TempDevice` / `TempSensor` model:
+
+- `TempState.cpu` is the `TempDevice` for the auto-discovered CPU device.
+- Sysfs backend reads device type labels and trip points from
+  `/sys/class/thermal`.
+- New `hwmon` backend reads per-chip sensors from `/sys/class/hwmon`; each
+  `hwmonN` entry with `tempN_*` files becomes a device, with additional
+  temperature files mapped as sensors.
+- `setup()` accepts `cpu_device` (override discovery) and `exclude` (device
+  blocklist).
+- Default backend is now `hwmon`.
+
+**Audio: Sink input**
+
+`SinkInputHandle` now carries `role` (stream role), `binary` (application
+executable name) metadata, and `corked` (paused/inactive flag) state.
+
+**Lazy dot-notation exports**
+
+The top-level `continuity` module and each sub-namespace (`continuity.sysinfo`,
+`continuity.audio`, `continuity.media`, `continuity.tools`, etc.) now expose
+lazy-require proxies so `continuity.sysinfo.bat` resolves without explicit
+`require` calls. EmmyLua class types are registered at each namespace level for
+IDE support.
+
+**Shared metaclass extensions**
+
+`Subscribable`, `Removable`, `Controllable`, `Monitor`, and `ReadyAware` are
+now standalone metaclass extensions with their own `init` lifecycle and a
+push-based internal API. Modules that mix multiple behaviours compose them via
+`util.extend`. All collection and handle types across Audio, Backlight, and
+Media have been migrated.
+
+**Improved Lua-LS annotations**
+
+Monitor classes use inline class definitions; stale `Awesome*` type aliases
+removed; `@type` annotations on return positions dropped (ignored by lua-ls);
+`CombinableClass` receives a `new` function annotation.
+
+**Media art storage path**
+
+Album art is now cached under `/tmp/awesome-media-art` instead of
+`~/.cache/awesome/media-art`, avoiding stale-cache issues across reboots.
+
+### Bug Fixes
+
+- **Audio:** Fixed a race condition in the Pulse backend where a new device
+  arriving as the auto-default could bleed its `state` state into the
+  previous default. Default assignment is now deferred to the server-change
+  event and always derived from the last server-reported default.
+
+### Breaking Changes
+
+- **Observable:** Collection API methods (`add`, `update`, `remove`,
+  `group_by`, `unique`) now use colon notation. Callers using dot notation
+  must be updated.
+- **Sysinfo/Temp:** `TempState` has a completely new structure. All consumers
+  must be updated to the `TempDevice` / `TempSensor` model.
+  - `state.avg` -> `state.cpu and state.cpu.temp`.
+  - `state.zones` iteration -> `state.devices` reading `name` and `temp`.
+- **Dependency:** `lua-json` is replaced by `lua-cjson`. If you are using the
+  optional JSON dependency, install `lua-cjson` to maintain JSON support.
+
 ## v0.2.1
 
 ### Changes
