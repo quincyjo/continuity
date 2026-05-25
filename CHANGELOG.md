@@ -32,6 +32,8 @@ Five transformation methods are now available on `Observable`:
 - `unique`: deduplicates items by a key function. Provides three strategies:
   `First` (default), `Last`, and `Recent`.
 
+`Obsevable` now has `get(id): T|nil` API.
+
 **Sysinfo: Temperature module rework**
 
 `TempState` is replaced by a richer `TempDevice` / `TempSensor` model:
@@ -61,17 +63,16 @@ IDE support.
 
 **Shared metaclass extensions**
 
-`Subscribable`, `Removable`, `Controllable`, `Monitor`, and `ReadyAware` are
-now standalone metaclass extensions with their own `init` lifecycle and a
-push-based internal API. Modules that mix multiple behaviours compose them via
-`util.extend`. All collection and handle types across Audio, Backlight, and
-Media have been migrated.
+`Observable`, `Subscribable`, `Removable`, `Controllable`, `Monitor`, and
+`ReadyAware` are now standalone metaclass extensions with their own `init`
+lifecycle and a push-based internal API. Modules that mix multiple behaviours
+compose them via `util.extend`. All collection and handle types across Audio,
+Backlight, and Media have been migrated.
 
 **Improved Lua-LS annotations**
 
 Monitor classes use inline class definitions; stale `Awesome*` type aliases
-removed; `@type` annotations on return positions dropped (ignored by lua-ls);
-`CombinableClass` receives a `new` function annotation.
+removed; `@type` annotations on return positions dropped (ignored by lua-ls).
 
 **Media art storage path**
 
@@ -84,12 +85,15 @@ Album art is now cached under `/tmp/awesome-media-art` instead of
   arriving as the auto-default could bleed its `state` state into the
   previous default. Default assignment is now deferred to the server-change
   event and always derived from the last server-reported default.
+- **Audio:** Pre-instantiated default handles (`audio.Volume`, `audio.Capture`)
+  now correctly fully share subscription events with the current default device
+  via `audio.sinks` and `audio.sources` collections respectively.
 
 ### Breaking Changes
 
-- **Observable:** Collection API methods (`add`, `update`, `remove`,
-  `group_by`, `unique`) now use colon notation. Callers using dot notation
-  must be updated.
+- **Observable:** Collection API methods (`on_added`, `on_updated`,
+  `on_removed`, `all`) now use colon notation. Callers using dot notation must be
+  updated.
 - **Sysinfo/Temp:** `TempState` has a completely new structure. All consumers
   must be updated to the `TempDevice` / `TempSensor` model.
   - `state.avg` -> `state.cpu and state.cpu.temp`.
