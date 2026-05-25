@@ -556,6 +556,16 @@ describe("registry", function()
 			return exec, calls
 		end
 
+		local function make_vol_executor()
+			local calls = {}
+			local exec = {
+				set_perc = function(id, pct)
+					calls[#calls + 1] = { action = "set_perc", id = id, pct = pct }
+				end,
+			}
+			return exec, calls
+		end
+
 		local function make_flags(overrides)
 			local f = {
 				can_control = true,
@@ -564,6 +574,7 @@ describe("registry", function()
 				can_go_previous = true,
 				can_play = true,
 				can_pause = true,
+				can_set_volume = true,
 			}
 			for k, v in pairs(overrides or {}) do
 				f[k] = v
@@ -691,6 +702,189 @@ describe("registry", function()
 			local exec = make_executor()
 			reg.registrar().add("src:1", "source", {}, { playback = exec, flags = make_flags() })
 			assert.is_table(reg.sources()[1].playback)
+		end)
+
+		describe("playback.volume", function()
+			it("is nil when no VolumeCapability provided", function()
+				local exec = make_executor()
+				reg.add("src:1", "source", {}, { playback = exec, flags = make_flags() })
+				assert.is_nil(reg.sources()[1].playback.volume)
+			end)
+
+			it("is nil when can_set_volume is false", function()
+				local exec, vol_exec = make_executor(), make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags({ can_set_volume = false }),
+				})
+				assert.is_nil(reg.sources()[1].playback.volume)
+			end)
+
+			it("is a table when VolumeCapability present and can_set_volume true", function()
+				local exec, vol_exec = make_executor(), make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				assert.is_table(reg.sources()[1].playback.volume)
+				assert.is_function(reg.sources()[1].playback.volume.set_perc)
+				assert.is_function(reg.sources()[1].playback.volume.adjust_perc)
+			end)
+
+			it("set_perc calls vol_executor.set_perc with source_id and value", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:set_perc(60)
+				assert.equals(1, #vol_calls)
+				assert.equals("set_perc", vol_calls[1].action)
+				assert.equals("src:1", vol_calls[1].id)
+				assert.equals(60, vol_calls[1].pct)
+			end)
+
+			it("set_perc fires on_playback_action with SetVolume", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				local actions = {}
+				reg.on_playback_action(function(src, action)
+					actions[#actions + 1] = { src = src, action = action }
+				end)
+				reg.sources()[1].playback.volume:set_perc(70)
+				assert.equals(1, #actions)
+				assert.equals(registry.PlaybackAction.SetVolume, actions[1].action)
+			end)
+
+			it("adjust_perc clamps at 100", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", { volume = 92 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:adjust_perc(15)
+				assert.equals(1, #vol_calls)
+				assert.equals(100, vol_calls[1].pct)
+			end)
+
+			it("adjust_perc clamps at 0", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", { volume = 5 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:adjust_perc(-20)
+				assert.equals(1, #vol_calls)
+				assert.equals(0, vol_calls[1].pct)
+			end)
+
+			it("adjust_perc uses 0 as current when state.volume is nil", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:adjust_perc(10)
+				assert.equals(1, #vol_calls)
+				assert.equals(10, vol_calls[1].pct)
+			end)
+
+			it("r.update with can_set_volume=false nil-ifies playback.volume", function()
+				local exec, vol_exec = make_executor(), make_vol_executor()
+				vol_exec = make_vol_executor()
+				reg.add("src:1", "source", {}, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				assert.is_table(reg.sources()[1].playback.volume)
+				reg.update("src:1", {}, { can_set_volume = false })
+				assert.is_nil(reg.sources()[1].playback.volume)
+			end)
+
+			it("volume has toggle_mute function", function()
+				local exec, vol_exec = make_executor(), make_vol_executor()
+				reg.add("src:1", "source", { volume = 50 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				assert.is_function(reg.sources()[1].playback.volume.toggle_mute)
+			end)
+
+			it("toggle_mute when volume > 0 sets volume to 0", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", { volume = 75 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:toggle_mute()
+				assert.equals(1, #vol_calls)
+				assert.equals(0, vol_calls[1].pct)
+			end)
+
+			it("toggle_mute when volume == 0 restores cached pre-mute volume", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", { volume = 60 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				local vol = reg.sources()[1].playback.volume
+				vol:toggle_mute() -- mute: saves 60, sets 0
+				reg.update("src:1", { volume = 0 }) -- simulate state arriving
+				vol:toggle_mute() -- unmute: restores 60
+				assert.equals(2, #vol_calls)
+				assert.equals(60, vol_calls[2].pct)
+			end)
+
+			it("toggle_mute when volume == 0 and no cache restores to 100", function()
+				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
+				vol_exec, vol_calls = make_vol_executor()
+				reg.add("src:1", "source", { volume = 0 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				reg.sources()[1].playback.volume:toggle_mute()
+				assert.equals(1, #vol_calls)
+				assert.equals(100, vol_calls[1].pct)
+			end)
+
+			it("toggle_mute fires on_playback_action with ToggleMute", function()
+				local exec, vol_exec = make_executor(), make_vol_executor()
+				vol_exec = make_vol_executor()
+				reg.add("src:1", "source", { volume = 50 }, {
+					playback = exec,
+					volume = vol_exec,
+					flags = make_flags(),
+				})
+				local actions = {}
+				reg.on_playback_action(function(src, action)
+					actions[#actions + 1] = action
+				end)
+				reg.sources()[1].playback.volume:toggle_mute()
+				assert.equals(1, #actions)
+				assert.equals(registry.PlaybackAction.ToggleMute, actions[1])
+			end)
 		end)
 	end)
 

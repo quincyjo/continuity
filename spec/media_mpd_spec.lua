@@ -370,3 +370,93 @@ describe("playback commands", function()
 		assert.is_not_nil(cmd_payload(1):find("nc.*127%.0%.0%.1.*6600", 1, false))
 	end)
 end)
+
+describe("volume capability", function()
+	local caps, update_calls, stdout_cb, spawned_cmds
+
+	before_each(function()
+		package.loaded["continuity.media.backends.mpd"] = nil
+		local awful = require("awful")
+		spawned_cmds = {}
+		update_calls = {}
+		awful.spawn.with_line_callback = function(_cmd, callbacks)
+			stdout_cb = callbacks.stdout
+			return {}
+		end
+		awful.spawn.easy_async = function(cmd, cb)
+			spawned_cmds[#spawned_cmds + 1] = { cmd = cmd, cb = cb }
+		end
+		local b = require("continuity.media.backends.mpd")({ host = "127.0.0.1", port = 6600 })
+		local reg = {
+			add = function(_, _, _, c)
+				caps = c
+			end,
+			update = function(sid, partial, flags)
+				update_calls[#update_calls + 1] = { sid = sid, state = partial, flags = flags }
+			end,
+			remove = function() end,
+		}
+		b:start(reg)
+	end)
+
+	local function trigger_fetch(response)
+		stdout_cb("OK MPD 0.23.5")
+		spawned_cmds[#spawned_cmds].cb(response, "", "", 0)
+	end
+
+	local function cmd_payload(idx)
+		return spawned_cmds[idx].cmd[3]
+	end
+
+	it("caps has volume table with set_perc function", function()
+		assert.is_table(caps.volume)
+		assert.is_function(caps.volume.set_perc)
+	end)
+
+	it("initial flags.can_set_volume is true (optimistic; disabled by fetch if volume=-1)", function()
+		assert.is_true(caps.flags.can_set_volume)
+	end)
+
+	it("fetch_state with volume=75 passes can_set_volume=true in update flags", function()
+		trigger_fetch("state: play\nvolume: 75\nOK\n")
+		local last = update_calls[#update_calls]
+		assert.is_not_nil(last)
+		assert.is_not_nil(last.flags)
+		assert.is_true(last.flags.can_set_volume)
+	end)
+
+	it("fetch_state with volume=75 leaves state.volume as 75", function()
+		trigger_fetch("state: play\nvolume: 75\nOK\n")
+		local last = update_calls[#update_calls]
+		assert.equals(75, last.state.volume)
+	end)
+
+	it("fetch_state with volume=-1 passes can_set_volume=false in update flags", function()
+		trigger_fetch("state: play\nvolume: -1\nOK\n")
+		local last = update_calls[#update_calls]
+		assert.is_not_nil(last)
+		assert.is_not_nil(last.flags)
+		assert.is_false(last.flags.can_set_volume)
+	end)
+
+	it("fetch_state with volume=-1 normalizes state.volume to nil", function()
+		trigger_fetch("state: play\nvolume: -1\nOK\n")
+		local last = update_calls[#update_calls]
+		assert.is_nil(last.state.volume)
+	end)
+
+	it("set_perc sends setvol command", function()
+		caps.volume.set_perc(nil, 75)
+		assert.equals(1, #spawned_cmds)
+		assert.is_not_nil(cmd_payload(1):find("setvol 75\\\n", 1, true))
+	end)
+
+	it("set_perc does not call registry.update", function()
+		caps.volume.set_perc(nil, 75)
+		assert.equals(0, #update_calls)
+	end)
+
+	local function cmd_payload(idx)
+		return spawned_cmds[idx].cmd[3]
+	end
+end)

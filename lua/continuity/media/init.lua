@@ -35,7 +35,7 @@ local notification_mod = require("continuity.media.notification")
 ---@field queue_length?   integer
 ---@field art_uri?        string
 
----@alias PlaybackAction "play"|"pause"|"play_pause"|"stop"|"next"|"previous"|"seek"|"set_position"
+---@alias PlaybackAction "play"|"pause"|"play_pause"|"stop"|"next"|"previous"|"seek"|"set_position"|"set_volume"
 
 ---@class Playback             -- consumer-facing; constructed by registry; closed over source_id
 ---@field can_seek        boolean
@@ -43,6 +43,7 @@ local notification_mod = require("continuity.media.notification")
 ---@field can_go_previous boolean
 ---@field can_play        boolean
 ---@field can_pause       boolean
+---@field volume          AudioControls?
 ---@field play            fun(self)
 ---@field pause           fun(self)
 ---@field play_pause      fun(self)
