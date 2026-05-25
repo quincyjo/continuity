@@ -19,6 +19,8 @@
 local gears = require("gears")
 local Subscribable = require("continuity.subscribable")
 
+---@class MonitorClass
+---@overload fun(inst: table): Monitor
 local Monitor = {}
 
 Monitor.MT = {
@@ -82,8 +84,11 @@ function Monitor.init(inst)
 	return inst
 end
 
-return setmetatable(Monitor, {
+---@diagnostic disable-next-line: param-type-mismatch
+setmetatable(Monitor, {
 	__call = function(self, inst)
 		return setmetatable(self.init(inst), self.MT)
 	end,
 })
+
+return Monitor

@@ -84,6 +84,7 @@ local extend = require("continuity.util.extend")
 ---@class AudioOpts
 ---@field backend? AudioBackend
 
+---@class continuity.audio
 local Audio = {}
 
 local AudioProxyHandle = extend(ReadyAware, Controllable)
@@ -152,6 +153,7 @@ Audio.Capture = AudioProxyHandle({
 })
 
 local bind_inputs, bind_sinks, bind_sources
+---@type InputCollection
 Audio.inputs, bind_inputs = inputs_mod.new()
 ---@type DeviceCollection<SinkHandle|Removable>
 Audio.sinks, bind_sinks = devices_mod.new()

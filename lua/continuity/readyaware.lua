@@ -6,6 +6,7 @@
 
 local Subscribable = require("continuity.subscribable")
 
+---@type CombinableClass<ReadyAwareInternal>
 local ReadyAware = {}
 
 ReadyAware.MT = {
@@ -58,8 +59,11 @@ function ReadyAware.new(inst)
 	return setmetatable(ReadyAware.init(inst), ReadyAware.MT)
 end
 
-return setmetatable(ReadyAware, {
+---@diagnostic disable-next-line: param-type-mismatch
+setmetatable(ReadyAware, {
 	__call = function(self, inst)
 		return self.new(inst)
 	end,
 })
+
+return ReadyAware

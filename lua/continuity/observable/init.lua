@@ -18,6 +18,9 @@
 local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
 
+---@class ObservableClass
+---@generic T, S
+---@overload fun(inst?: table): ObservableInternal<T, S>
 local Observable = {}
 
 ---@enum UniqueStrategy
@@ -156,10 +159,15 @@ function Observable.init(inst)
 	return inst
 end
 
----@generic T, S
----@overload fun(inst: table): ObservableInternal<T, S>
-return setmetatable(Observable, {
+function Observable.new(inst)
+	return setmetatable(Observable.init(inst), Observable.MT)
+end
+
+---@diagnostic disable-next-line: param-type-mismatch
+setmetatable(Observable, {
 	__call = function(self, inst)
-		return setmetatable(self.init(inst), self.MT)
+		return self.new(inst)
 	end,
 })
+
+return Observable

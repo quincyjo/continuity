@@ -48,17 +48,17 @@ local client, tag = client, tag
 -- Module
 -- ----------------------------------------------------------------------------
 
----@class AlttabModule
----@field stack      table[]                Focus-ordered stack of all managed clients.
----@field _set       table<table, boolean>  Membership set for O(1) existence checks.
----@field ui         AlttabUI|nil                   Active UI implementation, set by setup().
----@field session    AlttabSession|nil              Active switch session; nil when the switcher is not visible.
----@field grabber    table|nil                      Active keygrabber; held so the API can stop it mid-session.
----@field held_key   string                         The key to be held down for the grabber.
----@field select_key string                         The key to be pressed to navigate the stack.
----@field pull_key   string                         The key to be pressed pull target client into current context.
----@field mod_key    string                         The key to be pressed mod an action.
----@field number_shift_mappings string[]            Mapping of numberrow to shift charaacters for keygrabber bindings on shift.
+---@class continuity.alttab
+---@field private stack      table[]                Focus-ordered stack of all managed clients.
+---@field private _set       table<table, boolean>  Membership set for O(1) existence checks.
+---@field private ui         AlttabUI|nil                   Active UI implementation, set by setup().
+---@field private session    AlttabSession|nil              Active switch session; nil when the switcher is not visible.
+---@field private grabber    table|nil                      Active keygrabber; held so the API can stop it mid-session.
+---@field private held_key   string                         The key to be held down for the grabber.
+---@field private select_key string                         The key to be pressed to navigate the stack.
+---@field private pull_key   string                         The key to be pressed pull target client into current context.
+---@field private mod_key    string                         The key to be pressed mod an action.
+---@field private number_shift_mappings string[]            Mapping of numberrow to shift charaacters for keygrabber bindings on shift.
 local alttab = {
 	stack = {},
 	_set = {},
