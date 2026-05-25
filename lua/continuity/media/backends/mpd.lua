@@ -143,13 +143,17 @@ local function create_backend(opts)
 				return
 			end
 			local state = mpd._parse_response(stdout)
+			local can_vol = state.volume ~= nil and state.volume ~= -1
+			if state.volume == -1 then
+				state.volume = nil
+			end
 			if state.uri and is_local_file(state.uri) then
 				find_local_art(music_dir, state.uri, function(art_path)
 					state.art_uri = art_path
-					registry.update(source_id, state)
+					registry.update(source_id, state, { can_set_volume = can_vol })
 				end)
 			else
-				registry.update(source_id, state)
+				registry.update(source_id, state, { can_set_volume = can_vol })
 			end
 		end)
 	end
@@ -239,6 +243,13 @@ local function create_backend(opts)
 		send(payload)
 	end
 
+	---@type VolumeCapability
+	local volume_capability = {
+		set_perc = function(_, pct)
+			simple(string.format("setvol %d\nclose\n", pct))
+		end,
+	}
+
 	return {
 		name = label,
 
@@ -248,6 +259,7 @@ local function create_backend(opts)
 				registry.update(source_id, { position = pos })
 			end
 			registry.add(source_id, label, {}, {
+				volume = volume_capability,
 				position = {
 					subscribe = function(_, cb)
 						return subscribe_position(cb)
@@ -295,6 +307,7 @@ local function create_backend(opts)
 					can_go_previous = true,
 					can_play = true,
 					can_pause = true,
+					can_set_volume = true,
 				},
 			})
 			proc:start()

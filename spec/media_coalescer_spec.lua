@@ -501,3 +501,71 @@ describe("coalescer playback flag sync on ownership change", function()
 		assert.is_false(flag_update.flags.can_control)
 	end)
 end)
+
+local function make_volume_caps()
+	local calls = {}
+	local vol = {
+		set_perc = function(id, pct)
+			calls[#calls + 1] = { id = id, pct = pct }
+		end,
+	}
+	return vol, calls
+end
+
+describe("coalescer merged volume caps", function()
+	local vol_configs = {
+		{ id = "spotify", backends = { "mpris:spotify", "mpd:127.0.0.1:6600" } },
+	}
+
+	it("merged caps include volume table", function()
+		local inner = make_inner()
+		local reg = coalescer_mod.new(vol_configs).make_registrar(inner)
+		local caps_mpris, _ = make_playback_caps()
+		local vol_exec, _ = make_volume_caps()
+		caps_mpris.volume = vol_exec
+		reg.add("mpris:spotify", "spotify", {}, caps_mpris)
+		local caps = inner.added[1].caps
+		assert.is_table(caps.volume)
+		assert.is_function(caps.volume.set_perc)
+	end)
+
+	it("volume.set_perc routes to playback_owner's volume capability", function()
+		local inner = make_inner()
+		local reg = coalescer_mod.new(vol_configs).make_registrar(inner)
+		local caps_mpris, _ = make_playback_caps()
+		local vol_exec, vol_calls = make_volume_caps()
+		caps_mpris.volume = vol_exec
+		reg.add("mpris:spotify", "spotify", {}, caps_mpris)
+		inner.added[1].caps.volume.set_perc("spotify", 75)
+		assert.equals(1, #vol_calls)
+		assert.equals(75, vol_calls[1].pct)
+	end)
+
+	it("volume.set_perc is a no-op when playback_owner has no volume capability", function()
+		local inner = make_inner()
+		local reg = coalescer_mod.new(vol_configs).make_registrar(inner)
+		local caps_mpris, _ = make_playback_caps() -- no volume field
+		reg.add("mpris:spotify", "spotify", {}, caps_mpris)
+		assert.has_no_error(function()
+			inner.added[1].caps.volume.set_perc("spotify", 50)
+		end)
+	end)
+
+	it("volume.set_perc routes to new playback_owner after owner change", function()
+		local inner = make_inner()
+		local reg = coalescer_mod.new(vol_configs).make_registrar(inner)
+		local caps_mpris, _ = make_playback_caps()
+		local vol_mpris, calls_mpris = make_volume_caps()
+		caps_mpris.volume = vol_mpris
+		local caps_mpd, _ = make_playback_caps()
+		local vol_mpd, calls_mpd = make_volume_caps()
+		caps_mpd.volume = vol_mpd
+		reg.add("mpris:spotify", "spotify", {}, caps_mpris)
+		reg.add("mpd:127.0.0.1:6600", "mpd", {}, caps_mpd)
+		reg.remove("mpris:spotify")
+		inner.added[1].caps.volume.set_perc("spotify", 80)
+		assert.equals(0, #calls_mpris)
+		assert.equals(1, #calls_mpd)
+		assert.equals(80, calls_mpd[1].pct)
+	end)
+end)

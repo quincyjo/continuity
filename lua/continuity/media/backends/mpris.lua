@@ -27,6 +27,7 @@ function _private.parse_can_flags(props)
 		can_go_previous = props.CanGoPrevious ~= false,
 		can_play = props.CanPlay ~= false,
 		can_pause = props.CanPause ~= false,
+		can_set_volume = props.CanControl ~= false,
 	}
 end
 
@@ -718,6 +719,27 @@ local function create_backend(opts)
 		end,
 	}
 
+	---@type VolumeCapability
+	local volume_capability = {
+		set_perc = function(id, pct)
+			local svc = reverse_players[id]
+			if not svc then
+				return
+			end
+			dbus_send({
+				type = "method_call",
+				dest = svc,
+				object_path = "/org/mpris/MediaPlayer2",
+				interface_member = "org.freedesktop.DBus.Properties.Set",
+				content = {
+					"string:org.mpris.MediaPlayer2.Player",
+					"string:Volume",
+					string.format("variant:double:%.6f", pct / 100),
+				},
+			})
+		end,
+	}
+
 	---@param service_name string
 	local function add_player(service_name)
 		if known_players[service_name] then
@@ -747,6 +769,7 @@ local function create_backend(opts)
 				local caps = {
 					position = position_capability,
 					playback = capabilities and capabilities.can_control and playback_capability or nil,
+					volume = volume_capability,
 					flags = capabilities,
 				}
 				registry.add(source_id, name, state, caps, name, app_icon)

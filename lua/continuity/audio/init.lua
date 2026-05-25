@@ -10,7 +10,7 @@ local extend = require("continuity.util.extend")
 
 ---@alias AudioCallback fun(state: AudioState)
 
----@class AudioControls<T> : Controllable<T>
+---@class AudioControls
 ---@field adjust_perc fun(self, delta: integer)
 ---@field set_perc    fun(self, value: AudioLevel)
 ---@field toggle_mute fun(self)
@@ -31,7 +31,7 @@ local extend = require("continuity.util.extend")
 ---@field connection? "analog"|"bluetooth"|"hdmi"|"usb"
 ---@field is_default? boolean
 
----@class AudioHandle : AudioControls<AudioState>, Subscribable<AudioState>
+---@class AudioHandle : AudioControls, Controllable<AudioState>, Subscribable<AudioState>
 ---@field id          string
 ---@field name        string?
 ---@field description string?
