@@ -99,7 +99,7 @@ local naughty = require("naughty")
 
 media.setup { notifications = false }
 
-media.sources.on_updated(function(source)
+media.sources:on_updated(function(source)
     if source.state.status ~= "playing" or not source.state.title then
         return
     end
@@ -115,11 +115,11 @@ end)
 -- if data is streamed in or multiple backends are backing the source.
 -- The subscriber will be notified once a source has stopped receiving updates
 -- (excluding playback position) for the debounce period.
-media.sources.on_updated(function(source) ... end, { debounce = 0.1 })
+media.sources:on_updated(function(source) ... end, { debounce = 0.1 })
 
 -- Media sources are also directly subscribeable, which is often a more directly
 -- useful pattern for widgets, as they tend to be for a single source.
-media.sources.on_added(function(source)
+media.sources:on_added(function(source)
     -- Note that the source subscription receives the state, not the whole source.
     local unsub = source:subscribe(function(state) ... end, { debounce = 0.1 })
     local stop_pos = source.state.position:subscribe(function(pos) ... end)
@@ -183,7 +183,7 @@ awful.keyboard.append_global_keybindings {
 }
 
 -- Per-source control via the playback capability.
-media.sources.on_added(function(source)
+media.sources:on_added(function(source)
     if not source.playback then return end
     -- source.playback exposes: play, pause, play_pause, stop, next, previous,
     -- seek(offset_seconds), set_position(pos_seconds)
@@ -223,7 +223,7 @@ media.enable_notifications()
 ### Art
 
 When a backend emits a source with an `art_uri` that is not a local file, the
-module will attempt to download the art to `~/.cache/awesome/media-art/`. This
+module will attempt to download the art to `/tmp/awesome-media-art/`. This
 local file URI is passed to the `notifications.notify_callback`.
 
 ### Client Focus

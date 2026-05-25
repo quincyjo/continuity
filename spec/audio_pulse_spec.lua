@@ -318,6 +318,79 @@ describe("audio.backends.pulse", function()
 			local parsed = pulse._private.parse_device_block(block_no_vol, "other")
 			assert.equals(0, parsed.state.level)
 		end)
+
+		it("state.ports is nil when no Ports: section is present", function()
+			local parsed = pulse._private.parse_device_block(BLOCK, DEFAULT_NAME)
+			assert.is_nil(parsed.state.ports)
+		end)
+
+		it("state.ports has two entries when two ports are present", function()
+			local block_with_ports = table.concat({
+				"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+				"\tDescription: Built-in Audio Analog Stereo",
+				"\tMute: no",
+				"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+				"\tPorts:",
+				"\t\tanalog-output-speaker: Speakers (type: Speaker, priority: 10000, availability group: Legacy 3, availability unknown)", -- luacheck: ignore
+				"\t\tanalog-output-headphones: Headphones (type: Headphones, priority: 9900, availability group: Legacy 2, not available)", -- luacheck: ignore
+				"\tActive Port: analog-output-speaker",
+			}, "\n") .. "\n"
+			local parsed = pulse._private.parse_device_block(block_with_ports, DEFAULT_NAME)
+			assert.is_not_nil(parsed.state.ports)
+			assert.equals(2, #parsed.state.ports)
+		end)
+
+		it("state.ports entries have correct name, description, type, priority, availability", function()
+			local block_with_ports = table.concat({
+				"\tName: alsa_output.pci-0000_00_1f.3.analog-stereo",
+				"\tMute: no",
+				"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+				"\tPorts:",
+				"\t\tanalog-output-speaker: Speakers (type: Speaker, priority: 10000, availability group: Legacy 3, availability unknown)", -- luacheck: ignore
+				"\t\tanalog-output-headphones: Headphones (type: Headphones, priority: 9900, availability group: Legacy 2, not available)", -- luacheck: ignore
+				"\tActive Port: analog-output-speaker",
+			}, "\n") .. "\n"
+			local parsed = pulse._private.parse_device_block(block_with_ports, DEFAULT_NAME)
+			local p1 = parsed.state.ports[1]
+			assert.equals("analog-output-speaker", p1.name)
+			assert.equals("Speakers", p1.description)
+			assert.equals("speaker", p1.type)
+			assert.equals(10000, p1.priority)
+			assert.equals("unknown", p1.availability)
+			local p2 = parsed.state.ports[2]
+			assert.equals("analog-output-headphones", p2.name)
+			assert.equals("Headphones", p2.description)
+			assert.equals("headphones", p2.type)
+			assert.equals(9900, p2.priority)
+			assert.equals("not available", p2.availability)
+		end)
+	end)
+
+	describe("parse_ports_text", function()
+		it("returns nil for a block with no port lines", function()
+			local block = "\tName: alsa_output.pci\n\tMute: no\n"
+			assert.is_nil(pulse._private.parse_ports_text(block))
+		end)
+
+		it("normalizes 'availability unknown' to 'unknown'", function()
+			local block = table.concat({
+				"\tPorts:",
+				"\t\tanalog-output-speaker: Speakers (type: Speaker, priority: 10000, availability group: Legacy 3, availability unknown)", -- luacheck: ignore
+			}, "\n") .. "\n"
+			local ports = pulse._private.parse_ports_text(block)
+			assert.is_not_nil(ports)
+			assert.equals("unknown", ports[1].availability)
+		end)
+
+		it("passes 'not available' through unchanged", function()
+			local block = table.concat({
+				"\tPorts:",
+				"\t\tanalog-output-headphones: Headphones (type: Headphones, priority: 9900, availability group: Legacy 2, not available)", -- luacheck: ignore
+			}, "\n") .. "\n"
+			local ports = pulse._private.parse_ports_text(block)
+			assert.is_not_nil(ports)
+			assert.equals("not available", ports[1].availability)
+		end)
 	end)
 
 	describe("parse_all_devices_json", function()
@@ -424,6 +497,30 @@ describe("audio.backends.pulse", function()
 			assert.is_nil(entries[1].state.port)
 			assert.is_nil(entries[1].state.port_type)
 		end)
+
+		it("state.ports is nil when ports array is empty", function()
+			local output = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+				.. '[{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":false,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-speaker","ports":[]}]\n' -- luacheck: ignore
+			local entries = pulse._private.parse_all_devices_json(output)
+			assert.is_nil(entries[1].state.ports)
+		end)
+
+		it("state.ports is populated from ports array", function()
+			local output = "alsa_output.pci-0000_00_1f.3.analog-stereo\n---\n"
+				.. '[{"index":57,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo","description":"Built-in Audio Analog Stereo","mute":false,"volume":{"front-left":{"value":26216,"value_percent":"40%","db":"-23.87 dB"}},"active_port":"analog-output-speaker","ports":[{"name":"analog-output-speaker","description":"Speakers","type":"Speaker","priority":10000,"availability_group":"Legacy 3","availability":"availability unknown"},{"name":"analog-output-headphones","description":"Headphones","type":"Headphones","priority":9900,"availability_group":"Legacy 2","availability":"not available"}]}]\n' -- luacheck: ignore
+			local entries = pulse._private.parse_all_devices_json(output)
+			assert.is_not_nil(entries[1].state.ports)
+			assert.equals(2, #entries[1].state.ports)
+			local p1 = entries[1].state.ports[1]
+			assert.equals("analog-output-speaker", p1.name)
+			assert.equals("Speakers", p1.description)
+			assert.equals("speaker", p1.type)
+			assert.equals(10000, p1.priority)
+			assert.equals("unknown", p1.availability)
+			local p2 = entries[1].state.ports[2]
+			assert.equals("analog-output-headphones", p2.name)
+			assert.equals("not available", p2.availability)
+		end)
 	end)
 
 	describe("parse_device_by_index_json", function()
@@ -495,9 +592,9 @@ describe("audio.backends.pulse (instance)", function()
 	before_each(function()
 		package.loaded["continuity.audio.backends.pulse"] = nil
 		package.loaded["continuity.util.json"] = nil
-		local saved_json = package.loaded["json"]
-		package.loaded["json"] = nil
-		package.preload["json"] = function()
+		local saved_json = package.loaded["cjson"]
+		package.loaded["cjson"] = nil
+		package.preload["cjson"] = function()
 			error("disabled")
 		end -- luacheck: ignore
 		easy_cmds = {}
@@ -511,8 +608,8 @@ describe("audio.backends.pulse (instance)", function()
 			return 0
 		end
 		pulse = require("continuity.audio.backends.pulse")
-		package.preload["json"] = nil
-		package.loaded["json"] = saved_json
+		package.preload["cjson"] = nil
+		package.loaded["cjson"] = saved_json
 	end)
 
 	describe("start", function()
@@ -722,6 +819,242 @@ describe("audio.backends.pulse (instance)", function()
 			-- Source event for #58: pending_sources["58"] > 0, should NOT poll
 			wlc_cbs.stdout("Event 'change' on source #58")
 			assert.equals(count + 1, #easy_cmds)
+		end)
+
+		it("api.sink.set_port calls pactl set-sink-port with idx and port name", function()
+			local backend = pulse()
+			backend:start({})
+			backend.api.sink.set_port("57", "analog-output-headphones", function() end)
+			assert.equals(1, #easy_cmds)
+			assert.truthy(cs(easy_cmds[1].cmd):find("set%-sink%-port"))
+			assert.truthy(cs(easy_cmds[1].cmd):find("57"))
+			assert.truthy(cs(easy_cmds[1].cmd):find("analog%-output%-headphones"))
+		end)
+
+		it("api.sink.set_port increments pending so next sink change event is suppressed", function()
+			local backend = pulse()
+			backend:start({ sinks = make_sink_handles() })
+			backend.api.sink.set_port("57", "analog-output-headphones", function() end)
+			local count = #easy_cmds
+			-- First change event: pending > 0, suppressed
+			wlc_cbs.stdout("Event 'change' on sink #57")
+			assert.equals(count, #easy_cmds)
+			-- Second change event: pending == 0, triggers re-poll
+			wlc_cbs.stdout("Event 'change' on sink #57")
+			assert.equals(count + 1, #easy_cmds)
+		end)
+
+		it("api.sink.set_port patches state optimistically on success", function()
+			local patched = {}
+			local sh = {
+				add = function() end,
+				update = function() end,
+				remove = function() end,
+				patch = function(id, partial)
+					patched[#patched + 1] = { id = id, partial = partial }
+					return {}, {}
+				end,
+			}
+			local backend = pulse()
+			backend:start({ sinks = sh })
+			easy_cmds = {}
+			backend.api.sink.set_port("57", "analog-output-headphones", function() end)
+			easy_cmds[1].cb("", "", "", 0)
+			assert.equals(1, #patched)
+			assert.equals("57", patched[1].id)
+			assert.equals("analog-output-headphones", patched[1].partial.port)
+			assert.equals("headphones", patched[1].partial.port_type)
+		end)
+
+		it("api.sink.set_port decrements pending on non-zero exit without patching", function()
+			local patched = {}
+			local sh = {
+				add = function() end,
+				update = function() end,
+				remove = function() end,
+				patch = function(id, partial)
+					patched[#patched + 1] = { id = id, partial = partial }
+				end,
+			}
+			local backend = pulse()
+			backend:start({ sinks = sh })
+			easy_cmds = {}
+			backend.api.sink.set_port("57", "analog-output-headphones", function() end)
+			easy_cmds[1].cb("", "", "", 1)
+			assert.equals(0, #patched)
+			-- Pending decremented: next change event should trigger a re-poll
+			local count = #easy_cmds
+			wlc_cbs.stdout("Event 'change' on sink #57")
+			assert.equals(count + 1, #easy_cmds)
+		end)
+
+		it("api.source.set_port calls pactl set-source-port", function()
+			local backend = pulse()
+			backend:start({})
+			backend.api.source.set_port("58", "analog-input-headset-mic", function() end)
+			assert.equals(1, #easy_cmds)
+			assert.truthy(cs(easy_cmds[1].cmd):find("set%-source%-port"))
+			assert.truthy(cs(easy_cmds[1].cmd):find("58"))
+		end)
+	end)
+
+	describe("race condition defenses", function()
+		local ANALOG_NAME = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+		local BT_NAME = "bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink"
+
+		-- Single-sink poll with analog as default
+		local ANALOG_POLL = table.concat({
+			ANALOG_NAME,
+			"---",
+			"Sink #57",
+			"\tName: " .. ANALOG_NAME,
+			"\tDescription: Built-in Audio Analog Stereo",
+			"\tMute: no",
+			"\tVolume: front-left: 26216 /  40% / -23.87 dB",
+			"\tActive Port: analog-output-speaker",
+		}, "\n") .. "\n"
+
+		-- Single-sink poll: BT is default in snapshot (stale/racing snapshot)
+		local BT_AS_DEFAULT_POLL = table.concat({
+			BT_NAME,
+			"---",
+			"Sink #100",
+			"\tName: " .. BT_NAME,
+			"\tDescription: Wireless Headphones",
+			"\tMute: no",
+			"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+			"\tActive Port: headphones-output",
+		}, "\n") .. "\n"
+
+		-- Single-sink poll: analog is default in snapshot, but only BT block present
+		local BT_NOT_DEFAULT_POLL = table.concat({
+			ANALOG_NAME,
+			"---",
+			"Sink #100",
+			"\tName: " .. BT_NAME,
+			"\tDescription: Wireless Headphones",
+			"\tMute: no",
+			"\tVolume: front-left: 32768 /  50% / -18.06 dB",
+			"\tActive Port: headphones-output",
+		}, "\n") .. "\n"
+
+		local function make_recording_sink_handles()
+			local calls = { add = {}, update = {}, remove = {}, patch = {} }
+			local sh = {
+				add = function(id, state, meta)
+					calls.add[#calls.add + 1] = { id = id, state = state, meta = meta }
+				end,
+				update = function(id, state)
+					calls.update[#calls.update + 1] = { id = id, state = state }
+				end,
+				remove = function(id)
+					calls.remove[#calls.remove + 1] = id
+				end,
+				patch = function(id, partial)
+					calls.patch[#calls.patch + 1] = { id = id, partial = partial }
+					return nil, nil
+				end,
+			}
+			return sh, calls
+		end
+
+		it("change on sink for a non-default sink does not call on_sink", function()
+			local on_sink_calls = {}
+			local backend = pulse()
+			backend:start({
+				sinks = make_sink_handles(),
+				on_sink = function(id, state, meta) -- luacheck: ignore meta
+					on_sink_calls[#on_sink_calls + 1] = { id = id, state = state }
+				end,
+			})
+			easy_cmds[1].cb(ANALOG_POLL, "", "", 0)
+			local initial_calls = #on_sink_calls
+			wlc_cbs.stdout("Event 'change' on sink #100")
+			-- Stale snapshot: BT appears as default, but backend knows analog #57 is default
+			easy_cmds[#easy_cmds].cb(BT_AS_DEFAULT_POLL, "", "", 0)
+			assert.equals(initial_calls, #on_sink_calls)
+		end)
+
+		it("change on sink normalizes is_default to false for a non-default sink", function()
+			local sh, calls = make_recording_sink_handles()
+			local backend = pulse()
+			backend:start({ sinks = sh })
+			easy_cmds[1].cb(ANALOG_POLL, "", "", 0)
+			wlc_cbs.stdout("Event 'change' on sink #100")
+			-- Stale snapshot: BT appears as default
+			easy_cmds[#easy_cmds].cb(BT_AS_DEFAULT_POLL, "", "", 0)
+			local found
+			for _, c in ipairs(calls.update) do
+				if c.id == "100" then
+					found = c
+				end
+			end
+			assert.not_nil(found)
+			assert.is_false(found.state.is_default)
+		end)
+
+		it("change on sink normalizes is_default to true for the current default sink", function()
+			local on_sink_calls = {}
+			local sh, calls = make_recording_sink_handles()
+			local backend = pulse()
+			backend:start({
+				sinks = sh,
+				on_sink = function(id, state, meta) -- luacheck: ignore meta
+					on_sink_calls[#on_sink_calls + 1] = { id = id, state = state }
+				end,
+			})
+			easy_cmds[1].cb(ANALOG_POLL, "", "", 0)
+			local initial_calls = #on_sink_calls
+			wlc_cbs.stdout("Event 'change' on sink #57")
+			easy_cmds[#easy_cmds].cb(ANALOG_POLL, "", "", 0)
+			local found
+			for _, c in ipairs(calls.update) do
+				if c.id == "57" then
+					found = c
+				end
+			end
+			assert.not_nil(found)
+			assert.is_true(found.state.is_default)
+			assert.equals(initial_calls + 1, #on_sink_calls)
+			assert.equals("57", on_sink_calls[#on_sink_calls].id)
+		end)
+
+		it("new on sink sets is_default=true when name matches current_default_sink despite stale snapshot", function()
+			local sh, calls = make_recording_sink_handles()
+			local backend = pulse()
+			backend:start({ sinks = sh })
+			-- Initial poll: BT #100 is default → sets current_default_sink = BT_NAME
+			easy_cmds[1].cb(BT_AS_DEFAULT_POLL, "", "", 0)
+			wlc_cbs.stdout("Event 'new' on sink #100")
+			-- Stale snapshot: analog appears as default, BT would parse as is_default=false
+			easy_cmds[#easy_cmds].cb(BT_NOT_DEFAULT_POLL, "", "", 0)
+			local found
+			for _, c in ipairs(calls.add) do
+				if c.id == "100" and c.meta and c.meta.name == BT_NAME then
+					found = c
+				end
+			end
+			assert.not_nil(found)
+			assert.is_true(found.state.is_default)
+		end)
+
+		it("new on sink sets is_default=false when name does not match current_default_sink", function()
+			local sh, calls = make_recording_sink_handles()
+			local backend = pulse()
+			backend:start({ sinks = sh })
+			-- Initial poll: analog #57 is default → current_default_sink = ANALOG_NAME
+			easy_cmds[1].cb(ANALOG_POLL, "", "", 0)
+			wlc_cbs.stdout("Event 'new' on sink #100")
+			-- Snapshot correctly shows analog as default; BT should be is_default=false
+			easy_cmds[#easy_cmds].cb(BT_NOT_DEFAULT_POLL, "", "", 0)
+			local found
+			for _, c in ipairs(calls.add) do
+				if c.id == "100" then
+					found = c
+				end
+			end
+			assert.not_nil(found)
+			assert.is_false(found.state.is_default)
 		end)
 	end)
 end)

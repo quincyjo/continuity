@@ -1,10 +1,11 @@
 -- Art URI resolution and local cache.
 -- Resolves art_uri values to local filesystem paths suitable for naughty icons.
+-- Downloads are written to /tmp so they are cleared on reboot without manual cleanup.
 
 local awful = require("awful")
 local gears = require("gears")
 
-local CACHE_DIR = os.getenv("HOME") .. "/.cache/awesome/media-art"
+local CACHE_DIR = "/tmp/awesome-media-art"
 os.execute("mkdir -p " .. CACHE_DIR)
 ---@type table<string, string>
 local cache = {} -- url -> local path

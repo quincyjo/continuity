@@ -9,6 +9,7 @@
 local awful = require("awful")
 local gears = require("gears")
 
+---@diagnostic disable: deprecated
 local unpack = unpack or table.unpack -- luacheck: globals unpack
 
 local fd = require("continuity.tools.find.backends.fd")
@@ -79,7 +80,6 @@ end
 
 local find = {}
 
----@return ModuleHealth
 function find.checkhealth()
 	local backends_items = {}
 	for _, backend in ipairs(BACKENDS) do

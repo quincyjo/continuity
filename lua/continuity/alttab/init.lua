@@ -18,15 +18,15 @@ local client, tag = client, tag
 -- ----------------------------------------------------------------------------
 
 ---@class AlttabUI
----@field show             fun(clients: AwesomeClient[], index: integer)  Build and display the switcher popup.
+---@field show             fun(clients: table[], index: integer)  Build and display the switcher popup.
 ---@field update           fun(index: integer)                            Move the highlight to a new index without rebuilding.
 ---@field hide             fun()                                          Tear down and hide the switcher popup.
 ---@field on_init?         fun(api: AlttabAPI)    Called after setup() with a reference to the public API.
----@field on_unfocus?      fun(c: AwesomeClient)  Called when a client loses focus. Good for caching content while visible.
----@field on_minimized?    fun(c: AwesomeClient)  Called when a client becomes minimized.
----@field on_untagged?     fun(c: AwesomeClient)  Called when a client is removed from a tag.
----@field on_unmanage?     fun(c: AwesomeClient)  Called when a client is removed. Useful for cache cleanup.
----@field on_tag_selected? fun(t: AwesomeTag)     Called when a client is removed. Useful for cache cleanup.
+---@field on_unfocus?      fun(c: table)  Called when a client loses focus. Good for caching content while visible.
+---@field on_minimized?    fun(c: table)  Called when a client becomes minimized.
+---@field on_untagged?     fun(c: table)  Called when a client is removed from a tag.
+---@field on_unmanage?     fun(c: table)  Called when a client is removed. Useful for cache cleanup.
+---@field on_tag_selected? fun(t: table)     Called when a client is removed. Useful for cache cleanup.
 
 ---@class AlttabAPI
 ---@field select        fun(index: integer)   Move the highlight to the given index without committing.
@@ -41,24 +41,24 @@ local client, tag = client, tag
 ---@field number_shift_mappings? string[] Mapping of numberrow to shift charaacters for keygrabber bindings on shift.
 
 ---@class AlttabSession
----@field clients AwesomeClient[]  Snapshot of the full client stack taken when the session started.
+---@field clients table[]  Snapshot of the full client stack taken when the session started.
 ---@field index   integer          Index of the currently highlighted client (1-based).
 
 -- ----------------------------------------------------------------------------
 -- Module
 -- ----------------------------------------------------------------------------
 
----@class AlttabModule
----@field stack      AwesomeClient[]                Focus-ordered stack of all managed clients.
----@field _set       table<AwesomeClient, boolean>  Membership set for O(1) existence checks.
----@field ui         AlttabUI|nil                   Active UI implementation, set by setup().
----@field session    AlttabSession|nil              Active switch session; nil when the switcher is not visible.
----@field grabber    table|nil                      Active keygrabber; held so the API can stop it mid-session.
----@field held_key   string                         The key to be held down for the grabber.
----@field select_key string                         The key to be pressed to navigate the stack.
----@field pull_key   string                         The key to be pressed pull target client into current context.
----@field mod_key    string                         The key to be pressed mod an action.
----@field number_shift_mappings string[]            Mapping of numberrow to shift charaacters for keygrabber bindings on shift.
+---@class continuity.alttab
+---@field private stack      table[]                Focus-ordered stack of all managed clients.
+---@field private _set       table<table, boolean>  Membership set for O(1) existence checks.
+---@field private ui         AlttabUI|nil                   Active UI implementation, set by setup().
+---@field private session    AlttabSession|nil              Active switch session; nil when the switcher is not visible.
+---@field private grabber    table|nil                      Active keygrabber; held so the API can stop it mid-session.
+---@field private held_key   string                         The key to be held down for the grabber.
+---@field private select_key string                         The key to be pressed to navigate the stack.
+---@field private pull_key   string                         The key to be pressed pull target client into current context.
+---@field private mod_key    string                         The key to be pressed mod an action.
+---@field private number_shift_mappings string[]            Mapping of numberrow to shift charaacters for keygrabber bindings on shift.
 local alttab = {
 	stack = {},
 	_set = {},
@@ -139,7 +139,7 @@ end
 -- ----------------------------------------------------------------------------
 
 --- Move a client to the front of the stack, inserting it if not already present.
----@param c AwesomeClient
+---@param c table
 local function stack_push(c)
 	if alttab._set[c] then
 		for i, v in ipairs(alttab.stack) do
@@ -154,7 +154,7 @@ local function stack_push(c)
 end
 
 --- Remove a client from the stack.
----@param c AwesomeClient
+---@param c table
 local function stack_remove(c)
 	if not alttab._set[c] then
 		return
@@ -242,7 +242,7 @@ local function close_session(commit)
 end
 
 ---@param tag_index? integer
----@param f fun(c: AwesomeClient, tag: AwesomeTag)
+---@param f fun(c: table, tag: table)
 local function do_client_tag(f, tag_index)
 	local s = alttab.session
 	local c = s and alttab.session.clients[s.index]

@@ -46,14 +46,18 @@ local capture = audio.Capture  -- default source
 ### Reading State
 
 The handle exposes a `state` table. See [Device Handle](#device-handle) for all
-fields. With the PulseAudio backend, `port`, `port_type`, and `connection` are
-also populated when the device reports them.
+fields. With the PulseAudio backend, `port`, `port_type`, `ports`, and
+`connection` are also populated when the device reports them.
 
 ```lua
 print(volume.state.level, volume.state.muted)
 -- port_type: "speaker"|"headphones"|"headset"|"hdmi"|nil
 -- connection: "analog"|"bluetooth"|"hdmi"|"usb"|nil
 print(volume.state.port_type, volume.state.connection)
+-- ports: list of available ports with name, description, type, priority, availability
+for _, port in ipairs(volume.state.ports or {}) do
+    print(port.name, port.availability)  -- e.g. "analog-output-headphones", "not available"
+end
 ```
 
 Because the first backend event is asynchronous, `level` and `muted` are `0` /
@@ -69,8 +73,8 @@ end)
 ### Subscribing to Changes
 
 `subscribe` fires only when at least one state field has changed (`level`,
-`muted`, `port`, `port_type`, or `connection`). Backend events that repeat the
-same state do not trigger subscribers.
+`muted`, `port`, `port_type`, `ports`, or `connection`). Backend events that
+repeat the same state do not trigger subscribers.
 
 ```lua
 volume:subscribe(function(state)
@@ -134,6 +138,30 @@ volume:toggle_mute()     -- toggle mute state
 `adjust_perc` clamps the delta to keep the result in [0, 100]. If the clamped
 delta is 0, `on_control` is still fired with the current state.
 
+### Switching Ports (PulseAudio)
+
+When a device has multiple ports (e.g. speakers and headphones on a built-in
+audio chip), `set_port` switches the active port by name. The state update is
+optimistic — `state.port` and `state.port_type` are patched immediately on
+success and `on_control` fires before the next pactl event arrives.
+
+```lua
+audio.sinks:on_added(function(handle)
+    -- Inspect available ports.
+    for _, port in ipairs(handle.state.ports or {}) do
+        print(port.name, port.description, port.availability)
+    end
+
+    -- Switch to the first available port, passing the port object directly.
+    for _, port in ipairs(handle.state.ports or {}) do
+        if port.availability ~= "not available" then
+            handle:set_port(port)
+            break
+        end
+    end
+end)
+```
+
 ## Handle Types
 
 ### Device Handle
@@ -165,8 +193,11 @@ Handles returned by `audio.inputs` expose:
 | `id` | `string` | Sink input index (as string) |
 | `app_name` | `string?` | Application name, if reported by the backend |
 | `icon_name` | `string?` | Icon name, if reported by the backend |
+| `role` | `string?` | Media role (e.g. `"music"`, `"notification"`, `"video"`) |
+| `binary` | `string?` | Process binary name (e.g. `"spotify"`, `"Discord"`) |
 | `state.level` | `integer` | Volume 0–100 |
 | `state.muted` | `boolean` | Mute state |
+| `state.corked` | `boolean` | Whether the stream is corked (explicitly paused by the application) |
 | `state.name` | `string?` | Stream name |
 | `state.sink` | `integer?` | Sink index this input is routed to |
 
@@ -249,19 +280,19 @@ awful.keyboard.append_global_keybindings({
 ```lua
 local audio = require("continuity.audio")
 
-audio.sinks.on_added(function(handle)
+audio.sinks:on_added(function(handle)
     print("sink added:", handle.id, handle.description)
 end)
 
-audio.sinks.on_updated(function(handle)
+audio.sinks:on_updated(function(handle)
     print("sink updated:", handle.id, "default:", handle.state.is_default)
 end)
 
-audio.sinks.on_removed(function(id)
+audio.sinks:on_removed(function(id)
     print("sink removed:", id)
 end)
 
-local sinks = audio.sinks.all()
+local sinks = audio.sinks:all()
 for _, handle in ipairs(sinks) do
     print(handle.id, handle.description, handle.state.is_default)
 end
@@ -275,7 +306,7 @@ All three registration functions return an unsubscribe function. See
 Individual sink handles expose the same subscription API as `Audio.Volume`:
 
 ```lua
-audio.sinks.on_added(function(handle)
+audio.sinks:on_added(function(handle)
     handle:subscribe(function(state)
         print("sink", handle.id, "level:", state.level, "default:", state.is_default)
     end)
@@ -285,7 +316,7 @@ end)
 ### Changing the Default Sink
 
 ```lua
-audio.sinks.on_added(function(handle)
+audio.sinks:on_added(function(handle)
     -- Make this sink the default output.
     handle:set_default()
 end)
@@ -304,19 +335,19 @@ lifecycle.
 ```lua
 local audio = require("continuity.audio")
 
-audio.sources.on_added(function(handle)
+audio.sources:on_added(function(handle)
     print("source added:", handle.id, handle.description)
 end)
 
-audio.sources.on_updated(function(handle)
+audio.sources:on_updated(function(handle)
     print("source updated:", handle.id, "default:", handle.state.is_default)
 end)
 
-audio.sources.on_removed(function(id)
+audio.sources:on_removed(function(id)
     print("source removed:", id)
 end)
 
-local sources = audio.sources.all()
+local sources = audio.sources:all()
 for _, handle in ipairs(sources) do
     print(handle.id, handle.description, handle.state.is_default)
 end
@@ -330,7 +361,7 @@ All three registration functions return an unsubscribe function. See
 Individual source handles expose the same subscription API as `Audio.Capture`:
 
 ```lua
-audio.sources.on_added(function(handle)
+audio.sources:on_added(function(handle)
     handle:subscribe(function(state)
         print("source", handle.id, "level:", state.level, "default:", state.is_default)
     end)
@@ -340,7 +371,7 @@ end)
 ### Changing the Default Source
 
 ```lua
-audio.sources.on_added(function(handle)
+audio.sources:on_added(function(handle)
     handle:set_default()
 end)
 ```
@@ -352,27 +383,27 @@ streams routed to any sink (e.g. a browser, a music player).
 
 > **Note:** Sink inputs are only available when the PulseAudio/PipeWire backend
 > is in use. The ALSA backend does not support sink input enumeration;
-> `audio.inputs.all()` will always return an empty array with that backend.
+> `audio.inputs:all()` will always return an empty array with that backend.
 
 ### Lifecycle
 
 ```lua
 local audio = require("continuity.audio")
 
-audio.inputs.on_added(function(handle)
+audio.inputs:on_added(function(handle)
     print("input added:", handle.id, handle.app_name)
 end)
 
-audio.inputs.on_updated(function(handle)
+audio.inputs:on_updated(function(handle)
     print("input updated:", handle.id, handle.state.level)
 end)
 
-audio.inputs.on_removed(function(id)
+audio.inputs:on_removed(function(id)
     print("input removed:", id)
 end)
 
 -- Snapshot of all currently active inputs.
-local inputs = audio.inputs.all()
+local inputs = audio.inputs:all()
 for _, handle in ipairs(inputs) do
     print(handle.id, handle.state.level, handle.state.muted)
 end
@@ -387,7 +418,7 @@ Individual input handles expose the same subscription and control API as the
 module-level handles except with `move_to` instead of `set_default`:
 
 ```lua
-audio.inputs.on_added(function(handle)
+audio.inputs:on_added(function(handle)
     -- Subscribe to state changes for this input.
     handle:subscribe(function(state)
         print("level:", state.level, "muted:", state.muted)
@@ -409,7 +440,7 @@ audio.inputs.on_added(function(handle)
     handle:toggle_mute()
 
     -- Route this stream to a different output device.
-    local target = audio.sinks.all()[1]
+    local target = audio.sinks:all()[1]
     if target then
         handle:move_to(target)
     end

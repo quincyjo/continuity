@@ -8,6 +8,7 @@
 ---@field can_go_previous? boolean
 ---@field can_play?        boolean
 ---@field can_pause?       boolean
+---@field can_set_volume?  boolean
 
 ---@class PlaybackCapability   -- backend executor; one per backend instance; takes source_id
 ---@field play          fun(source_id: string)
@@ -23,9 +24,13 @@
 ---@field subscribe fun(source_id: string, cb: fun(pos: number)): fun()
 ---@field get       fun(source_id: string, cb: fun(pos: number|nil))
 
+---@class VolumeCapability   -- backend executor; one per backend instance; takes source_id
+---@field set_perc fun(source_id: string, pct: integer)
+
 ---@class SourceCapabilities
 ---@field position? PositionCapability
 ---@field playback? PlaybackCapability
+---@field volume?   VolumeCapability
 ---@field flags?    PlaybackFlags
 
 ---@class SourceRegistrar
@@ -51,6 +56,7 @@
 ---@field on_source_removed     fun(cb: fun(source_id: string)): fun()
 ---@field on_playback_action    fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
 ---@field registrar             fun(): SourceRegistrar
+---@field get                   fun(source_id: string): MediaSource|nil
 ---@field PlaybackAction        table<string, PlaybackAction>
 
 ---@class RegistrySubscribeOpts
@@ -69,6 +75,8 @@ registry.PlaybackAction = {
 	Previous = "previous",
 	Seek = "seek",
 	SetPosition = "set_position",
+	SetVolume = "set_volume",
+	ToggleMute = "toggle_mute",
 }
 
 --- Create a new registry instance.
@@ -89,6 +97,7 @@ function registry.new()
 	---@field on_playback_action_cbs fun(source: MediaSource, action: PlaybackAction)[]
 	local state = {
 		sources = {},
+		pre_mute_volumes = {}, -- source_id -> volume before muting
 		on_added_cbs = {},
 		on_updated_cbs = {},
 		on_removed_cbs = {},
@@ -146,7 +155,7 @@ function registry.new()
 	---@param executor PlaybackCapability
 	---@param flags PlaybackFlags
 	---@return Playback
-	local function make_playback(source_id, executor, flags)
+	local function make_playback(source_id, executor, flags, vol_executor)
 		---@param method string Executor method name.
 		---@param action PlaybackAction
 		---@param guard_passed boolean
@@ -159,12 +168,42 @@ function registry.new()
 			-- TODO: Maybe expose CB with ok and do this after the action?
 			fire(state.on_playback_action_cbs, src, action)
 		end
+		local volume
+		if vol_executor and flags.can_set_volume then
+			volume = {
+				set_perc = function(_, value)
+					local src = state.sources[source_id]
+					if not src then
+						return
+					end
+					vol_executor.set_perc(source_id, value)
+					fire(state.on_playback_action_cbs, src, registry.PlaybackAction.SetVolume)
+				end,
+				adjust_perc = function(self, delta)
+					local src = state.sources[source_id]
+					local current = (src and src.state.volume) or 0
+					self:set_perc(math.max(0, math.min(100, current + delta)))
+				end,
+				toggle_mute = function(_)
+					local src = state.sources[source_id]
+					local current = (src and src.state.volume) or 0
+					if current > 0 then
+						state.pre_mute_volumes[source_id] = current
+						vol_executor.set_perc(source_id, 0)
+					else
+						vol_executor.set_perc(source_id, state.pre_mute_volumes[source_id] or 100)
+					end
+					fire(state.on_playback_action_cbs, src, registry.PlaybackAction.ToggleMute)
+				end,
+			}
+		end
 		return {
 			can_seek = flags.can_seek or false,
 			can_go_next = flags.can_go_next or false,
 			can_go_previous = flags.can_go_previous or false,
 			can_play = flags.can_play or false,
 			can_pause = flags.can_pause or false,
+			volume = volume,
 			play = function(self)
 				dispatch("play", registry.PlaybackAction.Play, self.can_play)
 			end,
@@ -327,7 +366,7 @@ function registry.new()
 			and capabilities.flags
 			and capabilities.flags.can_control ~= false
 		then
-			source.playback = make_playback(source_id, capabilities.playback, capabilities.flags)
+			source.playback = make_playback(source_id, capabilities.playback, capabilities.flags, capabilities.volume)
 		else
 			source.playback = nil
 		end
@@ -399,6 +438,9 @@ function registry.new()
 				if flags.can_pause ~= nil then
 					source.playback.can_pause = flags.can_pause
 				end
+				if flags.can_set_volume == false then
+					source.playback.volume = nil
+				end
 			end
 		end
 
@@ -460,6 +502,7 @@ function registry.new()
 		state.source_capapabilities[source_id] = nil
 		state.sources[source_id] = nil
 		state.source_cbs[source_id] = nil
+		state.pre_mute_volumes[source_id] = nil
 
 		if state.source_removed_cbs[source_id] then
 			fire(state.source_removed_cbs[source_id], source_id)
@@ -591,6 +634,12 @@ function registry.new()
 			remove = r.remove,
 			add_dbus_sender = r.add_dbus_sender,
 		}
+	end
+
+	---@param id string
+	---@return MediaSource|nil
+	function r.get(id)
+		return state.sources[id]
 	end
 
 	return r

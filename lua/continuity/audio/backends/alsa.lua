@@ -147,6 +147,7 @@ local function create()
 				cb()
 			end
 		end,
+		set_port = function() end,
 	}
 
 	local backend = {}
@@ -203,7 +204,7 @@ Alsa._private = {
 }
 
 return setmetatable(Alsa, {
-	__call = function(_, opts)
-		return create(opts)
+	__call = function(_)
+		return create()
 	end,
 })

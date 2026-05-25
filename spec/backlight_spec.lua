@@ -35,7 +35,7 @@ describe("backlight module", function()
 	end
 	local function display_devices()
 		local result = {}
-		for _, h in ipairs(backlight.devices.all()) do
+		for _, h in ipairs(backlight.devices:all()) do
 			if h.kind == "display" then
 				result[#result + 1] = h
 			end
@@ -292,7 +292,7 @@ describe("backlight module", function()
 		it("fires with handle when backend adds device", function()
 			backlight.setup({ backend = mock_backend })
 			local got = nil
-			backlight.devices.on_added(function(h)
+			backlight.devices:on_added(function(h)
 				got = h
 			end)
 			add_device("intel_backlight", "display", 50)
@@ -350,7 +350,7 @@ describe("backlight module", function()
 		it("returns unsubscribe function", function()
 			backlight.setup({ backend = mock_backend })
 			local count = 0
-			local unsub = backlight.devices.on_added(function()
+			local unsub = backlight.devices:on_added(function()
 				count = count + 1
 			end)
 			unsub()
@@ -364,25 +364,25 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 50)
 			local removed = nil
-			backlight.devices.on_removed(function(id)
+			backlight.devices:on_removed(function(id)
 				removed = id
 			end)
 			remove_device("intel_backlight")
 			assert.equals("intel_backlight", removed)
 		end)
 
-		it("removes device from devices.all()", function()
+		it("removes device from devices:all()", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 50)
 			remove_device("intel_backlight")
-			assert.equals(0, #backlight.devices.all())
+			assert.equals(0, #backlight.devices:all())
 		end)
 
 		it("returns unsubscribe function", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 50)
 			local count = 0
-			local unsub = backlight.devices.on_removed(function()
+			local unsub = backlight.devices:on_removed(function()
 				count = count + 1
 			end)
 			unsub()
@@ -394,7 +394,7 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("kbd_backlight", "keyboard", 66)
 			local removed = nil
-			backlight.devices.on_removed(function(id)
+			backlight.devices:on_removed(function(id)
 				removed = id
 			end)
 			remove_device("kbd_backlight")
@@ -407,7 +407,7 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			local updated = nil
-			backlight.devices.on_updated(function(h)
+			backlight.devices:on_updated(function(h)
 				updated = h
 			end)
 			change("intel_backlight", 50)
@@ -419,7 +419,7 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			local fired = false
-			backlight.devices.on_updated(function()
+			backlight.devices:on_updated(function()
 				fired = true
 			end)
 			change("intel_backlight", 75)
@@ -430,7 +430,7 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			local count = 0
-			local unsub = backlight.devices.on_updated(function()
+			local unsub = backlight.devices:on_updated(function()
 				count = count + 1
 			end)
 			change("intel_backlight", 50)
@@ -441,16 +441,16 @@ describe("backlight module", function()
 		end)
 	end)
 
-	describe("devices.all()", function()
+	describe("devices:all()", function()
 		it("returns empty table before any devices", function()
 			backlight.setup({ backend = mock_backend })
-			assert.same({}, backlight.devices.all())
+			assert.same({}, backlight.devices:all())
 		end)
 
 		it("returns devices as array after add", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
-			local all = backlight.devices.all()
+			local all = backlight.devices:all()
 			assert.equals(1, #all)
 			assert.equals("intel_backlight", all[1].id)
 			assert.equals(75, all[1].state.brightness)
@@ -461,14 +461,29 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			change("intel_backlight", 50)
-			assert.equals(50, backlight.devices.all()[1].state.brightness)
+			assert.equals(50, backlight.devices:all()[1].state.brightness)
 		end)
 
 		it("removes device after on_device_removed", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			remove_device("intel_backlight")
-			assert.equals(0, #backlight.devices.all())
+			assert.equals(0, #backlight.devices:all())
+		end)
+	end)
+
+	describe("devices:get()", function()
+		it("returns the handle for a known id", function()
+			backlight.setup({ backend = mock_backend })
+			add_device("intel_backlight", "display", 50)
+			local handle = backlight.devices:get("intel_backlight")
+			assert.is_not_nil(handle)
+			assert.equals("intel_backlight", handle.id)
+		end)
+
+		it("returns nil for an unknown id", function()
+			backlight.setup({ backend = mock_backend })
+			assert.is_nil(backlight.devices:get("does_not_exist"))
 		end)
 	end)
 
@@ -477,7 +492,7 @@ describe("backlight module", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)
 			backlight.stop()
-			assert.same({}, backlight.devices.all())
+			assert.same({}, backlight.devices:all())
 		end)
 
 		it("resets primary_display to unwired handle", function()

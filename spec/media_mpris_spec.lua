@@ -281,6 +281,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 			assert.is_true(flags.can_go_previous)
 			assert.is_true(flags.can_play)
 			assert.is_true(flags.can_pause)
+			assert.is_true(flags.can_set_volume)
 		end)
 
 		it("returns false for each flag when set to false", function()
@@ -298,6 +299,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 			assert.is_false(flags.can_go_previous)
 			assert.is_false(flags.can_play)
 			assert.is_false(flags.can_pause)
+			assert.is_false(flags.can_set_volume)
 		end)
 
 		it("defaults all flags to true when absent (optimistic)", function()
@@ -308,6 +310,7 @@ method return time=1234567890.0 sender=:1.42 -> destination=:1.1 serial=1 reply_
 			assert.is_true(flags.can_go_previous)
 			assert.is_true(flags.can_play)
 			assert.is_true(flags.can_pause)
+			assert.is_true(flags.can_set_volume)
 		end)
 
 		it("mixes true and false correctly", function()
@@ -1213,6 +1216,44 @@ describe("playback commands", function()
 	it("play() is a no-op for unknown source_id", function()
 		caps.playback.play("mpris:unknown")
 		assert.equals(0, #spawned_cmds)
+	end)
+
+	it("caps has volume table with set_perc function", function()
+		assert.is_table(caps.volume)
+		assert.is_function(caps.volume.set_perc)
+	end)
+
+	it("volume.set_perc sends Properties.Set Volume as a variant:double", function()
+		caps.volume.set_perc(SOURCE_ID, 60)
+		assert.equals(1, #spawned_cmds)
+		local cmd = spawned_cmds[1].cmd
+		assert.equals("dbus-send", cmd[1])
+		assert.equals("--dest=org.mpris.MediaPlayer2.spotify", cmd[4])
+		assert.equals("/org/mpris/MediaPlayer2", cmd[6])
+		assert.equals("org.freedesktop.DBus.Properties.Set", cmd[7])
+		assert.equals("string:org.mpris.MediaPlayer2.Player", cmd[8])
+		assert.equals("string:Volume", cmd[9])
+		assert.equals("variant:double:0.600000", cmd[10])
+	end)
+
+	it("volume.set_perc sends correct value for 100%", function()
+		caps.volume.set_perc(SOURCE_ID, 100)
+		assert.equals("variant:double:1.000000", spawned_cmds[1].cmd[10])
+	end)
+
+	it("volume.set_perc sends correct value for 0%", function()
+		caps.volume.set_perc(SOURCE_ID, 0)
+		assert.equals("variant:double:0.000000", spawned_cmds[1].cmd[10])
+	end)
+
+	it("volume.set_perc is a no-op for unknown source_id", function()
+		caps.volume.set_perc("mpris:unknown", 60)
+		assert.equals(0, #spawned_cmds)
+	end)
+
+	it("volume.set_perc does not call registry.update", function()
+		caps.volume.set_perc(SOURCE_ID, 60)
+		assert.equals(0, #update_calls)
 	end)
 end)
 

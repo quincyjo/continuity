@@ -82,7 +82,7 @@ describe("audio (init)", function()
 
 		it("Audio.inputs.on_added can be registered before setup() and fires after bind", function()
 			local received
-			Audio.inputs.on_added(function(h)
+			Audio.inputs:on_added(function(h)
 				received = h
 			end)
 			Audio.setup({ backend = make_backend() })
@@ -93,7 +93,7 @@ describe("audio (init)", function()
 
 		it("Audio.sinks.on_added can be registered before setup() and fires after bind", function()
 			local received
-			Audio.sinks.on_added(function(h)
+			Audio.sinks:on_added(function(h)
 				received = h
 			end)
 			Audio.setup({ backend = make_backend() })
@@ -105,7 +105,7 @@ describe("audio (init)", function()
 
 		it("Audio.sources.on_added can be registered before setup() and fires after bind", function()
 			local received
-			Audio.sources.on_added(function(h)
+			Audio.sources:on_added(function(h)
 				received = h
 			end)
 			Audio.setup({ backend = make_backend() })
@@ -448,7 +448,7 @@ describe("audio (init)", function()
 		it("control on Audio.Volume propagates to sinks collection handle subscriber", function()
 			on_sink("57", { level = 40, muted = false, is_default = true }, {})
 			local received
-			Audio.sinks.all()[1]:subscribe(function(s)
+			Audio.sinks:all()[1]:subscribe(function(s)
 				received = s
 			end)
 			Audio.Volume:adjust_perc(10)

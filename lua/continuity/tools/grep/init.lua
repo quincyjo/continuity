@@ -9,6 +9,7 @@
 local awful = require("awful") -- used in grep() and grep.stream()
 local gears = require("gears")
 
+---@diagnostic disable: deprecated
 local unpack = unpack or table.unpack -- luacheck: globals unpack
 
 local rg = require("continuity.tools.grep.backends.rg")

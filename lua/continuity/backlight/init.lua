@@ -10,7 +10,7 @@ local gears = require("gears")
 ---@field brightness number
 ---@field raw        integer|nil
 
----@class BacklightHandle : ReadyAware<BacklightUpdate>, Controllable<BacklightUpdate>
+---@class BacklightHandle : ReadyAware<BacklightUpdate>, Controllable<BacklightUpdate>, Removable
 ---@field id          string|nil
 ---@field kind        BacklightKind
 ---@field state       BacklightState
@@ -46,108 +46,79 @@ local gears = require("gears")
 
 ---@class BacklightDevices : Observable<BacklightHandle>
 
+local Observable = require("continuity.observable")
+local ReadyAware = require("continuity.readyaware")
+local Controllable = require("continuity.controllable")
+local Removable = require("continuity.removable")
+local extend = require("continuity.util.extend")
+
+local BacklightHandle = extend(ReadyAware, Controllable, Removable)
+
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
-local _handles = {} ---@type table<string, BacklightHandle>
-local _devices_added_subs = {}
-local _devices_removed_subs = {}
-local _devices_updated_subs = {}
+local observable = Observable()
 
+---@param handle BacklightHandle
+---@param brightness number
+---@param raw? integer
 local function _on_control(handle, brightness, raw)
 	local changed = handle.state.brightness ~= brightness
 	handle.state.brightness = brightness
 	handle.state.raw = raw
 	if changed then
-		---@diagnostic disable-next-line: undefined-field
-		for _, sub in ipairs(handle._private.subscribers) do
-			sub(handle.state)
-		end
-		for _, cb in ipairs(_devices_updated_subs) do
-			cb(handle)
-		end
+		observable:update(handle.id, handle.state)
 	end
-	---@diagnostic disable-next-line: undefined-field
-	for _, cb in ipairs(handle._private.on_control_cbs) do
-		cb(handle.state)
+	---@cast handle BacklightHandle|ControllableInternal<BacklightState>
+	handle:control_event(handle.state)
+end
+
+local HandleMeta = BacklightHandle.MT
+
+---@deprecated Use the function returned by subscribe() instead.
+HandleMeta.__index.unsubscribe = function(self, fn)
+	for i, sub in ipairs(self._subs) do
+		if sub == fn then
+			table.remove(self._subs, i)
+			return
+		end
 	end
 end
 
-local HandleMeta = {
-	__index = {
-		on_ready = function(self, fn)
-			if self._private.initialized then
-				fn(self.state)
-			else
-				self._private.on_ready_cbs[#self._private.on_ready_cbs + 1] = fn
-			end
-		end,
+HandleMeta.__index.set_perc = function(self, value)
+	if not self.id or not _backend then
+		return
+	end
+	_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
+		_on_control(self, brightness, raw)
+	end)
+end
 
-		on_control = function(self, fn)
-			self._private.on_control_cbs[#self._private.on_control_cbs + 1] = fn
-			return function()
-				for i, sub in ipairs(self._private.on_control_cbs) do
-					if sub == fn then
-						table.remove(self._private.on_control_cbs, i)
-						return
-					end
-				end
-			end
-		end,
+HandleMeta.__index.adjust_perc = function(self, delta)
+	if not self.id or not _backend then
+		return
+	end
+	_backend:adjust_perc(self.id, delta, function(brightness, raw)
+		_on_control(self, brightness, raw)
+	end)
+end
 
-		subscribe = function(self, fn)
-			self._private.subscribers[#self._private.subscribers + 1] = fn
-			return function()
-				self:unsubscribe(fn)
-			end
-		end,
+HandleMeta.__index.set = function(self, step)
+	if not self.id or not _backend or not _backend.set then
+		return
+	end
+	_backend:set(self.id, step, function(brightness, raw)
+		_on_control(self, brightness, raw)
+	end)
+end
 
-		---@deprecated Use the function returned by subscribe() instead.
-		unsubscribe = function(self, fn)
-			for i, sub in ipairs(self._private.subscribers) do
-				if sub == fn then
-					table.remove(self._private.subscribers, i)
-					return
-				end
-			end
-		end,
-
-		set_perc = function(self, value)
-			if not self.id or not _backend then
-				return
-			end
-			_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
-				_on_control(self, brightness, raw)
-			end)
-		end,
-
-		adjust_perc = function(self, delta)
-			if not self.id or not _backend then
-				return
-			end
-			_backend:adjust_perc(self.id, delta, function(brightness, raw)
-				_on_control(self, brightness, raw)
-			end)
-		end,
-
-		set = function(self, step)
-			if not self.id or not _backend or not _backend.set then
-				return
-			end
-			_backend:set(self.id, step, function(brightness, raw)
-				_on_control(self, brightness, raw)
-			end)
-		end,
-
-		adjust = function(self, delta)
-			if not self.id or not _backend or not _backend.adjust then
-				return
-			end
-			_backend:adjust(self.id, delta, function(brightness, raw)
-				_on_control(self, brightness, raw)
-			end)
-		end,
-	},
-}
+HandleMeta.__index.adjust = function(self, delta)
+	if not self.id or not _backend or not _backend.adjust then
+		return
+	end
+	_backend:adjust(self.id, delta, function(brightness, raw)
+		_on_control(self, brightness, raw)
+	end)
+end
 
 ---@return BacklightHandle
 local function make_handle(kind)
@@ -156,17 +127,12 @@ local function make_handle(kind)
 		kind = kind,
 		state = { brightness = 0, raw = nil },
 		steps = nil,
-		_private = {
-			initialized = false,
-			on_ready_cbs = {},
-			on_control_cbs = {},
-			subscribers = {},
-		},
 	}
-	setmetatable(handle, HandleMeta)
-	return handle
+	BacklightHandle.init(handle)
+	return setmetatable(handle, HandleMeta)
 end
 
+---@class continuity.backlight
 local backlight = {}
 
 ---@type BacklightHandle
@@ -180,45 +146,30 @@ local function _on_device_added(info)
 	else
 		handle = make_handle(info.kind)
 	end
-	---@diagnostic disable-next-line: undefined-field
-	local private = handle._private
 	handle.id = info.id
-	handle.state.brightness = info.brightness
-	handle.state.raw = info.raw
 	handle.steps = info.steps
-	private.initialized = true
-	for _, cb in ipairs(private.on_ready_cbs) do
-		cb(handle.state)
-	end
-	private.on_ready_cbs = nil
-	_handles[info.id] = handle
-	for _, sub in ipairs(_devices_added_subs) do
-		sub(handle)
-	end
+	---@cast handle ReadyAwareInternal<BacklightUpdate>
+	handle:push({ brightness = info.brightness, raw = info.raw })
+	observable:add(handle)
 end
 
 local function _on_device_removed(id)
-	_handles[id] = nil
-	for _, sub in ipairs(_devices_removed_subs) do
-		sub(id)
+	local handle = observable:remove(id)
+	if handle then
+		ReadyAware.init(handle)
 	end
 end
 
 local function _on_change(id, brightness, raw)
-	local handle = _handles[id]
+	local handle = observable:get(id)
 	if handle then
 		if handle.state.brightness == brightness then
 			return
 		end
 		handle.state.brightness = brightness
 		handle.state.raw = raw
-		---@diagnostic disable-next-line: undefined-field
-		for _, sub in ipairs(handle._private.subscribers) do
-			sub(handle.state)
-		end
-		for _, cb in ipairs(_devices_updated_subs) do
-			cb(handle)
-		end
+		---@cast handle ReadyAwareInternal<BacklightUpdate>
+		observable:update(id, handle.state)
 	end
 end
 
@@ -239,61 +190,14 @@ function backlight.setup(opts)
 end
 
 ---@type BacklightDevices
-backlight.devices = {
-	on_added = function(cb)
-		_devices_added_subs[#_devices_added_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_added_subs) do
-				if sub == cb then
-					table.remove(_devices_added_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	on_updated = function(cb)
-		_devices_updated_subs[#_devices_updated_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_updated_subs) do
-				if sub == cb then
-					table.remove(_devices_updated_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	on_removed = function(cb)
-		_devices_removed_subs[#_devices_removed_subs + 1] = cb
-		return function()
-			for i, sub in ipairs(_devices_removed_subs) do
-				if sub == cb then
-					table.remove(_devices_removed_subs, i)
-					return
-				end
-			end
-		end
-	end,
-
-	all = function()
-		local result = {}
-		for _, handle in pairs(_handles) do
-			result[#result + 1] = handle
-		end
-		return result
-	end,
-}
+backlight.devices = observable
 
 function backlight.stop()
 	if _backend then
 		_backend:stop()
 		_backend = nil
 	end
-	_handles = {}
-	_devices_added_subs = {}
-	_devices_updated_subs = {}
-	_devices_removed_subs = {}
+	Observable.init(observable)
 	_setup_called = false
 	backlight.primary_display = make_handle("display")
 end

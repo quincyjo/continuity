@@ -9,6 +9,7 @@ local function make_mock_api_sub()
 				cb()
 			end
 		end,
+		set_port = function() end,
 		adjust_perc = function() end,
 		set_perc = function() end,
 		toggle = function() end,
@@ -35,7 +36,7 @@ describe("audio.devices registry", function()
 		it("on_added can be registered before bind", function()
 			local inst2, bind2 = devices_mod.new()
 			local called = false
-			inst2.on_added(function()
+			inst2:on_added(function()
 				called = true
 			end)
 			local handles2 = bind2(api_sub)
@@ -47,7 +48,7 @@ describe("audio.devices registry", function()
 	describe("handles.add", function()
 		it("fires on_added with the handle", function()
 			local received
-			inst.on_added(function(h)
+			inst:on_added(function(h)
 				received = h
 			end)
 			handles.add(
@@ -69,7 +70,7 @@ describe("audio.devices registry", function()
 				connection = "analog",
 			} -- luacheck: ignore 631
 			handles.add("alsa_output.pci", s, { description = "Built-in Audio" })
-			local h = inst.all()[1]
+			local h = inst:all()[1]
 			assert.equals(50, h.state.level)
 			assert.is_false(h.state.muted)
 			assert.is_true(h.state.is_default)
@@ -84,7 +85,7 @@ describe("audio.devices registry", function()
 				{ level = 50, muted = false, is_default = true },
 				{ name = "alsa_output.pci", description = "Built-in Audio" }
 			)
-			assert.equals("alsa_output.pci", inst.all()[1].name)
+			assert.equals("alsa_output.pci", inst:all()[1].name)
 		end)
 
 		it("handle.description is set from meta", function()
@@ -93,31 +94,42 @@ describe("audio.devices registry", function()
 				{ level = 50, muted = false, is_default = true },
 				{ name = "alsa_output.pci", description = "Built-in Audio" }
 			)
-			assert.equals("Built-in Audio", inst.all()[1].description)
+			assert.equals("Built-in Audio", inst:all()[1].description)
 		end)
 
 		it("handle.name is nil when meta is absent", function()
 			handles.add("57", { level = 50, muted = false, is_default = true })
-			assert.is_nil(inst.all()[1].name)
+			assert.is_nil(inst:all()[1].name)
 		end)
 
 		it("handle.description is nil when meta is absent", function()
 			handles.add("57", { level = 50, muted = false, is_default = true })
-			assert.is_nil(inst.all()[1].description)
+			assert.is_nil(inst:all()[1].description)
 		end)
 
 		it("makes handle visible in all()", function()
 			handles.add("alsa_output.pci", { level = 50, muted = false, is_default = true })
-			assert.equals(1, #inst.all())
-			assert.equals("alsa_output.pci", inst.all()[1].id)
+			assert.equals(1, #inst:all())
+			assert.equals("alsa_output.pci", inst:all()[1].id)
 		end)
 
 		it("all() returns a snapshot, not a live reference", function()
 			handles.add("a", { level = 50, muted = false, is_default = true })
-			local snap = inst.all()
+			local snap = inst:all()
 			handles.add("b", { level = 60, muted = false, is_default = false })
 			assert.equals(1, #snap)
-			assert.equals(2, #inst.all())
+			assert.equals(2, #inst:all())
+		end)
+
+		it("get() returns the handle for a known id", function()
+			handles.add("alsa_output.pci", { level = 50, muted = false, is_default = true })
+			local handle = inst:get("alsa_output.pci")
+			assert.is_not_nil(handle)
+			assert.equals("alsa_output.pci", handle.id)
+		end)
+
+		it("get() returns nil for an unknown id", function()
+			assert.is_nil(inst:get("does_not_exist"))
 		end)
 
 		describe("idempotent (handle already exists)", function()
@@ -129,7 +141,7 @@ describe("audio.devices registry", function()
 
 			it("does not fire on_added a second time", function()
 				local count = 0
-				inst.on_added(function()
+				inst:on_added(function()
 					count = count + 1
 				end)
 				handles.add("57", { level = 50, muted = false, is_default = true }, meta)
@@ -138,7 +150,7 @@ describe("audio.devices registry", function()
 
 			it("fires subscribe when state changes on second add", function()
 				local received
-				inst.all()[1]:subscribe(function(s)
+				inst:all()[1]:subscribe(function(s)
 					received = s
 				end)
 				handles.add("57", { level = 50, muted = false, is_default = true }, meta)
@@ -148,7 +160,7 @@ describe("audio.devices registry", function()
 
 			it("does not fire subscribe when state is unchanged on second add", function()
 				local count = 0
-				inst.all()[1]:subscribe(function()
+				inst:all()[1]:subscribe(function()
 					count = count + 1
 				end)
 				handles.add("57", { level = 40, muted = false, is_default = true }, meta)
@@ -161,18 +173,18 @@ describe("audio.devices registry", function()
 					{ level = 40, muted = false, is_default = true },
 					{ name = "new_name", description = "New Desc" }
 				)
-				assert.equals("new_name", inst.all()[1].name)
-				assert.equals("New Desc", inst.all()[1].description)
+				assert.equals("new_name", inst:all()[1].name)
+				assert.equals("New Desc", inst:all()[1].description)
 			end)
 
 			it("all() still contains exactly one handle after second add", function()
 				handles.add("57", { level = 50, muted = false, is_default = true }, meta)
-				assert.equals(1, #inst.all())
+				assert.equals(1, #inst:all())
 			end)
 
 			it("subscriber registered before second add is not dropped", function()
 				local count = 0
-				inst.all()[1]:subscribe(function()
+				inst:all()[1]:subscribe(function()
 					count = count + 1
 				end)
 				handles.add("57", { level = 50, muted = false, is_default = true }, meta)
@@ -189,7 +201,7 @@ describe("audio.devices registry", function()
 
 		it("fires on_removed with the id", function()
 			local removed_id
-			inst.on_removed(function(id)
+			inst:on_removed(function(id)
 				removed_id = id
 			end)
 			handles.remove("alsa_output.pci")
@@ -198,12 +210,12 @@ describe("audio.devices registry", function()
 
 		it("removes the handle from all()", function()
 			handles.remove("alsa_output.pci")
-			assert.equals(0, #inst.all())
+			assert.equals(0, #inst:all())
 		end)
 
 		it("fires per-handle on_removed callback", function()
 			local called_id
-			inst.all()[1]:on_removed(function(id)
+			inst:all()[1]:on_removed(function(id)
 				called_id = id
 			end)
 			handles.remove("alsa_output.pci")
@@ -212,7 +224,7 @@ describe("audio.devices registry", function()
 
 		it("does nothing for unknown id", function()
 			local count = 0
-			inst.on_removed(function()
+			inst:on_removed(function()
 				count = count + 1
 			end)
 			handles.remove("unknown")
@@ -227,7 +239,7 @@ describe("audio.devices registry", function()
 
 		it("fires subscribe when level changes", function()
 			local received
-			inst.all()[1]:subscribe(function(s)
+			inst:all()[1]:subscribe(function(s)
 				received = s
 			end)
 			handles.update("alsa_output.pci", { level = 60, muted = false, is_default = true })
@@ -237,7 +249,7 @@ describe("audio.devices registry", function()
 
 		it("fires subscribe when is_default changes", function()
 			local received
-			inst.all()[1]:subscribe(function(s)
+			inst:all()[1]:subscribe(function(s)
 				received = s
 			end)
 			handles.update("alsa_output.pci", { level = 50, muted = false, is_default = false })
@@ -247,7 +259,7 @@ describe("audio.devices registry", function()
 
 		it("does not fire subscribe when state is unchanged", function()
 			local count = 0
-			inst.all()[1]:subscribe(function()
+			inst:all()[1]:subscribe(function()
 				count = count + 1
 			end)
 			handles.update("alsa_output.pci", { level = 50, muted = false, is_default = true })
@@ -256,7 +268,7 @@ describe("audio.devices registry", function()
 
 		it("fires on_updated with the handle when state changes", function()
 			local updated
-			inst.on_updated(function(h)
+			inst:on_updated(function(h)
 				updated = h
 			end)
 			handles.update("alsa_output.pci", { level = 60, muted = false, is_default = true })
@@ -266,7 +278,7 @@ describe("audio.devices registry", function()
 
 		it("does not fire on_updated when state is unchanged", function()
 			local count = 0
-			inst.on_updated(function()
+			inst:on_updated(function()
 				count = count + 1
 			end)
 			handles.update("alsa_output.pci", { level = 50, muted = false, is_default = true })
@@ -275,7 +287,7 @@ describe("audio.devices registry", function()
 
 		it("does nothing for unknown id", function()
 			local count = 0
-			inst.on_updated(function()
+			inst:on_updated(function()
 				count = count + 1
 			end)
 			handles.update("unknown", { level = 60, muted = false, is_default = false })
@@ -284,7 +296,7 @@ describe("audio.devices registry", function()
 
 		it("subscribe returns an unsubscribe function", function()
 			local count = 0
-			local unsub = inst.all()[1]:subscribe(function()
+			local unsub = inst:all()[1]:subscribe(function()
 				count = count + 1
 			end)
 			handles.update("alsa_output.pci", { level = 60, muted = false, is_default = true })
@@ -297,7 +309,7 @@ describe("audio.devices registry", function()
 	describe("lifecycle callbacks unsubscribe", function()
 		it("on_added returns an unsubscribe function", function()
 			local count = 0
-			local unsub = inst.on_added(function()
+			local unsub = inst:on_added(function()
 				count = count + 1
 			end)
 			handles.add("a", { level = 50, muted = false, is_default = true })
@@ -308,7 +320,7 @@ describe("audio.devices registry", function()
 
 		it("on_removed returns an unsubscribe function", function()
 			local count = 0
-			local unsub = inst.on_removed(function()
+			local unsub = inst:on_removed(function()
 				count = count + 1
 			end)
 			handles.add("a", { level = 50, muted = false, is_default = true })
@@ -327,7 +339,7 @@ describe("audio.devices registry", function()
 		end)
 
 		local function find(id)
-			for _, h in ipairs(inst.all()) do
+			for _, h in ipairs(inst:all()) do
 				if h.id == id then
 					return h
 				end
@@ -398,7 +410,7 @@ describe("audio.devices registry", function()
 		end)
 
 		local function handle()
-			return inst.all()[1]
+			return inst:all()[1]
 		end
 
 		it("set_default calls api_sub.set_default with handle idx", function()
@@ -493,7 +505,7 @@ describe("audio.devices registry", function()
 
 		it("on_updated fires on inst when state changes after control", function()
 			local updated
-			inst.on_updated(function(h)
+			inst:on_updated(function(h)
 				updated = h
 			end)
 			handle():adjust_perc(10)
@@ -505,7 +517,7 @@ describe("audio.devices registry", function()
 
 		it("on_updated does not fire when state is unchanged after control", function()
 			local count = 0
-			inst.on_updated(function()
+			inst:on_updated(function()
 				count = count + 1
 			end)
 			handle():adjust_perc(10)
@@ -518,7 +530,7 @@ describe("audio.devices registry", function()
 		it("fires subscriber when field changes and preserves other fields", function()
 			local states = {}
 			handles.add("57", { level = 40, muted = false, is_default = false })
-			inst.all()[1]:subscribe(function(s)
+			inst:all()[1]:subscribe(function(s)
 				states[#states + 1] = s
 			end)
 			handles.patch("57", { is_default = true })
@@ -531,7 +543,7 @@ describe("audio.devices registry", function()
 		it("does not fire subscriber when value is unchanged", function()
 			local count = 0
 			handles.add("57", { level = 40, muted = false, is_default = true })
-			inst.all()[1]:subscribe(function()
+			inst:all()[1]:subscribe(function()
 				count = count + 1
 			end)
 			handles.patch("57", { is_default = true })
@@ -540,7 +552,7 @@ describe("audio.devices registry", function()
 
 		it("fires on_updated when changed, not when unchanged", function()
 			local updated = {}
-			inst.on_updated(function(h)
+			inst:on_updated(function(h)
 				updated[#updated + 1] = h
 			end)
 			handles.add("57", { level = 40, muted = false, is_default = false })
@@ -583,9 +595,128 @@ describe("audio.devices registry", function()
 			local sinst, sbind = devices_mod.new()
 			local shandles = sbind(source_api)
 			shandles.add("alsa_input.pci", { level = 80, muted = false, is_default = true })
-			sinst.all()[1]:set_default()
+			sinst:all()[1]:set_default()
 			assert.equals(1, #calls)
 			assert.equals("alsa_input.pci", calls[1].idx)
+		end)
+	end)
+
+	describe("ports_changed detection", function()
+		it("no change when both old and new ports are nil", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = nil })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = nil })
+			assert.equals(0, sub_count)
+		end)
+
+		it("fires subscriber when ports count changes", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = { { name = "a", availability = "unknown" } } })
+			sub_count = 0
+			handles.update("57", {
+				level = 50,
+				muted = false,
+				ports = {
+					{ name = "a", availability = "unknown" },
+					{ name = "b", availability = "available" },
+				},
+			})
+			assert.equals(1, sub_count)
+		end)
+
+		it("fires subscriber when port availability changes", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			handles.add("57", { level = 50, muted = false, ports = { { name = "a", availability = "not available" } } })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = { { name = "a", availability = "available" } } })
+			assert.equals(1, sub_count)
+		end)
+
+		it("no change when ports are identical", function()
+			local sub_count = 0
+			inst:on_added(function(h)
+				h:subscribe(function()
+					sub_count = sub_count + 1
+				end)
+			end)
+			local ports = { { name = "a", availability = "unknown" } }
+			handles.add("57", { level = 50, muted = false, ports = ports })
+			sub_count = 0
+			handles.update("57", { level = 50, muted = false, ports = { { name = "a", availability = "unknown" } } })
+			assert.equals(0, sub_count)
+		end)
+	end)
+
+	describe("set_port dispatch", function()
+		it("set_port calls api_sub.set_port with the handle id and port name", function()
+			local calls = {}
+			api_sub.set_port = function(idx, port_name, cb)
+				calls[#calls + 1] = { idx = idx, port_name = port_name }
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:set_port("analog-output-headphones")
+			assert.equals(1, #calls)
+			assert.equals("57", calls[1].idx)
+			assert.equals("analog-output-headphones", calls[1].port_name)
+		end)
+
+		it("set_port cb fires on_control", function()
+			local control_count = 0
+			api_sub.set_port = function(_idx, _port, cb)
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:on_control(function()
+				control_count = control_count + 1
+			end)
+			inst:all()[1]:set_port("analog-output-headphones")
+			assert.equals(1, control_count)
+		end)
+
+		it("set_port accepts an AudioPort table and extracts .name", function()
+			local calls = {}
+			api_sub.set_port = function(idx, port_name, cb)
+				calls[#calls + 1] = { idx = idx, port_name = port_name }
+				if cb then
+					cb()
+				end
+			end
+			handles.add("57", { level = 50, muted = false })
+			inst:all()[1]:set_port({ name = "analog-output-headphones", availability = "available" })
+			assert.equals(1, #calls)
+			assert.equals("analog-output-headphones", calls[1].port_name)
+		end)
+
+		it("set_port is a no-op before bind", function()
+			local inst2, bind2 = devices_mod.new()
+			inst2:on_added(function() end)
+			local handles2 = bind2(api_sub)
+			handles2.add("57", { level = 50, muted = false })
+			-- Should not error
+			assert.has_no_errors(function()
+				inst2:all()[1]:set_port("analog-output-headphones")
+			end)
 		end)
 	end)
 end)

@@ -22,7 +22,7 @@ local notification = {}
 ---                   notify_callback.
 ---@field on_destroy? fun(): boolean Cleanup callback called when the
 ---                   notification is destroyed.
----@field callback?   fun(notification: NaughtyNotification) Callback called when the
+---@field callback?   fun(notification: table) Callback called when the
 ---                   notification is created. Receives the raw naughty notification.
 
 ---@class NaughtyNotificationArgs
@@ -31,15 +31,15 @@ local notification = {}
 ---@field text?            string  -- normalized to message by compat layer
 ---@field icon?            string
 ---@field timeout?         number
----@field widget_template? AwesomeWidgetTemplate
+---@field widget_template? table
 ---@field app_name?        string
----@field screen?          AwesomeScreen
+---@field screen?          table
 
 ---@alias NotificationInterceptionMode boolean|"strict"
 
 ---@class MediaNotificationOpts
 ---@field notify_callback?              MediaNotifyCallback Custom notification callback implementation.
----@field suppress_when_client_active?  boolean|fun(): AwesomeClient[]
+---@field suppress_when_client_active?  boolean|fun(): table[]
 --  nil/true  -> suppress when source app is visible on the focused screen (default)
 --  false     -> never suppress based on focus
 --  function  -> called to get the list of clients to check; suppress if any match source.app_name
@@ -59,9 +59,9 @@ local default = {
 }
 
 --- Build the client getter function from suppress_when_client_active option.
---- Returns a function -> AwesomeClient[] for use in focus checks, or nil if disabled.
----@param opt? boolean|fun():AwesomeClient[]
----@return (fun(): AwesomeClient[])|nil
+--- Returns a function -> table[] for use in focus checks, or nil if disabled.
+---@param opt? boolean|fun():table[]
+---@return (fun(): table[])|nil
 local function build_client_getter(opt)
 	if opt == false then
 		return nil

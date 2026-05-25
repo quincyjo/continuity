@@ -114,6 +114,17 @@ function coalescer.new(source_configs)
 				}
 			end
 
+			local function make_merged_volume(unified_id)
+				return {
+					set_perc = function(_, pct)
+						local owner = playback_owner[unified_id]
+						if owner and source_capabilities[owner] and source_capabilities[owner].volume then
+							source_capabilities[owner].volume.set_perc(owner, pct)
+						end
+					end,
+				}
+			end
+
 			local function make_merged_playback(unified_id)
 				local function dispatch(action, ...)
 					local owner = playback_owner[unified_id]
@@ -181,6 +192,7 @@ function coalescer.new(source_configs)
 					inner.add(unified_id, display_name, state, {
 						position = make_merged_position(unified_id),
 						playback = make_merged_playback(unified_id),
+						volume = make_merged_volume(unified_id),
 						flags = capabilities and capabilities.flags or nil,
 					}, unified_app_name)
 					active[unified_id][backend_id] = true
