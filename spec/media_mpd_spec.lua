@@ -456,7 +456,4 @@ describe("volume capability", function()
 		assert.equals(0, #update_calls)
 	end)
 
-	local function cmd_payload(idx)
-		return spawned_cmds[idx].cmd[3]
-	end
 end)

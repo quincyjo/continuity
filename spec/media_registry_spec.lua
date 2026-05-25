@@ -735,7 +735,6 @@ describe("registry", function()
 
 			it("set_perc calls vol_executor.set_perc with source_id and value", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", {}, {
 					playback = exec,
 					volume = vol_exec,
@@ -749,8 +748,7 @@ describe("registry", function()
 			end)
 
 			it("set_perc fires on_playback_action with SetVolume", function()
-				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
+				local exec, vol_exec = make_executor(), make_vol_executor()
 				reg.add("src:1", "source", {}, {
 					playback = exec,
 					volume = vol_exec,
@@ -767,7 +765,6 @@ describe("registry", function()
 
 			it("adjust_perc clamps at 100", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", { volume = 92 }, {
 					playback = exec,
 					volume = vol_exec,
@@ -780,7 +777,6 @@ describe("registry", function()
 
 			it("adjust_perc clamps at 0", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", { volume = 5 }, {
 					playback = exec,
 					volume = vol_exec,
@@ -793,7 +789,6 @@ describe("registry", function()
 
 			it("adjust_perc uses 0 as current when state.volume is nil", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", {}, {
 					playback = exec,
 					volume = vol_exec,
@@ -806,7 +801,6 @@ describe("registry", function()
 
 			it("r.update with can_set_volume=false nil-ifies playback.volume", function()
 				local exec, vol_exec = make_executor(), make_vol_executor()
-				vol_exec = make_vol_executor()
 				reg.add("src:1", "source", {}, {
 					playback = exec,
 					volume = vol_exec,
@@ -829,7 +823,6 @@ describe("registry", function()
 
 			it("toggle_mute when volume > 0 sets volume to 0", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", { volume = 75 }, {
 					playback = exec,
 					volume = vol_exec,
@@ -842,7 +835,6 @@ describe("registry", function()
 
 			it("toggle_mute when volume == 0 restores cached pre-mute volume", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", { volume = 60 }, {
 					playback = exec,
 					volume = vol_exec,
@@ -858,7 +850,6 @@ describe("registry", function()
 
 			it("toggle_mute when volume == 0 and no cache restores to 100", function()
 				local exec, vol_exec, vol_calls = make_executor(), make_vol_executor()
-				vol_exec, vol_calls = make_vol_executor()
 				reg.add("src:1", "source", { volume = 0 }, {
 					playback = exec,
 					volume = vol_exec,
@@ -871,14 +862,13 @@ describe("registry", function()
 
 			it("toggle_mute fires on_playback_action with ToggleMute", function()
 				local exec, vol_exec = make_executor(), make_vol_executor()
-				vol_exec = make_vol_executor()
 				reg.add("src:1", "source", { volume = 50 }, {
 					playback = exec,
 					volume = vol_exec,
 					flags = make_flags(),
 				})
 				local actions = {}
-				reg.on_playback_action(function(src, action)
+				reg.on_playback_action(function(_, action)
 					actions[#actions + 1] = action
 				end)
 				reg.sources()[1].playback.volume:toggle_mute()
