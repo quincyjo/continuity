@@ -39,6 +39,7 @@ build = {
         ["continuity.media.backends.mpd"]            = "lua/continuity/media/backends/mpd.lua",
         ["continuity.media.backends.mpris"]          = "lua/continuity/media/backends/mpris.lua",
         ["continuity.controllable"]                  = "lua/continuity/controllable.lua",
+        ["continuity.history"]                       = "lua/continuity/history.lua",
         ["continuity.monitor"]                       = "lua/continuity/monitor.lua",
         ["continuity.observable"]                            = "lua/continuity/observable/init.lua",
         ["continuity.observable.transformation"]             = "lua/continuity/observable/transformation/init.lua",
