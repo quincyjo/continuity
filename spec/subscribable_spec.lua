@@ -133,11 +133,13 @@ describe("Subscribable", function()
 			local received
 			inst:map(function(s)
 				return s + 1
-			end):map(function(s)
-				return s * 2
-			end):subscribe(function(s)
-				received = s
 			end)
+				:map(function(s)
+					return s * 2
+				end)
+				:subscribe(function(s)
+					received = s
+				end)
 			inst:push(4)
 			assert.equals(10, received)
 		end)
