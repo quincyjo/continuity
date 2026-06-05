@@ -1,7 +1,7 @@
 ---@class Subscribable<T>
 ---@field subscribe fun(self, cb: fun(state: T)): fun()
 ---@field state     T
----@field map       fun(self, map: fun(state: T): `S`|nil): Subscribable<`S`|nil>
+---@field map       fun(self, map: fun(state: T): `S`): Subscribable<`S`>
 
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
