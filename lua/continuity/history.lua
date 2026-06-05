@@ -8,7 +8,7 @@
 ---@field start    fun(self: History<T>)
 
 ---@class HistoryClass
----@overload fun(source: Subscribable, capacity: number): History
+---@overload fun(source: Subscribable<`T`>, capacity: number): History<`T`>
 local History = {}
 
 local Subscribable = require("continuity.subscribable")
@@ -76,6 +76,10 @@ History.MT = {
 
 History.methods = History.MT.__index
 
+---@generic T
+---@param source   Subscribable<T> The subscribable keep history of.
+---@param capacity number          The maximum number of entries to keep.
+---@return History<T>
 function History.new(source, capacity)
 	local inst = {
 		capacity = capacity,
