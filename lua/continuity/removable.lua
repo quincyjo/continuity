@@ -7,14 +7,11 @@ local Removable = {}
 Removable.MT = {
 	__index = {
 		on_removed = function(self, cb)
-			self._removed_cbs[#self._removed_cbs + 1] = cb
+			local id = self._next_id
+			self._next_id = id + 1
+			self._removed_cbs[id] = cb
 			return function()
-				for i = #self._removed_cbs, 1, -1 do
-					if self._removed_cbs[i] == cb then
-						table.remove(self._removed_cbs, i)
-						return
-					end
-				end
+				self._removed_cbs[id] = nil
 			end
 		end,
 	},
@@ -24,6 +21,7 @@ Removable.methods = Removable.MT.__index
 
 function Removable.init(inst)
 	inst._removed_cbs = {}
+	inst._next_id = 1
 	return inst
 end
 

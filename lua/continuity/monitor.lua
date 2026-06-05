@@ -26,17 +26,14 @@ local Monitor = {}
 Monitor.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			self._subs[#self._subs + 1] = cb
+			local id = self._next_id
+			self._next_id = id + 1
+			self._subs[id] = cb
 			if self.state ~= nil then
 				cb(self.state)
 			end
 			return function()
-				for i = #self._subs, 1, -1 do
-					if self._subs[i] == cb then
-						table.remove(self._subs, i)
-						return
-					end
-				end
+				self._subs[id] = nil
 			end
 		end,
 		push = Subscribable.methods.push,

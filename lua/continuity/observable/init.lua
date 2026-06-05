@@ -31,36 +31,38 @@ Observable.UniqueStrategy = {
 }
 
 local function fire(cbs, ...)
-	for _, cb in ipairs(cbs) do
+	for _, cb in pairs(cbs) do
 		cb(...)
-	end
-end
-
-local function make_unsub(cbs, cb)
-	return function()
-		for i = #cbs, 1, -1 do
-			if cbs[i] == cb then
-				table.remove(cbs, i)
-			end
-		end
 	end
 end
 
 Observable.MT = {
 	__index = {
 		on_added = function(self, cb)
-			self.on_added_cbs[#self.on_added_cbs + 1] = cb
-			return make_unsub(self.on_added_cbs, cb)
+			local id = self._next_id
+			self._next_id = id + 1
+			self.on_added_cbs[id] = cb
+			return function()
+				self.on_added_cbs[id] = nil
+			end
 		end,
 
 		on_updated = function(self, cb)
-			self.on_updated_cbs[#self.on_updated_cbs + 1] = cb
-			return make_unsub(self.on_updated_cbs, cb)
+			local id = self._next_id
+			self._next_id = id + 1
+			self.on_updated_cbs[id] = cb
+			return function()
+				self.on_updated_cbs[id] = nil
+			end
 		end,
 
 		on_removed = function(self, cb)
-			self.on_removed_cbs[#self.on_removed_cbs + 1] = cb
-			return make_unsub(self.on_removed_cbs, cb)
+			local id = self._next_id
+			self._next_id = id + 1
+			self.on_removed_cbs[id] = cb
+			return function()
+				self.on_removed_cbs[id] = nil
+			end
 		end,
 
 		add = function(self, item)
@@ -155,6 +157,7 @@ function Observable.init(inst)
 	inst.on_added_cbs = {}
 	inst.on_updated_cbs = {}
 	inst.on_removed_cbs = {}
+	inst._next_id = 1
 	inst.items = {}
 	return inst
 end

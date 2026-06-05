@@ -11,19 +11,16 @@ local Subscribable = {}
 Subscribable.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			self._subs[#self._subs + 1] = cb
+			local id = self._next_id
+			self._next_id = id + 1
+			self._subs[id] = cb
 			return function()
-				for i = #self._subs, 1, -1 do
-					if self._subs[i] == cb then
-						table.remove(self._subs, i)
-						return
-					end
-				end
+				self._subs[id] = nil
 			end
 		end,
 		push = function(self, state)
 			self.state = state
-			for _, cb in ipairs(self._subs) do
+			for _, cb in pairs(self._subs) do
 				cb(state)
 			end
 		end,
@@ -34,6 +31,7 @@ Subscribable.methods = Subscribable.MT.__index
 
 function Subscribable.init(inst)
 	inst._subs = {}
+	inst._next_id = 1
 	return inst
 end
 

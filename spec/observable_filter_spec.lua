@@ -12,7 +12,7 @@ end
 
 local function make_observable()
 	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
+		for _, cb in pairs(cbs) do
 			cb(...)
 		end
 	end

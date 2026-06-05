@@ -10,18 +10,15 @@ local Controllable = {}
 Controllable.MT = {
 	__index = {
 		on_control = function(self, cb)
-			self._control_cbs[#self._control_cbs + 1] = cb
+			local id = self._next_id
+			self._next_id = id + 1
+			self._control_cbs[id] = cb
 			return function()
-				for i = #self._control_cbs, 1, -1 do
-					if self._control_cbs[i] == cb then
-						table.remove(self._control_cbs, i)
-						return
-					end
-				end
+				self._control_cbs[id] = nil
 			end
 		end,
 		control_event = function(self, state)
-			for _, cb in ipairs(self._control_cbs) do
+			for _, cb in pairs(self._control_cbs) do
 				cb(state)
 			end
 		end,
@@ -32,6 +29,7 @@ Controllable.methods = Controllable.MT.__index
 
 function Controllable.init(inst)
 	inst._control_cbs = {}
+	inst._next_id = 1
 	return inst
 end
 
