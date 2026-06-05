@@ -1,6 +1,7 @@
 ---@class Subscribable<T>
 ---@field subscribe fun(self, cb: fun(state: T)): fun()
 ---@field state     T
+---@field map       fun(self, map: fun(state: T): `S`|nil): Subscribable<`S`|nil>
 
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
@@ -26,6 +27,13 @@ Subscribable.MT = {
 			for _, cb in ipairs(self._subs) do
 				cb(state)
 			end
+		end,
+		map = function(self, map)
+			local mapped = Subscribable({ state = self.state ~= nil and map(self.state) or nil })
+			self:subscribe(function(state)
+				mapped:push(map(state))
+			end)
+			return mapped
 		end,
 	},
 }
