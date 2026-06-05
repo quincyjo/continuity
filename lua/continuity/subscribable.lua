@@ -29,9 +29,28 @@ Subscribable.MT = {
 			end
 		end,
 		map = function(self, map)
-			local mapped = Subscribable({ state = self.state ~= nil and map(self.state) or nil })
+			local init_state
+			if self.state ~= nil then
+				init_state = map(self.state)
+			end
+			local mapped = Subscribable({
+				state = init_state,
+				-- We forward subscriptions rather than handling them ourselves.
+				-- There are two reasons for this:
+				-- 1. If the original Subscribable is destroyed, all
+				--    subscriptions will be removed rather than being preserved
+				--    in the mapped instance.
+				-- 2. This preserves the subscription behavior of the original
+				--    Subscribable; EG, maps of Monitors will playback on
+				--    subscribe to a mapped Monitor.
+				subscribe = function(_, cb)
+					return self:subscribe(function(state)
+						cb(map(state))
+					end)
+				end,
+			})
 			self:subscribe(function(state)
-				mapped:push(map(state))
+				mapped.state = map(state)
 			end)
 			return mapped
 		end,

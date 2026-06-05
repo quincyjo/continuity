@@ -106,6 +106,14 @@ describe("Subscribable", function()
 			assert.equals("was-false", mapped.state)
 		end)
 
+		it("initial state is false when map returns false", function()
+			local inst = Subscribable({ state = 1 })
+			local mapped = inst:map(function()
+				return false
+			end)
+			assert.equals(false, mapped.state)
+		end)
+
 		it("propagates mapped value to subscribers on source push", function()
 			local inst = Subscribable({})
 			local mapped = inst:map(function(s)
