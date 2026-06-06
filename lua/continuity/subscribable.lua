@@ -8,7 +8,7 @@
 
 local Subscriptions = require("continuity.util.subscriptions")
 
----@type  CombinableClass<SubscribableInternal>
+---@type CombinableClass<SubscribableInternal>
 local Subscribable = {}
 
 Subscribable.MT = {

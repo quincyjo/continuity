@@ -5,9 +5,9 @@
 ---@class ControllableInternal<T> : Controllable<T>
 ---@field control_event fun(self, state: T)
 
----@type CombinableClass<ControllableInternal>
 local Subscriptions = require("continuity.util.subscriptions")
 
+---@type CombinableClass<ControllableInternal>
 local Controllable = {}
 
 Controllable.MT = {
