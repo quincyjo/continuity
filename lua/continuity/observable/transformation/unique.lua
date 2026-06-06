@@ -51,11 +51,11 @@ function Unique.new(observable, unique_by, strategy)
 						and #group > 1
 						and (strategy == Observable.UniqueStrategy.Last or strategy == Observable.UniqueStrategy.Recent)
 					then
-						self.on_updated_cbs:fire(group[#group - 1])
+						self._on_updated_cbs:fire(group[#group - 1])
 					elseif i == 1 and #group > 1 and strategy == Observable.UniqueStrategy.First then
-						self.on_updated_cbs:fire(group[2])
+						self._on_updated_cbs:fire(group[2])
 					elseif #group == 1 then
-						self.on_removed_cbs:fire(key)
+						self._on_removed_cbs:fire(key)
 					end
 					table.remove(group, i)
 					break
@@ -74,9 +74,9 @@ function Unique.new(observable, unique_by, strategy)
 			#group > 1
 			and (strategy == Observable.UniqueStrategy.Last or strategy == Observable.UniqueStrategy.Recent)
 		then
-			self.on_updated_cbs:fire(group[#group])
+			self._on_updated_cbs:fire(group[#group])
 		elseif #group == 1 then
-			self.on_added_cbs:fire(observed)
+			self._on_added_cbs:fire(observed)
 		end
 	end
 
@@ -103,13 +103,13 @@ function Unique.new(observable, unique_by, strategy)
 						end
 					end
 					group[#group + 1] = observed
-					self.on_updated_cbs:fire(observed)
+					self._on_updated_cbs:fire(observed)
 				end
 			elseif strategy == Observable.UniqueStrategy.Last and observed.id == group[#group].id then
-				self.on_updated_cbs:fire(observed)
+				self._on_updated_cbs:fire(observed)
 			else
 				if strategy == Observable.UniqueStrategy.First and observed.id == group[1].id then
-					self.on_updated_cbs:fire(observed)
+					self._on_updated_cbs:fire(observed)
 				end
 			end
 		end

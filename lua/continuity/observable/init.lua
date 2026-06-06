@@ -36,27 +36,27 @@ Observable.UniqueStrategy = {
 Observable.MT = {
 	__index = {
 		on_added = function(self, cb)
-			return self.on_added_cbs:add(cb)
+			return self._on_added_cbs:add(cb)
 		end,
 
 		on_updated = function(self, cb)
-			return self.on_updated_cbs:add(cb)
+			return self._on_updated_cbs:add(cb)
 		end,
 
 		on_removed = function(self, cb)
-			return self.on_removed_cbs:add(cb)
+			return self._on_removed_cbs:add(cb)
 		end,
 
 		weak_on_added = function(self, cb)
-			return self.on_added_cbs:weak_add(cb)
+			return self._on_added_cbs:weak_add(cb)
 		end,
 
 		weak_on_updated = function(self, cb)
-			return self.on_updated_cbs:weak_add(cb)
+			return self._on_updated_cbs:weak_add(cb)
 		end,
 
 		weak_on_removed = function(self, cb)
-			return self.on_removed_cbs:weak_add(cb)
+			return self._on_removed_cbs:weak_add(cb)
 		end,
 
 		add = function(self, item)
@@ -64,7 +64,7 @@ Observable.MT = {
 				return false
 			end
 			self.items[item.id] = item
-			self.on_added_cbs:fire(item)
+			self._on_added_cbs:fire(item)
 			return true
 		end,
 
@@ -74,7 +74,7 @@ Observable.MT = {
 				return false
 			end
 			item:push(state)
-			self.on_updated_cbs:fire(item)
+			self._on_updated_cbs:fire(item)
 			return true
 		end,
 
@@ -86,7 +86,7 @@ Observable.MT = {
 			item:remove_event(id)
 			Subscribable.init(item)
 			self.items[id] = nil
-			self.on_removed_cbs:fire(id)
+			self._on_removed_cbs:fire(id)
 			return item
 		end,
 
@@ -147,9 +147,9 @@ Observable.MT = {
 
 function Observable.init(inst)
 	inst = inst or {}
-	inst.on_added_cbs = Subscriptions()
-	inst.on_updated_cbs = Subscriptions()
-	inst.on_removed_cbs = Subscriptions()
+	inst._on_added_cbs = Subscriptions()
+	inst._on_updated_cbs = Subscriptions()
+	inst._on_removed_cbs = Subscriptions()
 	inst.items = {}
 	return inst
 end
