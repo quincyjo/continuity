@@ -15,12 +15,15 @@ local function make_observable()
 	return obs,
 		function(item)
 			obs.on_added_cbs:fire(item)
+			obs.weak_on_added_cbs:fire(item)
 		end,
 		function(item)
 			obs.on_updated_cbs:fire(item)
+			obs.weak_on_updated_cbs:fire(item)
 		end,
 		function(id)
 			obs.on_removed_cbs:fire(id)
+			obs.weak_on_removed_cbs:fire(id)
 		end
 end
 

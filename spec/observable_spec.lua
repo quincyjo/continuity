@@ -115,9 +115,13 @@ describe("Observable", function()
 			it("clears item _removed_cbs after firing", function()
 				local item = make_item("a")
 				obs:add(item)
-				item:on_removed(function() end)
+				local count = 0
+				item:on_removed(function()
+					count = count + 1
+				end)
 				obs:remove("a")
-				assert.equals(0, #item._removed_cbs)
+				item._removed_cbs:fire("a")
+				assert.equals(1, count)
 			end)
 
 			it("clears item _subs after removal", function()
@@ -182,6 +186,66 @@ describe("Observable", function()
 				local item = make_item("a")
 				obs:add(item)
 				assert.equals(item, obs:get("a"))
+			end)
+		end)
+
+		describe("weak_on_added / weak_on_updated / weak_on_removed", function()
+			it("weak_on_added fires on add while callback is held", function()
+				local item = make_item("a")
+				local fired
+				local cb = function(h)
+					fired = h
+				end
+				obs:weak_on_added(cb)
+				obs:add(item)
+				assert.equals(item, fired)
+			end)
+
+			it("weak_on_updated fires on update while callback is held", function()
+				local item = make_item("a")
+				obs:add(item)
+				local fired
+				local cb = function(h)
+					fired = h
+				end
+				obs:weak_on_updated(cb)
+				obs:update("a", {})
+				assert.equals(item, fired)
+			end)
+
+			it("weak_on_removed fires on remove while callback is held", function()
+				obs:add(make_item("a"))
+				local received
+				local cb = function(id)
+					received = id
+				end
+				obs:weak_on_removed(cb)
+				obs:remove("a")
+				assert.equals("a", received)
+			end)
+
+			it("weak_on_added returns an unsubscribe function", function()
+				local count = 0
+				local cb = function()
+					count = count + 1
+				end
+				local unsub = obs:weak_on_added(cb)
+				obs:add(make_item("a"))
+				unsub()
+				obs:add(make_item("b"))
+				assert.equals(1, count)
+			end)
+
+			it("weak_on_added does not fire after callback is collected", function()
+				local fired = false
+				local cb = function()
+					fired = true
+				end
+				obs:weak_on_added(cb)
+				cb = nil -- luacheck: ignore
+				collectgarbage("collect")
+				obs:add(make_item("a"))
+				assert.is_false(fired)
 			end)
 		end)
 

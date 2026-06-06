@@ -76,5 +76,6 @@ build = {
         ["continuity.util.json.json_lua"]            = "lua/continuity/util/json/json_lua.lua",
         ["continuity.util.process"]                  = "lua/continuity/util/process.lua",
         ["continuity.util.subscriptions"]            = "lua/continuity/util/subscriptions.lua",
+        ["continuity.util.weak_subscriptions"]       = "lua/continuity/util/weak_subscriptions.lua",
     },
 }

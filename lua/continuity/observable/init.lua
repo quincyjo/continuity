@@ -1,12 +1,15 @@
 ---@generic T: Subscribable, Removable
 ---@class Observable<T>
----@field on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
----@field all        fun(self: Observable<T>): T[]
----@field get        fun(self: Observable<T>, id: string): T|nil
----@field group_by   fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
----@field unique     fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
+---@field on_added        fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_updated      fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_removed      fun(self: Observable<T>, cb: fun(id: string)): fun()
+---@field weak_on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field weak_on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field weak_on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
+---@field all             fun(self: Observable<T>): T[]
+---@field get             fun(self: Observable<T>, id: string): T|nil
+---@field group_by        fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
+---@field unique          fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
 
 ---@generic S, T: Subscribable<S>, Removable
 ---@class ObservableInternal<T, S> : Observable<T>
@@ -16,8 +19,8 @@
 ---@field remove fun(self: Observable<T>, id: string): T|nil
 
 local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
 local Subscriptions = require("continuity.util.subscriptions")
+local WeakSubscriptions = require("continuity.util.weak_subscriptions")
 
 ---@class ObservableClass
 ---@generic T, S
@@ -54,12 +57,34 @@ Observable.MT = {
 			end
 		end,
 
+		weak_on_added = function(self, cb)
+			local id = self.weak_on_added_cbs:add(cb)
+			return function()
+				self.weak_on_added_cbs:remove(id)
+			end
+		end,
+
+		weak_on_updated = function(self, cb)
+			local id = self.weak_on_updated_cbs:add(cb)
+			return function()
+				self.weak_on_updated_cbs:remove(id)
+			end
+		end,
+
+		weak_on_removed = function(self, cb)
+			local id = self.weak_on_removed_cbs:add(cb)
+			return function()
+				self.weak_on_removed_cbs:remove(id)
+			end
+		end,
+
 		add = function(self, item)
 			if self.items[item.id] then
 				return false
 			end
 			self.items[item.id] = item
 			self.on_added_cbs:fire(item)
+			self.weak_on_added_cbs:fire(item)
 			return true
 		end,
 
@@ -70,6 +95,7 @@ Observable.MT = {
 			end
 			item:push(state)
 			self.on_updated_cbs:fire(item)
+			self.weak_on_updated_cbs:fire(item)
 			return true
 		end,
 
@@ -78,13 +104,11 @@ Observable.MT = {
 			if not item then
 				return nil
 			end
-			if item._removed_cbs then
-				item._removed_cbs:fire(id)
-			end
+			item:remove_event(id)
 			Subscribable.init(item)
-			Removable.init(item)
 			self.items[id] = nil
 			self.on_removed_cbs:fire(id)
+			self.weak_on_removed_cbs:fire(id)
 			return item
 		end,
 
@@ -148,6 +172,9 @@ function Observable.init(inst)
 	inst.on_added_cbs = Subscriptions()
 	inst.on_updated_cbs = Subscriptions()
 	inst.on_removed_cbs = Subscriptions()
+	inst.weak_on_added_cbs = WeakSubscriptions()
+	inst.weak_on_updated_cbs = WeakSubscriptions()
+	inst.weak_on_removed_cbs = WeakSubscriptions()
 	inst.items = {}
 	return inst
 end

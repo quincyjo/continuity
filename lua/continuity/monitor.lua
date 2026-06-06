@@ -34,6 +34,15 @@ Monitor.MT = {
 				self._subs:remove(id)
 			end
 		end,
+		weak_subscribe = function(self, cb)
+			local id = self._weak_subs:add(cb)
+			if self.state ~= nil then
+				cb(self.state)
+			end
+			return function()
+				self._weak_subs:remove(id)
+			end
+		end,
 		push = Subscribable.methods.push,
 	},
 }

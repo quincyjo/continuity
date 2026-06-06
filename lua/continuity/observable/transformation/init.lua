@@ -10,9 +10,13 @@ function ObservableTransformation.new(origin, transformation, binding)
 		binding.on_added(observed)
 	end
 
-	origin:on_added(binding.on_added)
-	origin:on_updated(binding.on_updated)
-	origin:on_removed(binding.on_removed)
+	transformation._on_added = binding.on_added
+	transformation._on_updated = binding.on_updated
+	transformation._on_removed = binding.on_removed
+
+	origin:weak_on_added(binding.on_added)
+	origin:weak_on_updated(binding.on_updated)
+	origin:weak_on_removed(binding.on_removed)
 
 	return transformation
 end

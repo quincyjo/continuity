@@ -15,12 +15,15 @@ local function make_observable()
 	return obs,
 		function(item)
 			obs.on_added_cbs:fire(item)
+			obs.weak_on_added_cbs:fire(item)
 		end,
 		function(item)
 			obs.on_updated_cbs:fire(item)
+			obs.weak_on_updated_cbs:fire(item)
 		end,
 		function(id)
 			obs.on_removed_cbs:fire(id)
+			obs.weak_on_removed_cbs:fire(id)
 		end
 end
 
@@ -162,6 +165,24 @@ describe("Observable", function()
 				remove("a")
 
 				assert.is_false(called)
+			end)
+		end)
+
+		describe("auto-disconnect on GC", function()
+			it("stops forwarding on_added events when transformation is dropped and GC'd", function()
+				local fired = false
+				do
+					local t = obs:filter(function()
+						return true
+					end)
+					t:on_added(function()
+						fired = true
+					end)
+					t = nil -- luacheck: ignore
+				end
+				collectgarbage("collect")
+				add(make_item("a"))
+				assert.is_false(fired)
 			end)
 		end)
 
