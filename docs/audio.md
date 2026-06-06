@@ -89,14 +89,6 @@ local unsub = volume:subscribe(function(state) ... end)
 unsub()  -- stop receiving updates
 ```
 
-Or call `unsubscribe` directly with the original callback:
-
-```lua
-local function on_volume(state) ... end
-volume:subscribe(on_volume)
-volume:unsubscribe(on_volume)
-```
-
 > **Note**: When using the PulseAudio backend, fields that are normally
 > immutable (such as `audio.Volume.description`) will change when the default
 > device changes. Because of this, `subscribe` behaviour is different from

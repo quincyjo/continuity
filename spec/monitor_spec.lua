@@ -77,4 +77,65 @@ describe("Monitor", function()
 		assert.equals(0, #a)
 		assert.equals(1, #b)
 	end)
+
+	describe("weak_subscribe", function()
+		it("replays current state immediately if state is set", function()
+			local m = make()
+			m:push({ value = 1 })
+			local received = {}
+			local cb = function(s)
+				received[#received + 1] = s
+			end
+			m:weak_subscribe(cb)
+			assert.equals(1, #received)
+			assert.equals(1, received[1].value)
+		end)
+
+		it("does not fire if state is nil", function()
+			local m = make()
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			m:weak_subscribe(cb)
+			assert.is_false(fired)
+		end)
+
+		it("fires on subsequent pushes while callback is held", function()
+			local m = make()
+			local received = {}
+			local cb = function(s)
+				received[#received + 1] = s
+			end
+			m:weak_subscribe(cb)
+			m:push({ value = 2 })
+			assert.equals(1, #received)
+		end)
+
+		it("returns an unsubscribe function that stops callbacks", function()
+			local m = make()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			local unsub = m:weak_subscribe(cb)
+			m:push({})
+			unsub()
+			m:push({})
+			assert.equals(1, count)
+		end)
+
+		it("does not fire after the callback reference is released and GC is forced", function()
+			local m = make()
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			m:weak_subscribe(cb)
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			m:push({})
+			assert.is_false(fired)
+		end)
+	end)
 end)

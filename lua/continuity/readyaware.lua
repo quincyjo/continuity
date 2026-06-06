@@ -19,15 +19,10 @@ ReadyAware.MT = {
 			end
 		end,
 		subscribe = function(self, cb)
-			self._subs[#self._subs + 1] = cb
-			return function()
-				for i = #self._subs, 1, -1 do
-					if self._subs[i] == cb then
-						table.remove(self._subs, i)
-						return
-					end
-				end
-			end
+			return self._subs:add(cb)
+		end,
+		weak_subscribe = function(self, cb)
+			return self._subs:weak_add(cb)
 		end,
 		push = function(self, state)
 			self.state = state
@@ -38,9 +33,7 @@ ReadyAware.MT = {
 				end
 				self._ready_cbs = nil
 			else
-				for _, cb in ipairs(self._subs) do
-					cb(state)
-				end
+				self._subs:fire(state)
 			end
 		end,
 	},

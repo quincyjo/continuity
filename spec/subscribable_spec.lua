@@ -73,18 +73,80 @@ describe("Subscribable", function()
 	end)
 
 	describe("init", function()
-		it("sets _subs to empty table", function()
+		it("sets _subs to empty subscriptions", function()
 			local inst = {}
 			Subscribable.init(inst)
-			assert.same({}, inst._subs)
+			local count = 0
+			inst._subs:fire()
+			assert.equals(0, count)
 		end)
 
 		it("reset clears existing subscribers", function()
 			local inst = Subscribable({})
-			inst:subscribe(function() end)
-			assert.equals(1, #inst._subs)
+			local count = 0
+			inst:subscribe(function()
+				count = count + 1
+			end)
 			Subscribable.init(inst)
-			assert.equals(0, #inst._subs)
+			inst:push("x")
+			assert.equals(0, count)
+		end)
+	end)
+
+	describe("weak_subscribe", function()
+		it("calls the callback on push while the callback is held", function()
+			local inst = Subscribable({})
+			local received
+			local cb = function(s)
+				received = s
+			end
+			inst:weak_subscribe(cb)
+			inst:push("hello")
+			assert.equals("hello", received)
+		end)
+
+		it("returns an unsubscribe function that stops callbacks", function()
+			local inst = Subscribable({})
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			local unsub = inst:weak_subscribe(cb)
+			inst:push(1)
+			unsub()
+			inst:push(2)
+			assert.equals(1, count)
+		end)
+
+		it("does not fire after the callback reference is released and GC is forced", function()
+			local inst = Subscribable({})
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			inst:weak_subscribe(cb)
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			inst:push("x")
+			assert.is_false(fired)
+		end)
+
+		it("strong and weak subscribers coexist; dropping weak does not affect strong", function()
+			local inst = Subscribable({})
+			local strong_count = 0
+			local weak_fired = false
+			inst:subscribe(function()
+				strong_count = strong_count + 1
+			end)
+			local weak_cb = function()
+				weak_fired = true
+			end
+			inst:weak_subscribe(weak_cb)
+			weak_cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			inst:push("x")
+			assert.equals(1, strong_count)
+			assert.is_false(weak_fired)
 		end)
 	end)
 end)

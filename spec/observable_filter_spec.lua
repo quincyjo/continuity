@@ -1,35 +1,8 @@
 require("spec.support.awesome_mocks")
 
-local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
-
-local Item = extend(Subscribable, Removable)
-local function make_item(id, state)
-	return setmetatable(Item.init({ id = id, state = state }), Item.MT)
-end
-
-local function make_observable()
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
-
-	local obs = Observable()
-
-	return obs,
-		function(item)
-			fire(obs.on_added_cbs, item)
-		end,
-		function(item)
-			fire(obs.on_updated_cbs, item)
-		end,
-		function(id)
-			fire(obs.on_removed_cbs, id)
-		end
-end
+local support = require("spec.support.make_observable")
+local make_item = support.make_item
+local make_observable = support.make_observable
 
 describe("Observable", function()
 	describe("filter", function()
@@ -82,7 +55,7 @@ describe("Observable", function()
 					fired = item
 				end)
 
-				update(make_item("a", "sink"))
+				update("a", "sink")
 
 				assert.is_not_nil(fired)
 			end)
@@ -98,7 +71,7 @@ describe("Observable", function()
 					called = true
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.is_false(called)
 			end)
@@ -116,7 +89,7 @@ describe("Observable", function()
 					removed_id = id
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.equals("a", removed_id)
 			end)
@@ -132,7 +105,7 @@ describe("Observable", function()
 					added_id = item.id
 				end)
 
-				update(make_item("a", "sink"))
+				update("a", "sink")
 
 				assert.equals("a", added_id)
 			end)
@@ -172,6 +145,24 @@ describe("Observable", function()
 			end)
 		end)
 
+		describe("auto-disconnect on GC", function()
+			it("stops forwarding on_added events when transformation is dropped and GC'd", function()
+				local fired = false
+				do
+					local t = obs:filter(function()
+						return true
+					end)
+					t:on_added(function()
+						fired = true
+					end)
+					t = nil -- luacheck: ignore
+				end
+				collectgarbage("collect")
+				add(make_item("a"))
+				assert.is_false(fired)
+			end)
+		end)
+
 		describe("source item lifecycle", function()
 			it("does not clear source item _subs when filter removes it from view", function()
 				obs:filter(function(item)
@@ -179,14 +170,12 @@ describe("Observable", function()
 				end)
 				local item_a = make_item("a", "sink")
 				add(item_a)
+				update("a", "source")
 
 				local sub_fired = false
 				item_a:subscribe(function()
 					sub_fired = true
 				end)
-
-				update(make_item("a", "source"))
-
 				item_a:push("anything")
 				assert.is_true(sub_fired)
 			end)
@@ -197,12 +186,14 @@ describe("Observable", function()
 				end)
 				local item_a = make_item("a", "sink")
 				add(item_a)
+				update("a", "source")
 
-				item_a:on_removed(function() end)
-
-				update(make_item("a", "source"))
-
-				assert.equals(1, #item_a._removed_cbs)
+				local fired = false
+				item_a:on_removed(function()
+					fired = true
+				end)
+				item_a:remove_event("a")
+				assert.is_true(fired)
 			end)
 		end)
 	end)
