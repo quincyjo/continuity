@@ -1,17 +1,17 @@
 ---@class Removable
 ---@field on_removed fun(self, cb: fun(id: string)): fun()
 
+local Subscriptions = require("continuity.util.subscriptions")
+
 ---@type CombinableClass<Removable>
 local Removable = {}
 
 Removable.MT = {
 	__index = {
 		on_removed = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._removed_cbs[id] = cb
+			local id = self._removed_cbs:add(cb)
 			return function()
-				self._removed_cbs[id] = nil
+				self._removed_cbs:remove(id)
 			end
 		end,
 	},
@@ -20,8 +20,7 @@ Removable.MT = {
 Removable.methods = Removable.MT.__index
 
 function Removable.init(inst)
-	inst._removed_cbs = {}
-	inst._next_id = 1
+	inst._removed_cbs = Subscriptions()
 	return inst
 end
 

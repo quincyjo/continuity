@@ -19,11 +19,9 @@ ReadyAware.MT = {
 			end
 		end,
 		subscribe = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._subs[id] = cb
+			local id = self._subs:add(cb)
 			return function()
-				self._subs[id] = nil
+				self._subs:remove(id)
 			end
 		end,
 		push = function(self, state)
@@ -35,9 +33,7 @@ ReadyAware.MT = {
 				end
 				self._ready_cbs = nil
 			else
-				for _, cb in pairs(self._subs) do
-					cb(state)
-				end
+				self._subs:fire(state)
 			end
 		end,
 	},

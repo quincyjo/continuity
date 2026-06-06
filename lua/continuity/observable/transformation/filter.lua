@@ -10,12 +10,6 @@ local Filter = {}
 function Filter.new(observable, predicate)
 	local self = Observable({})
 
-	local function fire(cbs, ...)
-		for _, cb in pairs(cbs) do
-			cb(...)
-		end
-	end
-
 	local function on_added(observed)
 		if predicate(observed) then
 			self:add(observed)
@@ -26,10 +20,10 @@ function Filter.new(observable, predicate)
 		local was_passing = self.items[observed.id] ~= nil
 		local is_passing = predicate(observed)
 		if was_passing and is_passing then
-			fire(self.on_updated_cbs, observed)
+			self.on_updated_cbs:fire(observed)
 		elseif was_passing and not is_passing then
 			self.items[observed.id] = nil
-			fire(self.on_removed_cbs, observed.id)
+			self.on_removed_cbs:fire(observed.id)
 		elseif not was_passing and is_passing then
 			self:add(observed)
 		end
@@ -38,7 +32,7 @@ function Filter.new(observable, predicate)
 	local function on_removed(id)
 		if self.items[id] then
 			self.items[id] = nil
-			fire(self.on_removed_cbs, id)
+			self.on_removed_cbs:fire(id)
 		end
 	end
 

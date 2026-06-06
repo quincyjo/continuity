@@ -5,24 +5,22 @@
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
 
+local Subscriptions = require("continuity.util.subscriptions")
+
 ---@type  CombinableClass<SubscribableInternal>
 local Subscribable = {}
 
 Subscribable.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._subs[id] = cb
+			local id = self._subs:add(cb)
 			return function()
-				self._subs[id] = nil
+				self._subs:remove(id)
 			end
 		end,
 		push = function(self, state)
 			self.state = state
-			for _, cb in pairs(self._subs) do
-				cb(state)
-			end
+			self._subs:fire(state)
 		end,
 	},
 }
@@ -30,8 +28,7 @@ Subscribable.MT = {
 Subscribable.methods = Subscribable.MT.__index
 
 function Subscribable.init(inst)
-	inst._subs = {}
-	inst._next_id = 1
+	inst._subs = Subscriptions()
 	return inst
 end
 

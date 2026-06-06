@@ -11,23 +11,16 @@ local function make_item(id, state)
 end
 
 local function make_observable()
-	local function fire(cbs, ...)
-		for _, cb in pairs(cbs) do
-			cb(...)
-		end
-	end
-
 	local obs = Observable()
-
 	return obs,
 		function(item)
-			fire(obs.on_added_cbs, item)
+			obs.on_added_cbs:fire(item)
 		end,
 		function(item)
-			fire(obs.on_updated_cbs, item)
+			obs.on_updated_cbs:fire(item)
 		end,
 		function(id)
-			fire(obs.on_removed_cbs, id)
+			obs.on_removed_cbs:fire(id)
 		end
 end
 
@@ -198,11 +191,15 @@ describe("Observable", function()
 				local item_a = make_item("a", "sink")
 				add(item_a)
 
-				item_a:on_removed(function() end)
+				local fired = false
+				item_a:on_removed(function()
+					fired = true
+				end)
 
 				update(make_item("a", "source"))
 
-				assert.equals(1, #item_a._removed_cbs)
+				item_a._removed_cbs:fire("a")
+				assert.is_true(fired)
 			end)
 		end)
 	end)

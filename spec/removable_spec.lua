@@ -10,9 +10,7 @@ describe("Removable", function()
 			inst:on_removed(function(id)
 				received = id
 			end)
-			for _, cb in ipairs(inst._removed_cbs) do
-				cb("dev-1")
-			end
+			inst._removed_cbs:fire("dev-1")
 			assert.equals("dev-1", received)
 		end)
 
@@ -25,9 +23,7 @@ describe("Removable", function()
 			inst:on_removed(function(id)
 				b = id
 			end)
-			for _, cb in ipairs(inst._removed_cbs) do
-				cb("dev-1")
-			end
+			inst._removed_cbs:fire("dev-1")
 			assert.equals("dev-1", a)
 			assert.equals("dev-1", b)
 		end)
@@ -39,26 +35,29 @@ describe("Removable", function()
 				count = count + 1
 			end)
 			unsub()
-			for _, cb in ipairs(inst._removed_cbs) do
-				cb("dev-1")
-			end
+			inst._removed_cbs:fire("dev-1")
 			assert.equals(0, count)
 		end)
 	end)
 
 	describe("init", function()
-		it("sets _removed_cbs to empty table", function()
+		it("sets _removed_cbs to empty subscriptions", function()
 			local inst = {}
 			Removable.init(inst)
-			assert.same({}, inst._removed_cbs)
+			local count = 0
+			inst._removed_cbs:fire()
+			assert.equals(0, count)
 		end)
 
 		it("reset clears existing callbacks", function()
 			local inst = Removable({})
-			inst:on_removed(function() end)
-			assert.equals(1, #inst._removed_cbs)
+			local count = 0
+			inst:on_removed(function()
+				count = count + 1
+			end)
 			Removable.init(inst)
-			assert.equals(0, #inst._removed_cbs)
+			inst._removed_cbs:fire("dev-1")
+			assert.equals(0, count)
 		end)
 	end)
 end)

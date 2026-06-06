@@ -2,12 +2,6 @@ local Transformation = require("continuity.observable.transformation")
 local Observable = require("continuity.observable")
 local Unique = {}
 
-local function fire(cbs, ...)
-	for _, cb in pairs(cbs) do
-		cb(...)
-	end
-end
-
 ---@generic T, K
 ---@param observable Observable<T>
 ---@param unique_by fun(observed: T): K
@@ -57,11 +51,11 @@ function Unique.new(observable, unique_by, strategy)
 						and #group > 1
 						and (strategy == Observable.UniqueStrategy.Last or strategy == Observable.UniqueStrategy.Recent)
 					then
-						fire(self.on_updated_cbs, group[#group - 1])
+						self.on_updated_cbs:fire(group[#group - 1])
 					elseif i == 1 and #group > 1 and strategy == Observable.UniqueStrategy.First then
-						fire(self.on_updated_cbs, group[2])
+						self.on_updated_cbs:fire(group[2])
 					elseif #group == 1 then
-						fire(self.on_removed_cbs, key)
+						self.on_removed_cbs:fire(key)
 					end
 					table.remove(group, i)
 					break
@@ -80,9 +74,9 @@ function Unique.new(observable, unique_by, strategy)
 			#group > 1
 			and (strategy == Observable.UniqueStrategy.Last or strategy == Observable.UniqueStrategy.Recent)
 		then
-			fire(self.on_updated_cbs, group[#group])
+			self.on_updated_cbs:fire(group[#group])
 		elseif #group == 1 then
-			fire(self.on_added_cbs, observed)
+			self.on_added_cbs:fire(observed)
 		end
 	end
 
@@ -109,13 +103,13 @@ function Unique.new(observable, unique_by, strategy)
 						end
 					end
 					group[#group + 1] = observed
-					fire(self.on_updated_cbs, observed)
+					self.on_updated_cbs:fire(observed)
 				end
 			elseif strategy == Observable.UniqueStrategy.Last and observed.id == group[#group].id then
-				fire(self.on_updated_cbs, observed)
+				self.on_updated_cbs:fire(observed)
 			else
 				if strategy == Observable.UniqueStrategy.First and observed.id == group[1].id then
-					fire(self.on_updated_cbs, observed)
+					self.on_updated_cbs:fire(observed)
 				end
 			end
 		end

@@ -26,14 +26,12 @@ local Monitor = {}
 Monitor.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._subs[id] = cb
+			local id = self._subs:add(cb)
 			if self.state ~= nil then
 				cb(self.state)
 			end
 			return function()
-				self._subs[id] = nil
+				self._subs:remove(id)
 			end
 		end,
 		push = Subscribable.methods.push,

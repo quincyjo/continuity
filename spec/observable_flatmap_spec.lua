@@ -11,23 +11,16 @@ local function make_item(id, state)
 end
 
 local function make_observable()
-	local function fire(cbs, ...)
-		for _, cb in pairs(cbs) do
-			cb(...)
-		end
-	end
-
 	local obs = Observable()
-
 	return obs,
 		function(item)
-			fire(obs.on_added_cbs, item)
+			obs.on_added_cbs:fire(item)
 		end,
 		function(item)
-			fire(obs.on_updated_cbs, item)
+			obs.on_updated_cbs:fire(item)
 		end,
 		function(id)
-			fire(obs.on_removed_cbs, id)
+			obs.on_removed_cbs:fire(id)
 		end
 end
 

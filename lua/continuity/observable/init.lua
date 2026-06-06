@@ -17,6 +17,7 @@
 
 local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
+local Subscriptions = require("continuity.util.subscriptions")
 
 ---@class ObservableClass
 ---@generic T, S
@@ -30,38 +31,26 @@ Observable.UniqueStrategy = {
 	Recent = "recent",
 }
 
-local function fire(cbs, ...)
-	for _, cb in pairs(cbs) do
-		cb(...)
-	end
-end
-
 Observable.MT = {
 	__index = {
 		on_added = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self.on_added_cbs[id] = cb
+			local id = self.on_added_cbs:add(cb)
 			return function()
-				self.on_added_cbs[id] = nil
+				self.on_added_cbs:remove(id)
 			end
 		end,
 
 		on_updated = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self.on_updated_cbs[id] = cb
+			local id = self.on_updated_cbs:add(cb)
 			return function()
-				self.on_updated_cbs[id] = nil
+				self.on_updated_cbs:remove(id)
 			end
 		end,
 
 		on_removed = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self.on_removed_cbs[id] = cb
+			local id = self.on_removed_cbs:add(cb)
 			return function()
-				self.on_removed_cbs[id] = nil
+				self.on_removed_cbs:remove(id)
 			end
 		end,
 
@@ -70,7 +59,7 @@ Observable.MT = {
 				return false
 			end
 			self.items[item.id] = item
-			fire(self.on_added_cbs, item)
+			self.on_added_cbs:fire(item)
 			return true
 		end,
 
@@ -80,7 +69,7 @@ Observable.MT = {
 				return false
 			end
 			item:push(state)
-			fire(self.on_updated_cbs, item)
+			self.on_updated_cbs:fire(item)
 			return true
 		end,
 
@@ -89,11 +78,13 @@ Observable.MT = {
 			if not item then
 				return nil
 			end
-			fire(item._removed_cbs or {}, id)
+			if item._removed_cbs then
+				item._removed_cbs:fire(id)
+			end
 			Subscribable.init(item)
 			Removable.init(item)
 			self.items[id] = nil
-			fire(self.on_removed_cbs, id)
+			self.on_removed_cbs:fire(id)
 			return item
 		end,
 
@@ -154,10 +145,9 @@ Observable.MT = {
 
 function Observable.init(inst)
 	inst = inst or {}
-	inst.on_added_cbs = {}
-	inst.on_updated_cbs = {}
-	inst.on_removed_cbs = {}
-	inst._next_id = 1
+	inst.on_added_cbs = Subscriptions()
+	inst.on_updated_cbs = Subscriptions()
+	inst.on_removed_cbs = Subscriptions()
 	inst.items = {}
 	return inst
 end

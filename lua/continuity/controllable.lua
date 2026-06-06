@@ -5,22 +5,20 @@
 ---@field control_event fun(self, state: T)
 
 ---@type CombinableClass<ControllableInternal>
+local Subscriptions = require("continuity.util.subscriptions")
+
 local Controllable = {}
 
 Controllable.MT = {
 	__index = {
 		on_control = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._control_cbs[id] = cb
+			local id = self._control_cbs:add(cb)
 			return function()
-				self._control_cbs[id] = nil
+				self._control_cbs:remove(id)
 			end
 		end,
 		control_event = function(self, state)
-			for _, cb in pairs(self._control_cbs) do
-				cb(state)
-			end
+			self._control_cbs:fire(state)
 		end,
 	},
 }
@@ -28,8 +26,7 @@ Controllable.MT = {
 Controllable.methods = Controllable.MT.__index
 
 function Controllable.init(inst)
-	inst._control_cbs = {}
-	inst._next_id = 1
+	inst._control_cbs = Subscriptions()
 	return inst
 end
 

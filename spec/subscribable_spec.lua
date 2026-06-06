@@ -73,18 +73,23 @@ describe("Subscribable", function()
 	end)
 
 	describe("init", function()
-		it("sets _subs to empty table", function()
+		it("sets _subs to empty subscriptions", function()
 			local inst = {}
 			Subscribable.init(inst)
-			assert.same({}, inst._subs)
+			local count = 0
+			inst._subs:fire()
+			assert.equals(0, count)
 		end)
 
 		it("reset clears existing subscribers", function()
 			local inst = Subscribable({})
-			inst:subscribe(function() end)
-			assert.equals(1, #inst._subs)
+			local count = 0
+			inst:subscribe(function()
+				count = count + 1
+			end)
 			Subscribable.init(inst)
-			assert.equals(0, #inst._subs)
+			inst:push("x")
+			assert.equals(0, count)
 		end)
 	end)
 end)
