@@ -8,26 +8,22 @@ local Subscriptions = {}
 Subscriptions.MT = {
 	__index = {
 		add = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._strong[id] = cb
+			self._strong[cb] = true
 			return function()
-				self._strong[id] = nil
+				self._strong[cb] = nil
 			end
 		end,
 		weak_add = function(self, cb)
-			local id = self._next_id
-			self._next_id = id + 1
-			self._weak[id] = cb
+			self._weak[cb] = true
 			return function()
-				self._weak[id] = nil
+				self._weak[cb] = nil
 			end
 		end,
 		fire = function(self, ...)
-			for _, cb in pairs(self._strong) do
+			for cb in pairs(self._strong) do
 				cb(...)
 			end
-			for _, cb in pairs(self._weak) do
+			for cb in pairs(self._weak) do
 				cb(...)
 			end
 		end,
@@ -37,8 +33,7 @@ Subscriptions.MT = {
 function Subscriptions.new()
 	return setmetatable({
 		_strong = {},
-		_weak = setmetatable({}, { __mode = "v" }),
-		_next_id = 1,
+		_weak = setmetatable({}, { __mode = "k" }),
 	}, Subscriptions.MT)
 end
 

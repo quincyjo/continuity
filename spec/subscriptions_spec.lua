@@ -197,5 +197,68 @@ describe("Subscriptions", function()
 			assert.is_false(weak_add_fired)
 			assert.is_true(strong_fired)
 		end)
+
+		it("subscription fires when only the unsub is held", function()
+			local subs = Subscriptions()
+			local fired = false
+			local unsub -- luacheck: ignore
+			do
+				local cb = function()
+					fired = true
+				end
+				unsub = subs:weak_add(cb)
+			end
+			collectgarbage("collect")
+			subs:fire()
+			assert.is_true(fired)
+
+			unsub = nil -- luacheck: ignore
+			collectgarbage("collect")
+			fired = false
+			subs:fire()
+			assert.is_false(fired)
+		end)
+	end)
+
+	describe("set semantics", function()
+		it("add with the same cb twice fires the callback once", function()
+			local subs = Subscriptions()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			subs:add(cb)
+			subs:add(cb)
+			subs:fire()
+			assert.equals(1, count)
+		end)
+
+		it("weak_add with the same cb twice fires the callback once", function()
+			local subs = Subscriptions()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			subs:weak_add(cb)
+			subs:weak_add(cb)
+			subs:fire()
+			assert.equals(1, count)
+		end)
+
+		it("either unsub from duplicate add cancels the subscription", function()
+			local subs = Subscriptions()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			local unsub_a = subs:add(cb)
+			subs:add(cb)
+			subs:fire()
+			assert.equals(1, count)
+
+			unsub_a()
+			subs:fire()
+			assert.equals(1, count)
+		end)
 	end)
 end)

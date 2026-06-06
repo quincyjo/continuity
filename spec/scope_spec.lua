@@ -35,7 +35,6 @@ local function make_signal_source()
 	}
 end
 
--- Minimal fixtures.
 local function make_subscribable()
 	return Subscribable({})
 end
@@ -53,34 +52,42 @@ local function make_observable()
 end
 
 describe("Scope", function()
-	describe("subscribe", function()
-		it("callback fires while scope is alive", function()
+	describe("__call", function()
+		it("registers an unsub called on dispose", function()
 			local scope = Scope()
 			local src = make_subscribable()
 			local count = 0
-			scope:subscribe(src, function()
+			scope(src:subscribe(function()
 				count = count + 1
-			end)
+			end))
 			src:push("x")
 			assert.equals(1, count)
-		end)
-
-		it("callback stops firing after dispose", function()
-			local scope = Scope()
-			local src = make_subscribable()
-			local count = 0
-			scope:subscribe(src, function()
-				count = count + 1
-			end)
-			src:push("x")
 			scope:dispose()
 			src:push("y")
 			assert.equals(1, count)
 		end)
-	end)
 
-	describe("weak_subscribe", function()
-		it("holds the callback alive while scope is alive", function()
+		it("accepts unsubs from different source types", function()
+			local scope = Scope()
+			local src = make_subscribable()
+			local ctrl = make_controllable()
+			local count = 0
+			scope(src:subscribe(function()
+				count = count + 1
+			end))
+			scope(ctrl:on_control(function()
+				count = count + 1
+			end))
+			src:push("x")
+			ctrl:control_event({})
+			assert.equals(2, count)
+			scope:dispose()
+			src:push("y")
+			ctrl:control_event({})
+			assert.equals(2, count)
+		end)
+
+		it("holds a weak_subscribe callback alive while scope is alive", function()
 			local scope = Scope()
 			local src = make_subscribable()
 			local count = 0
@@ -88,21 +95,21 @@ describe("Scope", function()
 				local cb = function()
 					count = count + 1
 				end
-				scope:weak_subscribe(src, cb)
-				-- cb goes out of scope here, but scope holds it
+				scope(src:weak_subscribe(cb))
+				-- cb goes out of scope; scope → unsub → cb keeps it alive
 			end
 			collectgarbage("collect")
 			src:push("x")
 			assert.equals(1, count)
 		end)
 
-		it("callback stops firing after dispose", function()
+		it("weak_subscribe callback stops firing after dispose", function()
 			local scope = Scope()
 			local src = make_subscribable()
 			local count = 0
-			scope:weak_subscribe(src, function()
+			scope(src:weak_subscribe(function()
 				count = count + 1
-			end)
+			end))
 			src:push("x")
 			scope:dispose()
 			src:push("y")
@@ -110,14 +117,14 @@ describe("Scope", function()
 		end)
 	end)
 
-	describe("on_removed (Removable)", function()
+	describe("on_removed (Removable) via __call", function()
 		it("callback fires while scope is alive", function()
 			local scope = Scope()
 			local item = make_removable()
 			local received
-			scope:on_removed(item, function(id)
+			scope(item:on_removed(function(id)
 				received = id
-			end)
+			end))
 			item:remove_event("dev-1")
 			assert.equals("dev-1", received)
 		end)
@@ -126,40 +133,23 @@ describe("Scope", function()
 			local scope = Scope()
 			local item = make_removable()
 			local count = 0
-			scope:on_removed(item, function()
+			scope(item:on_removed(function()
 				count = count + 1
-			end)
+			end))
 			scope:dispose()
 			item:remove_event("dev-1")
 			assert.equals(0, count)
 		end)
 	end)
 
-	describe("weak_on_removed (Removable)", function()
-		it("holds the callback alive while scope is alive", function()
-			local scope = Scope()
-			local item = make_removable()
-			local count = 0
-			do
-				local cb = function()
-					count = count + 1
-				end
-				scope:weak_on_removed(item, cb)
-			end
-			collectgarbage("collect")
-			item:remove_event("dev-1")
-			assert.equals(1, count)
-		end)
-	end)
-
-	describe("on_control (Controllable)", function()
+	describe("on_control (Controllable) via __call", function()
 		it("callback fires while scope is alive", function()
 			local scope = Scope()
 			local ctrl = make_controllable()
 			local received
-			scope:on_control(ctrl, function(s)
+			scope(ctrl:on_control(function(s)
 				received = s
-			end)
+			end))
 			ctrl:control_event({ value = 1 })
 			assert.equals(1, received.value)
 		end)
@@ -168,9 +158,9 @@ describe("Scope", function()
 			local scope = Scope()
 			local ctrl = make_controllable()
 			local count = 0
-			scope:on_control(ctrl, function()
+			scope(ctrl:on_control(function()
 				count = count + 1
-			end)
+			end))
 			ctrl:control_event({})
 			scope:dispose()
 			ctrl:control_event({})
@@ -178,31 +168,14 @@ describe("Scope", function()
 		end)
 	end)
 
-	describe("weak_on_control (Controllable)", function()
-		it("holds the callback alive while scope is alive", function()
-			local scope = Scope()
-			local ctrl = make_controllable()
-			local count = 0
-			do
-				local cb = function()
-					count = count + 1
-				end
-				scope:weak_on_control(ctrl, cb)
-			end
-			collectgarbage("collect")
-			ctrl:control_event({})
-			assert.equals(1, count)
-		end)
-	end)
-
-	describe("on_added / on_updated / on_removed (Observable)", function()
+	describe("Observable events via __call", function()
 		it("on_added fires while scope is alive", function()
 			local scope = Scope()
 			local obs = make_observable()
 			local fired
-			scope:on_added(obs, function(item)
+			scope(obs:on_added(function(item)
 				fired = item
-			end)
+			end))
 			local item_a = make_item("a", 1)
 			obs:add(item_a)
 			assert.equals(item_a, fired)
@@ -214,9 +187,9 @@ describe("Scope", function()
 			local item_a = make_item("a", 1)
 			obs:add(item_a)
 			local fired
-			scope:on_updated(obs, function(item)
+			scope(obs:on_updated(function(item)
 				fired = item
-			end)
+			end))
 			obs:update("a", 2)
 			assert.equals(item_a, fired)
 		end)
@@ -227,9 +200,9 @@ describe("Scope", function()
 			local item_a = make_item("a", 1)
 			obs:add(item_a)
 			local received
-			scope:on_removed(obs, function(id)
+			scope(obs:on_removed(function(id)
 				received = id
-			end)
+			end))
 			obs:remove("a")
 			assert.equals("a", received)
 		end)
@@ -241,9 +214,9 @@ describe("Scope", function()
 			local cb = function()
 				count = count + 1
 			end
-			scope:on_added(obs, cb)
-			scope:on_updated(obs, cb)
-			scope:on_removed(obs, cb)
+			scope(obs:on_added(cb))
+			scope(obs:on_updated(cb))
+			scope(obs:on_removed(cb))
 
 			obs:add(make_item("a", 1))
 			obs:update("a", 2)
@@ -255,23 +228,6 @@ describe("Scope", function()
 			obs:update("b", 2)
 			obs:remove("b")
 			assert.equals(3, count)
-		end)
-	end)
-
-	describe("weak_on_added / weak_on_updated / weak_on_removed (Observable)", function()
-		it("weak_on_added holds callback alive", function()
-			local scope = Scope()
-			local obs = make_observable()
-			local count = 0
-			do
-				local cb = function()
-					count = count + 1
-				end
-				scope:weak_on_added(obs, cb)
-			end
-			collectgarbage("collect")
-			obs:add(make_item("a", 1))
-			assert.equals(1, count)
 		end)
 	end)
 
@@ -370,12 +326,12 @@ describe("Scope", function()
 			local src = make_subscribable()
 			local ctrl = make_controllable()
 			local count = 0
-			scope:subscribe(src, function()
+			scope(src:subscribe(function()
 				count = count + 1
-			end)
-			scope:on_control(ctrl, function()
+			end))
+			scope(ctrl:on_control(function()
 				count = count + 1
-			end)
+			end))
 			src:push("x")
 			ctrl:control_event({})
 			assert.equals(2, count)
@@ -386,10 +342,10 @@ describe("Scope", function()
 			assert.equals(2, count)
 		end)
 
-		it("second call does not error (empty unsub table is safe to iterate)", function()
+		it("second call does not error", function()
 			local scope = Scope()
 			local src = make_subscribable()
-			scope:subscribe(src, function() end)
+			scope(src:subscribe(function() end))
 			scope:dispose()
 			assert.has_no.errors(function()
 				scope:dispose()
@@ -400,9 +356,9 @@ describe("Scope", function()
 			local scope = Scope()
 			local src = make_subscribable()
 			local count = 0
-			scope:subscribe(src, function()
+			scope(src:subscribe(function()
 				count = count + 1
-			end)
+			end))
 			scope:dispose()
 			scope:dispose()
 			src:push("x")
@@ -413,14 +369,13 @@ describe("Scope", function()
 			local scope = Scope()
 			local src = make_subscribable()
 			local count = 0
-			scope:subscribe(src, function()
+			scope(src:subscribe(function()
 				count = count + 1
-			end)
+			end))
 			scope:dispose()
-			-- register a new subscription after dispose
-			scope:subscribe(src, function()
+			scope(src:subscribe(function()
 				count = count + 1
-			end)
+			end))
 			src:push("x")
 			assert.equals(1, count)
 			scope:dispose()
@@ -437,9 +392,9 @@ describe("Scope", function()
 			local count = 0
 			do
 				local scope = Scope()
-				scope:subscribe(src, function()
+				scope(src:subscribe(function()
 					count = count + 1
-				end)
+				end))
 			end
 			collectgarbage("collect")
 			collectgarbage("collect")
@@ -448,11 +403,10 @@ describe("Scope", function()
 		end)
 	end)
 
-	describe("no __call metamethod", function()
-		it("Scope() constructs a new instance (not a call-to-register pattern)", function()
+	describe("__call metamethod", function()
+		it("Scope instance is callable", function()
 			local scope = Scope()
-			assert.is_not_nil(scope)
-			assert.is_nil(getmetatable(scope).__call)
+			assert.is_function(getmetatable(scope).__call)
 		end)
 	end)
 end)
