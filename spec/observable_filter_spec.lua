@@ -1,31 +1,8 @@
 require("spec.support.awesome_mocks")
 
-local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
-
-local Item = extend(Subscribable, Removable)
-local function make_item(id, state)
-	return setmetatable(Item.init({ id = id, state = state }), Item.MT)
-end
-
-local function make_observable()
-	local obs = Observable()
-	return obs,
-		function(item)
-			obs.on_added_cbs:fire(item)
-			obs.weak_on_added_cbs:fire(item)
-		end,
-		function(item)
-			obs.on_updated_cbs:fire(item)
-			obs.weak_on_updated_cbs:fire(item)
-		end,
-		function(id)
-			obs.on_removed_cbs:fire(id)
-			obs.weak_on_removed_cbs:fire(id)
-		end
-end
+local support = require("spec.support.make_observable")
+local make_item = support.make_item
+local make_observable = support.make_observable
 
 describe("Observable", function()
 	describe("filter", function()
@@ -78,7 +55,7 @@ describe("Observable", function()
 					fired = item
 				end)
 
-				update(make_item("a", "sink"))
+				update("a", "sink")
 
 				assert.is_not_nil(fired)
 			end)
@@ -94,7 +71,7 @@ describe("Observable", function()
 					called = true
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.is_false(called)
 			end)
@@ -112,7 +89,7 @@ describe("Observable", function()
 					removed_id = id
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.equals("a", removed_id)
 			end)
@@ -128,7 +105,7 @@ describe("Observable", function()
 					added_id = item.id
 				end)
 
-				update(make_item("a", "sink"))
+				update("a", "sink")
 
 				assert.equals("a", added_id)
 			end)
@@ -193,14 +170,12 @@ describe("Observable", function()
 				end)
 				local item_a = make_item("a", "sink")
 				add(item_a)
+				update("a", "source")
 
 				local sub_fired = false
 				item_a:subscribe(function()
 					sub_fired = true
 				end)
-
-				update(make_item("a", "source"))
-
 				item_a:push("anything")
 				assert.is_true(sub_fired)
 			end)
@@ -211,14 +186,12 @@ describe("Observable", function()
 				end)
 				local item_a = make_item("a", "sink")
 				add(item_a)
+				update("a", "source")
 
 				local fired = false
 				item_a:on_removed(function()
 					fired = true
 				end)
-
-				update(make_item("a", "source"))
-
 				item_a._removed_cbs:fire("a")
 				assert.is_true(fired)
 			end)

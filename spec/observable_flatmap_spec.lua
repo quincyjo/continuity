@@ -1,31 +1,8 @@
 require("spec.support.awesome_mocks")
 
-local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
-
-local Item = extend(Subscribable, Removable)
-local function make_item(id, state)
-	return setmetatable(Item.init({ id = id, state = state }), Item.MT)
-end
-
-local function make_observable()
-	local obs = Observable()
-	return obs,
-		function(item)
-			obs.on_added_cbs:fire(item)
-			obs.weak_on_added_cbs:fire(item)
-		end,
-		function(item)
-			obs.on_updated_cbs:fire(item)
-			obs.weak_on_updated_cbs:fire(item)
-		end,
-		function(id)
-			obs.on_removed_cbs:fire(id)
-			obs.weak_on_removed_cbs:fire(id)
-		end
-end
+local support = require("spec.support.make_observable")
+local make_item = support.make_item
+local make_observable = support.make_observable
 
 describe("Observable", function()
 	describe("flatmap", function()
@@ -102,7 +79,7 @@ describe("Observable", function()
 					updated_ids[#updated_ids + 1] = item.id
 				end)
 
-				update(make_item("a", { "x", "z" }))
+				update("a", { "x", "z" })
 
 				local found = false
 				for _, id in ipairs(updated_ids) do
@@ -129,7 +106,7 @@ describe("Observable", function()
 					removed_ids[#removed_ids + 1] = id
 				end)
 
-				update(make_item("a", { "x" }))
+				update("a", { "x" })
 
 				assert.equals(1, #removed_ids)
 				assert.equals("y", removed_ids[1])
@@ -151,7 +128,7 @@ describe("Observable", function()
 					added_ids[#added_ids + 1] = item.id
 				end)
 
-				update(make_item("a", { "x", "z" }))
+				update("a", { "x", "z" })
 
 				assert.equals(1, #added_ids)
 				assert.equals("z", added_ids[1])
@@ -176,7 +153,7 @@ describe("Observable", function()
 					remove_count = remove_count + 1
 				end)
 
-				update(make_item("a", { "x", "y" }))
+				update("a", { "x", "y" })
 
 				assert.equals(0, add_count)
 				assert.equals(0, remove_count)
