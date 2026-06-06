@@ -38,7 +38,6 @@ local extend = require("continuity.util.extend")
 ---@field state       AudioState
 ---@field set_default fun(self: AudioHandle)
 ---@field set_port    fun(self: AudioHandle, port: AudioPort|string)
----@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
 
 ---@alias SinkHandle   AudioHandle
 ---@alias SourceHandle AudioHandle
@@ -89,15 +88,6 @@ local Audio = {}
 
 local AudioProxyHandle = extend(ReadyAware, Controllable)
 
----@deprecated Use the function returned by subscribe() instead.
-AudioProxyHandle.MT.__index.unsubscribe = function(self, cb)
-	for i, sub in ipairs(self._subs) do
-		if sub == cb then
-			table.remove(self._subs, i)
-			return
-		end
-	end
-end
 AudioProxyHandle.MT.__index.adjust_perc = function(self, delta)
 	if self._bound_handle then
 		self._bound_handle:adjust_perc(delta)

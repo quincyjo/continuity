@@ -1,27 +1,8 @@
 require("spec.support.awesome_mocks")
 
-local Observable = require("continuity.observable")
-
-local function make_observable()
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
-
-	local obs = Observable()
-
-	return obs,
-		function(item)
-			fire(obs.on_added_cbs, item)
-		end,
-		function(item)
-			fire(obs.on_updated_cbs, item)
-		end,
-		function(id)
-			fire(obs.on_removed_cbs, id)
-		end
-end
+local support = require("spec.support.make_observable")
+local make_item = support.make_item
+local make_observable = support.make_observable
 
 describe("Observable", function()
 	describe("group_by", function()
@@ -34,28 +15,28 @@ describe("Observable", function()
 		describe("on_added", function()
 			it("fires when the first item for a key is added", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local fired
 				grouped:on_added(function(group)
 					fired = group
 				end)
 
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				assert.is_not_nil(fired)
 			end)
 
 			it("fires with correct group id and state", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local fired
 				grouped:on_added(function(group)
 					fired = group
 				end)
 
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				assert.equals("sink", fired.id)
 				assert.equals(1, #fired.state)
@@ -64,30 +45,30 @@ describe("Observable", function()
 
 			it("fires separately for each new key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local fired = {}
 				grouped:on_added(function(group)
 					fired[#fired + 1] = group.id
 				end)
 
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "source" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "source"))
 
 				assert.equals(2, #fired)
 			end)
 
 			it("does not fire when a second item is added to an existing group", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local count = 0
 				grouped:on_added(function()
 					count = count + 1
 				end)
 
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				assert.equals(1, count)
 			end)
@@ -96,15 +77,15 @@ describe("Observable", function()
 		describe("on_updated", function()
 			it("fires when a second item is added to an existing group", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local fired
 				grouped:on_updated(function(group)
 					fired = group
 				end)
 
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				assert.is_not_nil(fired)
 				assert.equals("sink", fired.id)
@@ -113,24 +94,24 @@ describe("Observable", function()
 
 			it("does not fire when the first item for a key is added", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local called = false
 				grouped:on_updated(function()
 					called = true
 				end)
 
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				assert.is_false(called)
 			end)
 
 			it("fires when an item is removed from a group that still has other items", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				local fired
 				grouped:on_updated(function(group)
@@ -146,12 +127,10 @@ describe("Observable", function()
 
 			it("fires for old group when an item moves to a different key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				local item_a = { id = "a", kind = "sink" }
-				local item_b = { id = "b", kind = "sink" }
-				add(item_a)
-				add(item_b)
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				local fired_ids = {}
 				grouped:on_updated(function(group)
@@ -161,10 +140,9 @@ describe("Observable", function()
 					fired_ids[#fired_ids + 1] = group.id
 				end)
 
-				item_a.kind = "source"
-				update(item_a)
+				update("a", "source")
 
-				-- "sink" group still has item_b → on_updated("sink")
+				-- "sink" group still has item b → on_updated("sink")
 				-- "source" is a new group → on_added("source")
 				assert.is_true(#fired_ids >= 1)
 				local found_sink = false
@@ -178,20 +156,17 @@ describe("Observable", function()
 
 			it("fires on_added for new key when an item moves", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				local item_a = { id = "a", kind = "sink" }
-				local item_b = { id = "b", kind = "sink" }
-				add(item_a)
-				add(item_b)
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				local added_key
 				grouped:on_added(function(group)
 					added_key = group.id
 				end)
 
-				item_a.kind = "source"
-				update(item_a)
+				update("a", "source")
 
 				assert.equals("source", added_key)
 			end)
@@ -200,9 +175,9 @@ describe("Observable", function()
 		describe("on_removed", function()
 			it("fires with the group key when the last item is removed", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				local removed_key
 				grouped:on_removed(function(key)
@@ -216,10 +191,10 @@ describe("Observable", function()
 
 			it("does not fire when group still has items after removal", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				local called = false
 				grouped:on_removed(function()
@@ -233,18 +208,16 @@ describe("Observable", function()
 
 			it("fires on_removed for old key when the last item moves to a different key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				local item_a = { id = "a", kind = "sink" }
-				add(item_a)
+				add(make_item("a", "sink"))
 
 				local removed_key
 				grouped:on_removed(function(key)
 					removed_key = key
 				end)
 
-				item_a.kind = "source"
-				update(item_a)
+				update("a", "source")
 
 				assert.equals("sink", removed_key)
 			end)
@@ -253,28 +226,28 @@ describe("Observable", function()
 		describe("all()", function()
 			it("returns empty table when no items have been added", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				assert.equals(0, #grouped:all())
 			end)
 
 			it("returns one group per distinct key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
-				add({ id = "c", kind = "source" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
+				add(make_item("c", "source"))
 
 				assert.equals(2, #grouped:all())
 			end)
 
 			it("each group contains the correct state", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 
 				local groups = grouped:all()
 				local sink_group
@@ -291,9 +264,9 @@ describe("Observable", function()
 		describe("get()", function()
 			it("returns the group for a known key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				local group = grouped:get("sink")
 				assert.is_not_nil(group)
@@ -302,18 +275,18 @@ describe("Observable", function()
 
 			it("returns nil for an unknown key", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				assert.is_nil(grouped:get("does_not_exist"))
 			end)
 
 			it("returned group reflects subsequent additions", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 				local group = grouped:get("sink")
-				add({ id = "b", kind = "sink" })
+				add(make_item("b", "sink"))
 
 				assert.equals(2, #group.state)
 			end)
@@ -322,9 +295,9 @@ describe("Observable", function()
 		describe("group:subscribe", function()
 			it("fires when a second item is added to the group", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 				local group = grouped:get("sink")
 
 				local fired
@@ -332,7 +305,7 @@ describe("Observable", function()
 					fired = g
 				end)
 
-				add({ id = "b", kind = "sink" })
+				add(make_item("b", "sink"))
 
 				assert.is_not_nil(fired)
 				assert.equals(2, #fired)
@@ -340,10 +313,10 @@ describe("Observable", function()
 
 			it("fires when an item is removed from the group but the group survives", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "sink" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "sink"))
 				local group = grouped:get("sink")
 
 				local fired
@@ -359,7 +332,7 @@ describe("Observable", function()
 
 			it("does not fire when the first item is added (group just created)", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 
 				local called = false
@@ -369,16 +342,16 @@ describe("Observable", function()
 					end)
 				end)
 
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				assert.is_false(called)
 			end)
 
 			it("supports multiple independent subscribers on the same group", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 				local group = grouped:get("sink")
 
 				local count_a, count_b = 0, 0
@@ -389,7 +362,7 @@ describe("Observable", function()
 					count_b = count_b + 1
 				end)
 
-				add({ id = "b", kind = "sink" })
+				add(make_item("b", "sink"))
 
 				assert.equals(1, count_a)
 				assert.equals(1, count_b)
@@ -397,9 +370,9 @@ describe("Observable", function()
 
 			it("unsubscribing stops further callbacks", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 				local group = grouped:get("sink")
 
 				local count = 0
@@ -407,9 +380,9 @@ describe("Observable", function()
 					count = count + 1
 				end)
 
-				add({ id = "b", kind = "sink" })
+				add(make_item("b", "sink"))
 				unsub()
-				add({ id = "c", kind = "sink" })
+				add(make_item("c", "sink"))
 
 				assert.equals(1, count)
 			end)
@@ -418,44 +391,44 @@ describe("Observable", function()
 		describe("unsubscribe", function()
 			it("on_added unsub stops further callbacks", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
 				local count = 0
 				local unsub = grouped:on_added(function()
 					count = count + 1
 				end)
 
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 				unsub()
-				add({ id = "b", kind = "source" })
+				add(make_item("b", "source"))
 
 				assert.equals(1, count)
 			end)
 
 			it("on_updated unsub stops further callbacks", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
+				add(make_item("a", "sink"))
 
 				local count = 0
 				local unsub = grouped:on_updated(function()
 					count = count + 1
 				end)
 
-				add({ id = "b", kind = "sink" })
+				add(make_item("b", "sink"))
 				unsub()
-				add({ id = "c", kind = "sink" })
+				add(make_item("c", "sink"))
 
 				assert.equals(1, count)
 			end)
 
 			it("on_removed unsub stops further callbacks", function()
 				local grouped = obs:group_by(function(item)
-					return item.kind
+					return item.state
 				end)
-				add({ id = "a", kind = "sink" })
-				add({ id = "b", kind = "source" })
+				add(make_item("a", "sink"))
+				add(make_item("b", "source"))
 
 				local count = 0
 				local unsub = grouped:on_removed(function()

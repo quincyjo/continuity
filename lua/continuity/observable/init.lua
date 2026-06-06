@@ -1,12 +1,15 @@
 ---@generic T: Subscribable, Removable
 ---@class Observable<T>
----@field on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
----@field all        fun(self: Observable<T>): T[]
----@field get        fun(self: Observable<T>, id: string): T|nil
----@field group_by   fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
----@field unique     fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
+---@field on_added        fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_updated      fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_removed      fun(self: Observable<T>, cb: fun(id: string)): fun()
+---@field weak_on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field weak_on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field weak_on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
+---@field all             fun(self: Observable<T>): T[]
+---@field get             fun(self: Observable<T>, id: string): T|nil
+---@field group_by        fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
+---@field unique          fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
 
 ---@generic S, T: Subscribable<S>, Removable
 ---@class ObservableInternal<T, S> : Observable<T>
@@ -16,7 +19,7 @@
 ---@field remove fun(self: Observable<T>, id: string): T|nil
 
 local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
+local Subscriptions = require("continuity.util.subscriptions")
 
 ---@class ObservableClass
 ---@generic T, S
@@ -30,37 +33,30 @@ Observable.UniqueStrategy = {
 	Recent = "recent",
 }
 
-local function fire(cbs, ...)
-	for _, cb in ipairs(cbs) do
-		cb(...)
-	end
-end
-
-local function make_unsub(cbs, cb)
-	return function()
-		for i = #cbs, 1, -1 do
-			if cbs[i] == cb then
-				table.remove(cbs, i)
-			end
-		end
-	end
-end
-
 Observable.MT = {
 	__index = {
 		on_added = function(self, cb)
-			self.on_added_cbs[#self.on_added_cbs + 1] = cb
-			return make_unsub(self.on_added_cbs, cb)
+			return self._on_added_cbs:add(cb)
 		end,
 
 		on_updated = function(self, cb)
-			self.on_updated_cbs[#self.on_updated_cbs + 1] = cb
-			return make_unsub(self.on_updated_cbs, cb)
+			return self._on_updated_cbs:add(cb)
 		end,
 
 		on_removed = function(self, cb)
-			self.on_removed_cbs[#self.on_removed_cbs + 1] = cb
-			return make_unsub(self.on_removed_cbs, cb)
+			return self._on_removed_cbs:add(cb)
+		end,
+
+		weak_on_added = function(self, cb)
+			return self._on_added_cbs:weak_add(cb)
+		end,
+
+		weak_on_updated = function(self, cb)
+			return self._on_updated_cbs:weak_add(cb)
+		end,
+
+		weak_on_removed = function(self, cb)
+			return self._on_removed_cbs:weak_add(cb)
 		end,
 
 		add = function(self, item)
@@ -68,7 +64,7 @@ Observable.MT = {
 				return false
 			end
 			self.items[item.id] = item
-			fire(self.on_added_cbs, item)
+			self._on_added_cbs:fire(item)
 			return true
 		end,
 
@@ -78,7 +74,7 @@ Observable.MT = {
 				return false
 			end
 			item:push(state)
-			fire(self.on_updated_cbs, item)
+			self._on_updated_cbs:fire(item)
 			return true
 		end,
 
@@ -87,11 +83,10 @@ Observable.MT = {
 			if not item then
 				return nil
 			end
-			fire(item._removed_cbs or {}, id)
+			item:remove_event(id)
 			Subscribable.init(item)
-			Removable.init(item)
 			self.items[id] = nil
-			fire(self.on_removed_cbs, id)
+			self._on_removed_cbs:fire(id)
 			return item
 		end,
 
@@ -152,9 +147,9 @@ Observable.MT = {
 
 function Observable.init(inst)
 	inst = inst or {}
-	inst.on_added_cbs = {}
-	inst.on_updated_cbs = {}
-	inst.on_removed_cbs = {}
+	inst._on_added_cbs = Subscriptions()
+	inst._on_updated_cbs = Subscriptions()
+	inst._on_removed_cbs = Subscriptions()
 	inst.items = {}
 	return inst
 end

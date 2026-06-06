@@ -65,4 +65,61 @@ describe("Controllable", function()
 		end)
 		assert.is_false(fired)
 	end)
+
+	describe("weak_on_control", function()
+		it("fires the callback while it is held", function()
+			local m = make()
+			local received
+			local cb = function(s)
+				received = s
+			end
+			m:weak_on_control(cb)
+			m:control_event({ value = 1 })
+			assert.equals(1, received.value)
+		end)
+
+		it("returns an unsubscribe function that stops callbacks", function()
+			local m = make()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			local unsub = m:weak_on_control(cb)
+			m:control_event({})
+			unsub()
+			m:control_event({})
+			assert.equals(1, count)
+		end)
+
+		it("does not fire after the callback reference is released and GC is forced", function()
+			local m = make()
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			m:weak_on_control(cb)
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			m:control_event({})
+			assert.is_false(fired)
+		end)
+
+		it("strong and weak subscribers coexist; dropping weak does not affect strong", function()
+			local m = make()
+			local strong_count = 0
+			local weak_fired = false
+			m:on_control(function()
+				strong_count = strong_count + 1
+			end)
+			local weak_cb = function()
+				weak_fired = true
+			end
+			m:weak_on_control(weak_cb)
+			weak_cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			m:control_event({})
+			assert.equals(1, strong_count)
+			assert.is_false(weak_fired)
+		end)
+	end)
 end)

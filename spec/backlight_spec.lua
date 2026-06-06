@@ -230,20 +230,6 @@ describe("backlight module", function()
 	end)
 
 	describe("unsubscribe", function()
-		it("handle:unsubscribe is idempotent", function()
-			backlight.setup({ backend = mock_backend })
-			add_device("intel_backlight", "display", 75)
-			local count = 0
-			local cb = function()
-				count = count + 1
-			end
-			backlight.primary_display:subscribe(cb)
-			backlight.primary_display:unsubscribe(cb)
-			backlight.primary_display:unsubscribe(cb)
-			change("intel_backlight", 50)
-			assert.equals(0, count)
-		end)
-
 		it("returned unsubscribe fn is idempotent", function()
 			backlight.setup({ backend = mock_backend })
 			add_device("intel_backlight", "display", 75)

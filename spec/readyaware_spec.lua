@@ -93,6 +93,60 @@ describe("ReadyAware", function()
 		assert.equals(42, m.state.value)
 	end)
 
+	describe("weak_subscribe", function()
+		it("does not fire on first push", function()
+			local m = make()
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			m:weak_subscribe(cb)
+			m:push({ value = 1 })
+			assert.is_false(fired)
+		end)
+
+		it("fires on subsequent pushes while callback is held", function()
+			local m = make()
+			m:push({ value = 1 })
+			local received = {}
+			local cb = function(s)
+				received[#received + 1] = s
+			end
+			m:weak_subscribe(cb)
+			m:push({ value = 2 })
+			assert.equals(1, #received)
+			assert.equals(2, received[1].value)
+		end)
+
+		it("returns an unsubscribe function that stops callbacks", function()
+			local m = make()
+			m:push({ value = 1 })
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			local unsub = m:weak_subscribe(cb)
+			m:push({ value = 2 })
+			unsub()
+			m:push({ value = 3 })
+			assert.equals(1, count)
+		end)
+
+		it("does not fire after the callback reference is released and GC is forced", function()
+			local m = make()
+			m:push({ value = 1 })
+			local fired = false
+			local cb = function()
+				fired = true
+			end
+			m:weak_subscribe(cb)
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			m:push({ value = 2 })
+			assert.is_false(fired)
+		end)
+	end)
+
 	it("on_ready and subscribe are both notified across their respective events", function()
 		local m = make()
 		local ready_log, sub_log = {}, {}
