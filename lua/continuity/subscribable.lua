@@ -44,8 +44,13 @@ Subscribable.MT = {
 						cb(map(state))
 					end)
 				end,
+				weak_subscribe = function(_, cb)
+					return self:weak_subscribe(function(state)
+						cb(map(state))
+					end)
+				end,
 			})
-			self:subscribe(function(state)
+			mapped._unsub = self:weak_subscribe(function(state)
 				mapped.state = map(state)
 			end)
 			return mapped
