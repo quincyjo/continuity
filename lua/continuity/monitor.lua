@@ -26,22 +26,18 @@ local Monitor = {}
 Monitor.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			local id = self._subs:add(cb)
+			local unsub = self._subs:add(cb)
 			if self.state ~= nil then
 				cb(self.state)
 			end
-			return function()
-				self._subs:remove(id)
-			end
+			return unsub
 		end,
 		weak_subscribe = function(self, cb)
-			local id = self._weak_subs:add(cb)
+			local unsub = self._subs:weak_add(cb)
 			if self.state ~= nil then
 				cb(self.state)
 			end
-			return function()
-				self._weak_subs:remove(id)
-			end
+			return unsub
 		end,
 		push = Subscribable.methods.push,
 	},

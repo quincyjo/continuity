@@ -192,7 +192,7 @@ describe("Observable", function()
 				item_a:on_removed(function()
 					fired = true
 				end)
-				item_a._removed_cbs:fire("a")
+				item_a:remove_event("a")
 				assert.is_true(fired)
 			end)
 		end)

@@ -19,16 +19,10 @@ ReadyAware.MT = {
 			end
 		end,
 		subscribe = function(self, cb)
-			local id = self._subs:add(cb)
-			return function()
-				self._subs:remove(id)
-			end
+			return self._subs:add(cb)
 		end,
 		weak_subscribe = function(self, cb)
-			local id = self._weak_subs:add(cb)
-			return function()
-				self._weak_subs:remove(id)
-			end
+			return self._subs:weak_add(cb)
 		end,
 		push = function(self, state)
 			self.state = state
@@ -40,7 +34,6 @@ ReadyAware.MT = {
 				self._ready_cbs = nil
 			else
 				self._subs:fire(state)
-				self._weak_subs:fire(state)
 			end
 		end,
 	},

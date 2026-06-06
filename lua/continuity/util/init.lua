@@ -5,7 +5,6 @@ local M = {
 	process = require("continuity.util.process"),
 	json = require("continuity.util.json"),
 	subscriptions = require("continuity.util.subscriptions"),
-	weak_subscriptions = require("continuity.util.weak_subscriptions"),
 	scope = require("continuity.util.scope"),
 }
 

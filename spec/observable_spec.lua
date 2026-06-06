@@ -120,7 +120,7 @@ describe("Observable", function()
 					count = count + 1
 				end)
 				obs:remove("a")
-				item._removed_cbs:fire("a")
+				item:remove_event("a")
 				assert.equals(1, count)
 			end)
 

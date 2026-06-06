@@ -7,27 +7,19 @@
 
 ---@type CombinableClass<ControllableInternal>
 local Subscriptions = require("continuity.util.subscriptions")
-local WeakSubscriptions = require("continuity.util.weak_subscriptions")
 
 local Controllable = {}
 
 Controllable.MT = {
 	__index = {
 		on_control = function(self, cb)
-			local id = self._control_cbs:add(cb)
-			return function()
-				self._control_cbs:remove(id)
-			end
+			return self._control_cbs:add(cb)
 		end,
 		weak_on_control = function(self, cb)
-			local id = self._weak_control_cbs:add(cb)
-			return function()
-				self._weak_control_cbs:remove(id)
-			end
+			return self._control_cbs:weak_add(cb)
 		end,
 		control_event = function(self, state)
 			self._control_cbs:fire(state)
-			self._weak_control_cbs:fire(state)
 		end,
 	},
 }
@@ -36,7 +28,6 @@ Controllable.methods = Controllable.MT.__index
 
 function Controllable.init(inst)
 	inst._control_cbs = Subscriptions()
-	inst._weak_control_cbs = WeakSubscriptions()
 	return inst
 end
 

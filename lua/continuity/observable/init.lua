@@ -20,7 +20,6 @@
 
 local Subscribable = require("continuity.subscribable")
 local Subscriptions = require("continuity.util.subscriptions")
-local WeakSubscriptions = require("continuity.util.weak_subscriptions")
 
 ---@class ObservableClass
 ---@generic T, S
@@ -37,45 +36,27 @@ Observable.UniqueStrategy = {
 Observable.MT = {
 	__index = {
 		on_added = function(self, cb)
-			local id = self.on_added_cbs:add(cb)
-			return function()
-				self.on_added_cbs:remove(id)
-			end
+			return self.on_added_cbs:add(cb)
 		end,
 
 		on_updated = function(self, cb)
-			local id = self.on_updated_cbs:add(cb)
-			return function()
-				self.on_updated_cbs:remove(id)
-			end
+			return self.on_updated_cbs:add(cb)
 		end,
 
 		on_removed = function(self, cb)
-			local id = self.on_removed_cbs:add(cb)
-			return function()
-				self.on_removed_cbs:remove(id)
-			end
+			return self.on_removed_cbs:add(cb)
 		end,
 
 		weak_on_added = function(self, cb)
-			local id = self.weak_on_added_cbs:add(cb)
-			return function()
-				self.weak_on_added_cbs:remove(id)
-			end
+			return self.on_added_cbs:weak_add(cb)
 		end,
 
 		weak_on_updated = function(self, cb)
-			local id = self.weak_on_updated_cbs:add(cb)
-			return function()
-				self.weak_on_updated_cbs:remove(id)
-			end
+			return self.on_updated_cbs:weak_add(cb)
 		end,
 
 		weak_on_removed = function(self, cb)
-			local id = self.weak_on_removed_cbs:add(cb)
-			return function()
-				self.weak_on_removed_cbs:remove(id)
-			end
+			return self.on_removed_cbs:weak_add(cb)
 		end,
 
 		add = function(self, item)
@@ -84,7 +65,6 @@ Observable.MT = {
 			end
 			self.items[item.id] = item
 			self.on_added_cbs:fire(item)
-			self.weak_on_added_cbs:fire(item)
 			return true
 		end,
 
@@ -95,7 +75,6 @@ Observable.MT = {
 			end
 			item:push(state)
 			self.on_updated_cbs:fire(item)
-			self.weak_on_updated_cbs:fire(item)
 			return true
 		end,
 
@@ -108,7 +87,6 @@ Observable.MT = {
 			Subscribable.init(item)
 			self.items[id] = nil
 			self.on_removed_cbs:fire(id)
-			self.weak_on_removed_cbs:fire(id)
 			return item
 		end,
 
@@ -172,9 +150,6 @@ function Observable.init(inst)
 	inst.on_added_cbs = Subscriptions()
 	inst.on_updated_cbs = Subscriptions()
 	inst.on_removed_cbs = Subscriptions()
-	inst.weak_on_added_cbs = WeakSubscriptions()
-	inst.weak_on_updated_cbs = WeakSubscriptions()
-	inst.weak_on_removed_cbs = WeakSubscriptions()
 	inst.items = {}
 	return inst
 end

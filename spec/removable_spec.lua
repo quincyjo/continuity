@@ -10,7 +10,7 @@ describe("Removable", function()
 			inst:on_removed(function(id)
 				received = id
 			end)
-			inst._removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals("dev-1", received)
 		end)
 
@@ -23,7 +23,7 @@ describe("Removable", function()
 			inst:on_removed(function(id)
 				b = id
 			end)
-			inst._removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals("dev-1", a)
 			assert.equals("dev-1", b)
 		end)
@@ -35,20 +35,12 @@ describe("Removable", function()
 				count = count + 1
 			end)
 			unsub()
-			inst._removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals(0, count)
 		end)
 	end)
 
 	describe("init", function()
-		it("sets _removed_cbs to empty subscriptions", function()
-			local inst = {}
-			Removable.init(inst)
-			local count = 0
-			inst._removed_cbs:fire()
-			assert.equals(0, count)
-		end)
-
 		it("reset clears existing callbacks", function()
 			local inst = Removable({})
 			local count = 0
@@ -56,7 +48,7 @@ describe("Removable", function()
 				count = count + 1
 			end)
 			Removable.init(inst)
-			inst._removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals(0, count)
 		end)
 	end)
@@ -72,7 +64,7 @@ describe("Removable", function()
 			assert.equals("dev-1", received)
 		end)
 
-		it("fires _weak_removed_cbs with the id", function()
+		it("fires weak callbacks with the id via remove_event", function()
 			local inst = Removable({})
 			local received
 			local cb = function(id)
@@ -104,7 +96,7 @@ describe("Removable", function()
 				count = count + 1
 			end)
 			inst:remove_event("dev-1")
-			inst._removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals(1, count)
 		end)
 	end)
@@ -117,7 +109,7 @@ describe("Removable", function()
 				received = id
 			end
 			inst:weak_on_removed(cb)
-			inst._weak_removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals("dev-1", received)
 		end)
 
@@ -129,7 +121,7 @@ describe("Removable", function()
 			end
 			local unsub = inst:weak_on_removed(cb)
 			unsub()
-			inst._weak_removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.equals(0, count)
 		end)
 
@@ -142,7 +134,7 @@ describe("Removable", function()
 			inst:weak_on_removed(cb)
 			cb = nil -- luacheck: ignore
 			collectgarbage("collect")
-			inst._weak_removed_cbs:fire("dev-1")
+			inst:remove_event("dev-1")
 			assert.is_false(fired)
 		end)
 	end)

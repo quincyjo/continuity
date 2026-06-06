@@ -1,8 +1,8 @@
 ---@class Subscriptions<T>
----@field add    fun(self, cb: T): integer
----@field remove fun(self, id: integer)
----@field fire   fun(self, ...)
----@field iter   fun(self): fun(table, integer): integer, T
+---@field add      fun(self, cb: T): fun()
+---@field weak_add fun(self, cb: T): fun()
+---@field fire     fun(self, ...)
+---@field iter     fun(self): fun(table, integer): integer, T
 
 local Subscriptions = {}
 
@@ -11,25 +11,36 @@ Subscriptions.MT = {
 		add = function(self, cb)
 			local id = self._next_id
 			self._next_id = id + 1
-			self._cbs[id] = cb
-			return id
-		end,
-		remove = function(self, id)
-			self._cbs[id] = nil
-		end,
-		fire = function(self, ...)
-			for _, cb in pairs(self._cbs) do
-				cb(...)
+			self._strong[id] = cb
+			return function()
+				self._strong[id] = nil
 			end
 		end,
-		iter = function(self)
-			return pairs(self._cbs)
+		weak_add = function(self, cb)
+			local id = self._next_id
+			self._next_id = id + 1
+			self._weak[id] = cb
+			return function()
+				self._weak[id] = nil
+			end
+		end,
+		fire = function(self, ...)
+			for _, cb in pairs(self._strong) do
+				cb(...)
+			end
+			for _, cb in pairs(self._weak) do
+				cb(...)
+			end
 		end,
 	},
 }
 
 function Subscriptions.new()
-	return setmetatable({ _cbs = {}, _next_id = 1 }, Subscriptions.MT)
+	return setmetatable({
+		_strong = {},
+		_weak = setmetatable({}, { __mode = "v" }),
+		_next_id = 1,
+	}, Subscriptions.MT)
 end
 
 setmetatable(Subscriptions, {
