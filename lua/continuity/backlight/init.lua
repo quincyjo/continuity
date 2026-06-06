@@ -19,7 +19,6 @@ local gears = require("gears")
 ---@field adjust_perc fun(self: BacklightHandle, delta: integer)
 ---@field set         fun(self: BacklightHandle, step: integer)
 ---@field adjust      fun(self: BacklightHandle, delta: integer)
----@field unsubscribe fun(self: BacklightHandle, fn: fun(update: BacklightUpdate))
 
 ---@class BacklightDeviceInfo
 ---@field id         string
@@ -73,16 +72,6 @@ local function _on_control(handle, brightness, raw)
 end
 
 local HandleMeta = BacklightHandle.MT
-
----@deprecated Use the function returned by subscribe() instead.
-HandleMeta.__index.unsubscribe = function(self, fn)
-	for i, sub in ipairs(self._subs) do
-		if sub == fn then
-			table.remove(self._subs, i)
-			return
-		end
-	end
-end
 
 HandleMeta.__index.set_perc = function(self, value)
 	if not self.id or not _backend then

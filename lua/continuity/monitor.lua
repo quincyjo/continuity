@@ -26,18 +26,18 @@ local Monitor = {}
 Monitor.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			self._subs[#self._subs + 1] = cb
+			local unsub = self._subs:add(cb)
 			if self.state ~= nil then
 				cb(self.state)
 			end
-			return function()
-				for i = #self._subs, 1, -1 do
-					if self._subs[i] == cb then
-						table.remove(self._subs, i)
-						return
-					end
-				end
+			return unsub
+		end,
+		weak_subscribe = function(self, cb)
+			local unsub = self._subs:weak_add(cb)
+			if self.state ~= nil then
+				cb(self.state)
 			end
+			return unsub
 		end,
 		push = Subscribable.methods.push,
 	},

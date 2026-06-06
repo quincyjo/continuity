@@ -1,35 +1,8 @@
 require("spec.support.awesome_mocks")
 
-local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
-
-local Item = extend(Subscribable, Removable)
-local function make_item(id, state)
-	return setmetatable(Item.init({ id = id, state = state }), Item.MT)
-end
-
-local function make_observable()
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
-
-	local obs = Observable()
-
-	return obs,
-		function(item)
-			fire(obs.on_added_cbs, item)
-		end,
-		function(item)
-			fire(obs.on_updated_cbs, item)
-		end,
-		function(id)
-			fire(obs.on_removed_cbs, id)
-		end
-end
+local support = require("spec.support.make_observable")
+local make_item = support.make_item
+local make_observable = support.make_observable
 
 describe("Observable", function()
 	describe("map", function()
@@ -99,7 +72,7 @@ describe("Observable", function()
 					fired = item
 				end)
 
-				update(make_item("a", 2))
+				update("a", 2)
 
 				assert.is_not_nil(fired)
 				assert.equals("a_out", fired.id)
@@ -120,7 +93,7 @@ describe("Observable", function()
 					added_id = item.id
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.equals("sink", removed_id)
 				assert.equals("source", added_id)
@@ -137,7 +110,7 @@ describe("Observable", function()
 					called = true
 				end)
 
-				update(make_item("a", "source"))
+				update("a", "source")
 
 				assert.is_false(called)
 			end)

@@ -1,32 +1,28 @@
 ---@class Subscribable<T>
----@field subscribe fun(self, cb: fun(state: T)): fun()
----@field state     T
+---@field subscribe      fun(self, cb: fun(state: T)): fun()
+---@field weak_subscribe fun(self, cb: fun(state: T)): fun()
+---@field state          T
 ---@field map       fun(self, map: fun(state: T): `S`): Subscribable<`S`>
 
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
 
----@type  CombinableClass<SubscribableInternal>
+local Subscriptions = require("continuity.util.subscriptions")
+
+---@type CombinableClass<SubscribableInternal>
 local Subscribable = {}
 
 Subscribable.MT = {
 	__index = {
 		subscribe = function(self, cb)
-			self._subs[#self._subs + 1] = cb
-			return function()
-				for i = #self._subs, 1, -1 do
-					if self._subs[i] == cb then
-						table.remove(self._subs, i)
-						return
-					end
-				end
-			end
+			return self._subs:add(cb)
+		end,
+		weak_subscribe = function(self, cb)
+			return self._subs:weak_add(cb)
 		end,
 		push = function(self, state)
 			self.state = state
-			for _, cb in ipairs(self._subs) do
-				cb(state)
-			end
+			self._subs:fire(state)
 		end,
 		map = function(self, map)
 			local init_state
@@ -60,7 +56,7 @@ Subscribable.MT = {
 Subscribable.methods = Subscribable.MT.__index
 
 function Subscribable.init(inst)
-	inst._subs = {}
+	inst._subs = Subscriptions()
 	return inst
 end
 

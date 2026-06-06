@@ -1,8 +1,11 @@
 ---@class Controllable<T>
----@field on_control fun(self, cb: fun(state: T)): fun()
+---@field on_control      fun(self, cb: fun(state: T)): fun()
+---@field weak_on_control fun(self, cb: fun(state: T)): fun()
 
 ---@class ControllableInternal<T> : Controllable<T>
 ---@field control_event fun(self, state: T)
+
+local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<ControllableInternal>
 local Controllable = {}
@@ -10,20 +13,13 @@ local Controllable = {}
 Controllable.MT = {
 	__index = {
 		on_control = function(self, cb)
-			self._control_cbs[#self._control_cbs + 1] = cb
-			return function()
-				for i = #self._control_cbs, 1, -1 do
-					if self._control_cbs[i] == cb then
-						table.remove(self._control_cbs, i)
-						return
-					end
-				end
-			end
+			return self._control_cbs:add(cb)
+		end,
+		weak_on_control = function(self, cb)
+			return self._control_cbs:weak_add(cb)
 		end,
 		control_event = function(self, state)
-			for _, cb in ipairs(self._control_cbs) do
-				cb(state)
-			end
+			self._control_cbs:fire(state)
 		end,
 	},
 }
@@ -31,7 +27,7 @@ Controllable.MT = {
 Controllable.methods = Controllable.MT.__index
 
 function Controllable.init(inst)
-	inst._control_cbs = {}
+	inst._control_cbs = Subscriptions()
 	return inst
 end
 
