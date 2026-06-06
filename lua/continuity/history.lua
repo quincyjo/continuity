@@ -16,6 +16,7 @@ local Subscribable = require("continuity.subscribable")
 History.MT = {
 	__index = {
 		subscribe = Subscribable.methods.subscribe,
+		weak_subscribe = Subscribable.methods.weak_subscribe,
 
 		push = function(self, entry)
 			local tail = ((self._head - 1 + self._count) % self.capacity) + 1
@@ -27,9 +28,7 @@ History.MT = {
 			end
 			self.count = self._count
 			self.state = entry
-			for _, cb in ipairs(self._subs) do
-				cb(entry)
-			end
+			self._subs:fire(entry)
 		end,
 
 		iter = function(self)
@@ -67,7 +66,7 @@ History.MT = {
 			if self._unsub then
 				return
 			end
-			self._unsub = self._source:subscribe(function(state)
+			self._unsub = self._source:weak_subscribe(function(state)
 				self:push(state)
 			end)
 		end,
