@@ -9,6 +9,7 @@
 ---@field media        continuity.media
 ---@field observable   ObservableClass
 ---@field monitor      MonitorClass
+---@field history      HistoryClass
 ---@field readyaware   CombinableClass<ReadyAware>
 ---@field controllable CombinableClass<Controllable>
 ---@field removable    CombinableClass<Removable>
