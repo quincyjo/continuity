@@ -2,7 +2,6 @@
 ---@field add      fun(self, cb: T): fun()
 ---@field weak_add fun(self, cb: T): fun()
 ---@field fire     fun(self, ...)
----@field iter     fun(self): fun(table, integer): integer, T
 
 local Subscriptions = {}
 
