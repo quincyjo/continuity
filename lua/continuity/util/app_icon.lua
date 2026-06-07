@@ -84,6 +84,7 @@ function M.by_desktop_entry(desktop_entry, cb)
 	}, function(results, _)
 		if not results or #results == 0 then
 			cb(nil)
+			desktop_entry_cache[desktop_entry] = false
 			return
 		end
 		local desktop_file = results[1]
