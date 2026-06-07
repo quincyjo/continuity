@@ -11,67 +11,60 @@
 ---@overload fun(source: Subscribable<`T`>, capacity: number): History<`T`>
 local History = {}
 
+local extend = require("continuity.util.extend")
 local Subscribable = require("continuity.subscribable")
 
-History.MT = {
-	__index = {
-		subscribe = Subscribable.methods.subscribe,
-		weak_subscribe = Subscribable.methods.weak_subscribe,
+local _base = extend(Subscribable)
 
-		push = function(self, entry)
-			local tail = ((self._head - 1 + self._count) % self.capacity) + 1
-			self._buf[tail] = entry
-			if self._count == self.capacity then
-				self._head = (self._head % self.capacity) + 1
-			else
-				self._count = self._count + 1
-			end
-			self.count = self._count
-			self.state = entry
-			self._subs:fire(entry)
-		end,
-
-		iter = function(self)
-			local i = 0
-			local count = self._count
-			local head = self._head
-			local capacity = self.capacity
-			local buf = self._buf
-			return function()
-				if i >= count then
-					return nil
-				end
-				local idx = ((head - 1 + i) % capacity) + 1
-				i = i + 1
-				return buf[idx]
-			end
-		end,
-
-		reset = function(self)
-			self._buf = {}
-			self._head = 1
-			self._count = 0
-			self.count = 0
-			self.state = nil
-		end,
-
-		stop = function(self)
-			if self._unsub then
-				self._unsub()
-				self._unsub = nil
-			end
-		end,
-
-		start = function(self)
-			if self._unsub then
-				return
-			end
-			self._unsub = self._source:weak_subscribe(function(state)
-				self:push(state)
-			end)
-		end,
-	},
-}
+History.MT = _base.MT
+History.MT.__index.push = function(self, entry)
+	local tail = ((self._head - 1 + self._count) % self.capacity) + 1
+	self._buf[tail] = entry
+	if self._count == self.capacity then
+		self._head = (self._head % self.capacity) + 1
+	else
+		self._count = self._count + 1
+	end
+	self.count = self._count
+	self.state = entry
+	self._subs:fire(entry)
+end
+History.MT.__index.iter = function(self)
+	local i = 0
+	local count = self._count
+	local head = self._head
+	local capacity = self.capacity
+	local buf = self._buf
+	return function()
+		if i >= count then
+			return nil
+		end
+		local idx = ((head - 1 + i) % capacity) + 1
+		i = i + 1
+		return buf[idx]
+	end
+end
+History.MT.__index.reset = function(self)
+	self._buf = {}
+	self._head = 1
+	self._count = 0
+	self.count = 0
+	self.state = nil
+end
+History.MT.__index.stop = function(self)
+	if self._unsub then
+		self._unsub()
+		self._unsub = nil
+	end
+end
+History.MT.__index.start = function(self)
+	if self._unsub then
+		return
+	end
+	self._unsub = self._source:weak_subscribe(function(state)
+		self:push(state)
+	end)
+end
 
 History.methods = History.MT.__index
 
@@ -89,7 +82,7 @@ function History.new(source, capacity)
 		_source = source,
 		_unsub = nil,
 	}
-	Subscribable.init(inst)
+	_base.init(inst)
 	setmetatable(inst, History.MT)
 	inst:start()
 	return inst

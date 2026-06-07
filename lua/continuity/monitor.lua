@@ -17,37 +17,35 @@
 ---@field protected cleanup?   fun(self) Cleanup after stop.
 
 local gears = require("gears")
+
+local extend = require("continuity.util.extend")
 local Subscribable = require("continuity.subscribable")
 
 ---@class MonitorClass
 ---@overload fun(inst: table): Monitor
 local Monitor = {}
 
-Monitor.MT = {
-	__index = {
-		subscribe = function(self, cb)
-			local unsub = self._subs:add(cb)
-			if self.state ~= nil then
-				cb(self.state)
-			end
-			return unsub
-		end,
-		weak_subscribe = function(self, cb)
-			local unsub = self._subs:weak_add(cb)
-			if self.state ~= nil then
-				cb(self.state)
-			end
-			return unsub
-		end,
-		push = Subscribable.methods.push,
-	},
-}
+local _base = extend(Subscribable)
+
+Monitor.MT = _base.MT
+Monitor.MT.__index.subscribe = function(self, cb)
+	if self.state ~= nil then
+		cb(self.state)
+	end
+	return self._subs:add(cb)
+end
+Monitor.MT.__index.weak_subscribe = function(self, cb)
+	if self.state ~= nil then
+		cb(self.state)
+	end
+	return self._subs:weak_add(cb)
+end
 
 Monitor.methods = Monitor.MT.__index
 
 function Monitor.init(inst)
 	inst = inst or {}
-	Subscribable.init(inst)
+	_base.init(inst)
 	inst.state = nil
 	inst._started = false
 	if not inst.setup then

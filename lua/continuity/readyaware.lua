@@ -4,25 +4,18 @@
 ---@class ReadyAwareInternal<T> : ReadyAware<T>
 ---@field push fun(self, state: T)
 
+local extend = require("continuity.util.extend")
 local Subscribable = require("continuity.subscribable")
 
 ---@type CombinableClass<ReadyAwareInternal>
-local ReadyAware = {}
-
-ReadyAware.MT = {
-	__index = {
+local ReadyAware = extend.override(Subscribable, {
+	methods = {
 		on_ready = function(self, cb)
 			if self._ready then
 				cb(self.state)
 			else
 				self._ready_cbs[#self._ready_cbs + 1] = cb
 			end
-		end,
-		subscribe = function(self, cb)
-			return self._subs:add(cb)
-		end,
-		weak_subscribe = function(self, cb)
-			return self._subs:weak_add(cb)
 		end,
 		push = function(self, state)
 			self.state = state
@@ -37,25 +30,11 @@ ReadyAware.MT = {
 			end
 		end,
 	},
-}
-
-ReadyAware.methods = ReadyAware.MT.__index
-
-function ReadyAware.init(inst)
-	inst._ready = false
-	inst._ready_cbs = {}
-	Subscribable.init(inst)
-	return inst
-end
-
-function ReadyAware.new(inst)
-	return setmetatable(ReadyAware.init(inst), ReadyAware.MT)
-end
-
----@diagnostic disable-next-line: param-type-mismatch
-setmetatable(ReadyAware, {
-	__call = function(self, inst)
-		return self.new(inst)
+	init = function(inst)
+		inst = inst or {}
+		inst._ready = false
+		inst._ready_cbs = {}
+		return inst
 	end,
 })
 
