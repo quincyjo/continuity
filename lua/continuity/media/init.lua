@@ -57,7 +57,7 @@ local notification_mod = require("continuity.media.notification")
 ---@field subscribe fun(self, cb: fun(pos: number)): fun()
 ---@field get       fun(self, cb: fun(pos: number|nil))
 
----@class MediaSource
+---@class MediaSource : Subscribable<MediaState>, Controllable<MediaState>, Removable
 ---@field id            string
 ---@field name          string
 ---@field app_name?     string               -- application identity (e.g. "spotify"); used for notification suppression
@@ -66,8 +66,7 @@ local notification_mod = require("continuity.media.notification")
 ---@field state         MediaState
 ---@field position?     Position
 ---@field playback?     Playback
----@field subscribe     fun(self, cb: fun(state: MediaState), opts: RegistrySubscribeOpts?): fun()
----@field on_removed    fun(self, cb: fun(source_id: string)): fun()
+---@field subscribe     fun(self: MediaSource, cb: fun(state: MediaState), opts: RegistrySubscribeOpts?): fun()
 ---@field active        fun(self: MediaSource): boolean
 
 local Observable = require("continuity.observable")
