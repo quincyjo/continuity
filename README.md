@@ -16,7 +16,7 @@ your own UIs. Check out the docs for each module for some examples.
 - [Principles](#principles)
 - [Compatibility](#compatibility)
 - [Installation](#installation)
-- [Conventions](#conventions)
+- [Classes](#classes)
 - [Brass Tacks](#brass-tacks)
 - [sysinfo](#sysinfo)
   - [bat](#bat--battery)
@@ -98,62 +98,59 @@ git clone https://github.com/quincyjo/continuity.git
 ln -s continuity/lua/continuity ~/.config/awesome/continuity
 ```
 
-## Conventions
+## Classes
 
-**Streamed modules** (`Monitor<T>`; EG, `bat`, `cpu`, `mem`, `net`, `temp`)
-provide a uniform interface:
+Continuity is built on three core class patterns. See [docs/classes.md](docs/classes.md)
+for full API reference and examples.
+
+**Monitor** (`Monitor<T>`; e.g. `bat`, `cpu`, `mem`, `net`, `temp`) — streams
+state from a backend. `subscribe` replays the current state immediately if
+available; `state` is `nil` until the first backend update.
 
 ```lua
 module.setup(opts)              -- call once in rc.lua; opts.backend overrides default
-local unsub = module:subscribe( -- push-based updates; fires immediately if state is known
+local unsub = module:subscribe( -- fires immediately if state is known, then on every update
   function(state) ... end
 )
 unsub()                         -- stop receiving updates
-module.state                    -- last-known state (may be nil)
+module.state                    -- last-known state; nil before first backend update
 module.stop()                   -- tear down backend and clear subscribers
 ```
 
-**Control modules** (`Subscribable<T>&Controllable<T>`; EG, `audio`, `backlight`)
-provide a uniform interface:
+**ReadyAware + Controllable** (`ReadyAware<T> & Controllable<T>`; e.g. `audio`, `backlight`)
+— handles instantiated before their data is available. `on_ready` fires once
+when the handle is first populated; `subscribe` fires on subsequent changes;
+`on_control` fires after a control action for driving transient displays such
+as OSD notifications.
 
 ```lua
-audio.Volume.state                      -- last-known state (may be placeholder values)
--- Predefined default handles that are
--- initialized asynchronously provide on_ready:
-audio.Volume:on_ready(                  -- fires exactly once when state is first known or immediately.
+audio.Volume:on_ready(function(state) ... end)   -- fires once when state is first known, or immediately
+local unsub1 = audio.Volume:subscribe(           -- fires on state changes after ready
   function(state) ... end
 )
-local unsub1 = audio.Volume:subscribe(  -- push-based updates; only fires when state changes
+local unsub2 = audio.Volume:on_control(          -- fires on control actions (set_perc, toggle_mute, …)
   function(state) ... end
 )
-local unsub2 = audio.Volume:on_control( -- fires on every control call, regardless of state change
-  function(state) ... end
-)
-unsub1()                                -- stop receiving updates
+unsub1()                         -- stop receiving updates
 unsub2()
-audio.Volume:adjust_perc(-5)            -- relative
-audio.Volume:set_perc(50)               -- absolute
+audio.Volume:adjust_perc(-5)     -- relative
+audio.Volume:set_perc(50)        -- absolute
 audio.Volume:toggle_mute()
 ```
 
-**Transient resources** (`Observable<T>`; EG, `media.sources`, `audio.inputs`)
-provide a uniform interface:
+**Observable** (`Observable<T>`; e.g. `media.sources`, `audio.inputs`) — a
+live collection of individually subscribable items. Fires events when items are
+added, updated, or removed.
 
 ```lua
-media.sources:all()                     -- snapshot of all sources
-media.sources:get(id)
-media.sources:on_added(                 -- fires when a new source is added
-    function(source)                              -- Per resource subscription:
-        source:subscribe(function(state) ... end) -- Subscribe to the individual resource
-        source:on_removed(function() ... end)     -- Subscribe for removal
-    end
-)
-media.sources:on_updated(               -- fires when a source is updated
-    function(source) ... end
-)
-media.sources:on_removed(               -- fires when a source is removed
-    function(id) ... end
-)
+media.sources:all()                     -- snapshot of all current sources
+media.sources:get(id)                   -- look up a source by id
+media.sources:on_added(function(source)
+    source:subscribe(function(state) ... end)  -- subscribe to this source's state
+    source:on_removed(function() ... end)      -- fires when this source is removed
+end)
+media.sources:on_updated(function(source) ... end)
+media.sources:on_removed(function(id) ... end)
 ```
 
 ## Brass Tacks
