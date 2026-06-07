@@ -39,21 +39,28 @@ function M.by_app_name(app_name, cb)
 			cb(nil)
 			return
 		end
-		local desktop_file = results[1].filepath
-		grep({
-			pattern = "^Icon=",
-			path = { desktop_file },
-			follow_links = true,
-		}, function(icon_results, _)
-			if not icon_results or #icon_results == 0 then
+		local function try_file(index)
+			if index > #results then
+				app_name_cache[app_name] = false
 				cb(nil)
 				return
 			end
-			local icon_name = icon_results[1].text:match("^Icon=(.+)$")
-			local icon_path = icon_name and menubar_utils.lookup_icon(icon_name) or nil
-			app_name_cache[app_name] = icon_name or false
-			cb(icon_path)
-		end)
+			grep({
+				pattern = "^Icon=",
+				path = { results[index].filepath },
+				follow_links = true,
+			}, function(icon_results, _)
+				if not icon_results or #icon_results == 0 then
+					try_file(index + 1)
+					return
+				end
+				local icon_name = icon_results[1].text:match("^Icon=(.+)$")
+				local icon_path = icon_name and menubar_utils.lookup_icon(icon_name) or nil
+				app_name_cache[app_name] = icon_name or false
+				cb(icon_path)
+			end)
+		end
+		try_file(1)
 	end)
 end
 
@@ -64,7 +71,8 @@ end
 ---@param cb            fun(icon_path: string|nil)
 function M.by_desktop_entry(desktop_entry, cb)
 	if desktop_entry_cache[desktop_entry] ~= nil then
-		local icon_path = app_name_cache[desktop_entry] and menubar_utils.lookup_icon(app_name_cache[desktop_entry])
+		local icon_path = desktop_entry_cache[desktop_entry]
+			and menubar_utils.lookup_icon(desktop_entry_cache[desktop_entry])
 		cb(icon_path or nil)
 		return
 	end
@@ -90,7 +98,7 @@ function M.by_desktop_entry(desktop_entry, cb)
 			end
 			local icon_name = icon_results[1].text:match("^Icon=(.+)$")
 			local icon_path = icon_name and menubar_utils.lookup_icon(icon_name) or nil
-			app_name_cache[desktop_entry] = icon_name or false
+			desktop_entry_cache[desktop_entry] = icon_name or false
 			cb(icon_path)
 		end)
 	end)
