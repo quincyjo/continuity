@@ -63,6 +63,16 @@
 ---@field debounce? number  seconds; nil or absent -> immediate (no debounce)
 
 local gears = require("gears")
+local extend = require("continuity.util.extend")
+local Subscribable = require("continuity.subscribable")
+local Removable = require("continuity.removable")
+local Controllable = require("continuity.controllable")
+
+local MediaSource = extend(Subscribable, Removable, Controllable)
+MediaSource.MT.__index.active = function(self)
+	return self.state.title ~= nil or self.state.status == "playing"
+end
+MediaSource.methods.active = MediaSource.MT.__index.active
 
 local registry = {}
 
@@ -91,9 +101,7 @@ function registry.new()
 	---@field position_cbs           table<string, fun(pos: number)[]>
 	---@field source_capapabilities  table<string, SourceCapabilities>
 	---@field position_stop_fns      table<string, fun()>
-	---@field source_cbs             table<string, fun(state: MediaState)[]>
 	---@field debounced_source_cbs   table<string, table[]>
-	---@field source_removed_cbs     table<string, fun(source_id: string)[]>
 	---@field on_playback_action_cbs fun(source: MediaSource, action: PlaybackAction)[]
 	local state = {
 		sources = {},
@@ -105,9 +113,7 @@ function registry.new()
 		position_cbs = {},
 		source_capapabilities = {}, -- source_id -> SourceCapabilities
 		position_stop_fns = {}, -- source_id -> stop_fn (from capabilities.position.subscribe)
-		source_cbs = {},
 		debounced_source_cbs = {},
-		source_removed_cbs = {},
 		on_playback_action_cbs = {},
 	}
 
@@ -167,6 +173,7 @@ function registry.new()
 			executor[method](source_id, ...)
 			-- TODO: Maybe expose CB with ok and do this after the action?
 			fire(state.on_playback_action_cbs, src, action)
+			src:control_event(src.state)
 		end
 		local volume
 		if vol_executor and flags.can_set_volume then
@@ -233,12 +240,18 @@ function registry.new()
 
 	local r = {}
 
-	local MediaSourceMeta = {
-		__index = {
-			active = function(self)
-				return self.state.title ~= nil or self.state.status == "playing"
-			end,
-
+	---@param source_id string
+	---@param name string
+	---@param initial_state MediaState
+	---@param capabilities? SourceCapabilities
+	---@param app_name? string
+	function r.add(source_id, name, initial_state, capabilities, app_name, app_icon)
+		local source = MediaSource.new({
+			id = source_id,
+			name = name,
+			state = initial_state or {},
+			app_name = app_name,
+			app_icon = app_icon,
 			subscribe = function(self, cb, opts)
 				if opts and opts.debounce then
 					if not state.debounced_source_cbs[self.id] then
@@ -267,47 +280,10 @@ function registry.new()
 						sub.timer:stop()
 					end
 				else
-					if not state.source_cbs[self.id] then
-						state.source_cbs[self.id] = {}
-					end
-					local cbs = state.source_cbs[self.id]
-					cbs[#cbs + 1] = cb
-					return function()
-						for i = #cbs, 1, -1 do
-							if cbs[i] == cb then
-								table.remove(cbs, i)
-							end
-						end
-					end
+					return Subscribable.methods.subscribe(self, cb)
 				end
 			end,
-
-			on_removed = function(self, cb)
-				if not state.source_removed_cbs[self.id] then
-					state.source_removed_cbs[self.id] = {}
-				end
-				local cbs = state.source_removed_cbs[self.id]
-				cbs[#cbs + 1] = cb
-				return function()
-					for i = #cbs, 1, -1 do
-						if cbs[i] == cb then
-							table.remove(cbs, i)
-						end
-					end
-				end
-			end,
-		},
-	}
-
-	---@param source_id string
-	---@param name string
-	---@param initial_state MediaState
-	---@param capabilities? SourceCapabilities
-	---@param app_name? string
-	function r.add(source_id, name, initial_state, capabilities, app_name, app_icon)
-		local source =
-			{ id = source_id, name = name, state = initial_state or {}, app_name = app_name, app_icon = app_icon }
-		setmetatable(source, MediaSourceMeta)
+		})
 
 		if capabilities then
 			state.source_capapabilities[source_id] = capabilities
@@ -453,7 +429,7 @@ function registry.new()
 
 		-- Material change, update all subscribers.
 		if not pos_only then
-			fire(state.source_cbs[source_id] or {}, source.state)
+			source._subs:fire(source.state)
 			fire(state.on_updated_cbs, source)
 			for _, sub in ipairs(state.debounced_updated_subs) do
 				if sub.timers[source_id] then
@@ -500,14 +476,11 @@ function registry.new()
 		state.position_cbs[source_id] = nil
 		state.position_stop_fns[source_id] = nil
 		state.source_capapabilities[source_id] = nil
-		state.sources[source_id] = nil
-		state.source_cbs[source_id] = nil
 		state.pre_mute_volumes[source_id] = nil
-
-		if state.source_removed_cbs[source_id] then
-			fire(state.source_removed_cbs[source_id], source_id)
-		end
-		state.source_removed_cbs[source_id] = nil
+		local source = state.sources[source_id]
+		state.sources[source_id] = nil
+		source:remove_event(source_id)
+		MediaSource.init(source)
 		fire(state.on_removed_cbs, source_id)
 	end
 

@@ -1259,4 +1259,113 @@ describe("registry", function()
 			assert.is_false(called)
 		end)
 	end)
+
+	describe("MediaSource events", function()
+		local function make_executor()
+			return {
+				play = function() end,
+				pause = function() end,
+				play_pause = function() end,
+				stop = function() end,
+				next = function() end,
+				previous = function() end,
+				seek = function() end,
+				set_position = function() end,
+			}
+		end
+
+		describe("subscribe", function()
+			it("returns an unsub function", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				local unsub = source:subscribe(function() end)
+				assert.is_function(unsub)
+			end)
+
+			it("delivers state updates to subscriber", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				local received
+				source:subscribe(function(s)
+					received = s
+				end)
+				reg.update("src:1", { title = "Track" })
+				assert.equals("Track", received.title)
+			end)
+
+			it("unsub stops delivery", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				local calls = 0
+				local unsub = source:subscribe(function()
+					calls = calls + 1
+				end)
+				reg.update("src:1", { title = "A" })
+				unsub()
+				reg.update("src:1", { title = "B" })
+				assert.equals(1, calls)
+			end)
+		end)
+
+		describe("on_removed", function()
+			it("fires callback with source_id on reg.remove", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				local received_id
+				source:on_removed(function(id)
+					received_id = id
+				end)
+				reg.remove("src:1")
+				assert.equals("src:1", received_id)
+			end)
+
+			it("does not fire again on a second remove (no-op)", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				local calls = 0
+				source:on_removed(function()
+					calls = calls + 1
+				end)
+				reg.remove("src:1")
+				reg.remove("src:1")
+				assert.equals(1, calls)
+			end)
+		end)
+
+		describe("active", function()
+			it("returns false for a source with empty state", function()
+				reg.add("src:1", "source", {})
+				local source = reg.sources()[1]
+				assert.is_false(source:active())
+			end)
+
+			it("returns true when title is set", function()
+				reg.add("src:1", "source", { title = "Song" })
+				local source = reg.sources()[1]
+				assert.is_true(source:active())
+			end)
+
+			it("returns true when status is playing (no title)", function()
+				reg.add("src:1", "source", { status = "playing" })
+				local source = reg.sources()[1]
+				assert.is_true(source:active())
+			end)
+		end)
+
+		describe("on_control", function()
+			it("fires with source state when a playback action dispatches", function()
+				reg.add("src:1", "source", { title = "T" }, {
+					playback = make_executor(),
+					flags = { can_control = true, can_play = true, can_pause = true },
+				})
+				local source = reg.sources()[1]
+				local received
+				source:on_control(function(s)
+					received = s
+				end)
+				source.playback:play()
+				assert.equals("T", received.title)
+			end)
+		end)
+	end)
 end)
