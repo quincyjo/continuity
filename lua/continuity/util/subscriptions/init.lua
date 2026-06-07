@@ -18,11 +18,11 @@ local function get_debounced_pool(subscriptions, debounce)
 	if subscriptions._debounced[debounce] then
 		return subscriptions._debounced[debounce]
 	end
-	local timer = Subscriptions.debounced(debounce, function()
+	local debounced = Subscriptions.debounced(debounce, function()
 		subscriptions._debounced[debounce] = nil
 	end)
-	subscriptions._debounced[debounce] = timer
-	return timer
+	subscriptions._debounced[debounce] = debounced
+	return debounced
 end
 
 Subscriptions.MT = {
