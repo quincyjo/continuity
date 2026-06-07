@@ -10,6 +10,9 @@
 ---@field get             fun(self: Observable<T>, id: string): T|nil
 ---@field group_by        fun(self: Observable<T>, group_by: fun(observed: T): `K`): Observable<Group<`K`, T>>
 ---@field unique          fun(self: Observable<T>, unique_by: fun(observed: T): `K`, strategy: nil|UniqueStrategy): Observable<T>
+---@field map             fun(self: Observable<T>, mapper: fun(observed: T): `S`): Observable<`S`>
+---@field flatmap         fun(self: Observable<T>, mapper: fun(observed: T): `S`[]): Observable<`S`>
+---@field filter          fun(self: Observable<T>, predicate: fun(observed: T): boolean): Observable<T>
 
 ---@generic S, T: Subscribable<S>, Removable
 ---@class ObservableInternal<T, S> : Observable<T>
