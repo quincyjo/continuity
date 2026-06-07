@@ -72,6 +72,87 @@ describe("Subscribable", function()
 		end)
 	end)
 
+	describe("map", function()
+		it("returns a new Subscribable", function()
+			local inst = Subscribable({})
+			local mapped = inst:map(function(s)
+				return s
+			end)
+			assert.not_equals(inst, mapped)
+			assert.is_function(mapped.subscribe)
+		end)
+
+		it("initial state is nil when source has no state", function()
+			local inst = Subscribable({})
+			local mapped = inst:map(function(s)
+				return s * 2
+			end)
+			assert.is_nil(mapped.state)
+		end)
+
+		it("initial state is mapped source state when source has state", function()
+			local inst = Subscribable({ state = 5 })
+			local mapped = inst:map(function(s)
+				return s * 2
+			end)
+			assert.equals(10, mapped.state)
+		end)
+
+		it("maps a falsy initial state correctly", function()
+			local inst = Subscribable({ state = false })
+			local mapped = inst:map(function(s)
+				return s == false and "was-false" or "other"
+			end)
+			assert.equals("was-false", mapped.state)
+		end)
+
+		it("initial state is false when map returns false", function()
+			local inst = Subscribable({ state = 1 })
+			local mapped = inst:map(function()
+				return false
+			end)
+			assert.equals(false, mapped.state)
+		end)
+
+		it("propagates mapped value to subscribers on source push", function()
+			local inst = Subscribable({})
+			local mapped = inst:map(function(s)
+				return s .. "!"
+			end)
+			local received
+			mapped:subscribe(function(s)
+				received = s
+			end)
+			inst:push("hello")
+			assert.equals("hello!", received)
+		end)
+
+		it("updates mapped state on source push", function()
+			local inst = Subscribable({})
+			local mapped = inst:map(function(s)
+				return s * 10
+			end)
+			inst:push(3)
+			assert.equals(30, mapped.state)
+		end)
+
+		it("chained maps compose correctly", function()
+			local inst = Subscribable({})
+			local received
+			inst:map(function(s)
+				return s + 1
+			end)
+				:map(function(s)
+					return s * 2
+				end)
+				:subscribe(function(s)
+					received = s
+				end)
+			inst:push(4)
+			assert.equals(10, received)
+		end)
+	end)
+
 	describe("init", function()
 		it("sets _subs to empty subscriptions", function()
 			local inst = {}

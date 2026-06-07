@@ -2,6 +2,7 @@
 ---@field subscribe      fun(self, cb: fun(state: T)): fun()
 ---@field weak_subscribe fun(self, cb: fun(state: T)): fun()
 ---@field state          T
+---@field map       fun(self, map: fun(state: T): `S`): Subscribable<`S`>
 
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
@@ -22,6 +23,37 @@ Subscribable.MT = {
 		push = function(self, state)
 			self.state = state
 			self._subs:fire(state)
+		end,
+		map = function(self, map)
+			local init_state
+			if self.state ~= nil then
+				init_state = map(self.state)
+			end
+			local mapped = Subscribable({
+				state = init_state,
+				-- We forward subscriptions rather than handling them ourselves.
+				-- There are two reasons for this:
+				-- 1. If the original Subscribable is destroyed, all
+				--    subscriptions will be removed rather than being preserved
+				--    in the mapped instance.
+				-- 2. This preserves the subscription behavior of the original
+				--    Subscribable; EG, maps of Monitors will playback on
+				--    subscribe to a mapped Monitor.
+				subscribe = function(_, cb)
+					return self:subscribe(function(state)
+						cb(map(state))
+					end)
+				end,
+				weak_subscribe = function(_, cb)
+					return self:weak_subscribe(function(state)
+						cb(map(state))
+					end)
+				end,
+			})
+			mapped._unsub = self:weak_subscribe(function(state)
+				mapped.state = map(state)
+			end)
+			return mapped
 		end,
 	},
 }
