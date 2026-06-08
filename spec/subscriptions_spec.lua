@@ -220,6 +220,111 @@ describe("Subscriptions", function()
 		end)
 	end)
 
+	describe("debounced opts", function()
+		local gears
+
+		before_each(function()
+			gears = require("gears")
+			gears._created = {}
+		end)
+
+		it("add with debounce returns an unsub function", function()
+			local subs = Subscriptions()
+			local unsub = subs:add(function() end, { debounce = 0.3 })
+			assert.is_function(unsub)
+		end)
+
+		it("fire does not call debounced cb immediately", function()
+			local subs = Subscriptions()
+			local called = false
+			subs:add(function()
+				called = true
+			end, { debounce = 0.3 })
+			subs:fire("x")
+			assert.is_false(called)
+		end)
+
+		it("fire calls timer:again", function()
+			local subs = Subscriptions()
+			subs:add(function() end, { debounce = 0.3 })
+			subs:fire("x")
+			assert.equals(1, gears._created[1].again_count)
+		end)
+
+		it("timer callback fires cb with the event args", function()
+			local subs = Subscriptions()
+			local received
+			subs:add(function(v)
+				received = v
+			end, { debounce = 0.3 })
+			subs:fire("hello")
+			gears._created[1]:fire()
+			assert.equals("hello", received)
+		end)
+
+		it("cb receives args from the last fire when timer fires once", function()
+			local subs = Subscriptions()
+			local received
+			subs:add(function(v)
+				received = v
+			end, { debounce = 0.3 })
+			subs:fire("first")
+			subs:fire("last")
+			gears._created[1]:fire()
+			assert.equals("last", received)
+		end)
+
+		it("two subs with the same debounce share one timer", function()
+			local subs = Subscriptions()
+			subs:add(function() end, { debounce = 0.3 })
+			subs:add(function() end, { debounce = 0.3 })
+			assert.equals(1, #gears._created)
+		end)
+
+		it("two subs with different debounce timeouts create separate timers", function()
+			local subs = Subscriptions()
+			subs:add(function() end, { debounce = 0.3 })
+			subs:add(function() end, { debounce = 0.5 })
+			assert.equals(2, #gears._created)
+		end)
+
+		it("unsub prevents cb from firing when timer fires", function()
+			local subs = Subscriptions()
+			local called = false
+			local unsub = subs:add(function()
+				called = true
+			end, { debounce = 0.3 })
+			unsub()
+			subs:fire("x")
+			gears._created[1]:fire()
+			assert.is_false(called)
+		end)
+
+		it("pool entry removed via when_empty; re-subscribe creates a new timer", function()
+			local subs = Subscriptions()
+			local unsub = subs:add(function() end, { debounce = 0.3 })
+			unsub()
+			subs:fire("x")
+			gears._created[1]:fire() -- triggers when_empty, removes pool entry
+			-- re-subscribe creates a fresh timer
+			subs:add(function() end, { debounce = 0.3 })
+			assert.equals(2, #gears._created)
+		end)
+
+		it("weak_add with debounce fires cb via timer while cb is alive", function()
+			local subs = Subscriptions()
+			local called = false
+			local cb = function()
+				called = true
+			end
+			subs:weak_add(cb, { debounce = 0.3 })
+			subs:fire("x")
+			gears._created[1]:fire()
+			assert.is_true(called)
+			cb = nil -- luacheck: ignore
+		end)
+	end)
+
 	describe("set semantics", function()
 		it("add with the same cb twice fires the callback once", function()
 			local subs = Subscriptions()

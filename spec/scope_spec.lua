@@ -409,4 +409,114 @@ describe("Scope", function()
 			assert.is_function(getmetatable(scope).__call)
 		end)
 	end)
+
+	describe("individual subscription handles", function()
+		describe("__call", function()
+			it("returns a callable handle", function()
+				local scope = Scope()
+				local src = make_subscribable()
+				local handle = scope(src:subscribe(function() end))
+				assert.is_function(handle)
+			end)
+
+			it("calling the handle cancels the subscription immediately", function()
+				local scope = Scope()
+				local src = make_subscribable()
+				local count = 0
+				local handle = scope(src:subscribe(function()
+					count = count + 1
+				end))
+				src:push("x")
+				handle()
+				src:push("y")
+				assert.equals(1, count)
+			end)
+
+			it("calling the handle deregisters from scope so dispose does not re-invoke unsub", function()
+				local scope = Scope()
+				local calls = 0
+				local unsub = function()
+					calls = calls + 1
+				end
+				local handle = scope(unsub)
+				handle()
+				assert.equals(1, calls)
+				scope:dispose()
+				assert.equals(1, calls)
+			end)
+		end)
+
+		describe("register", function()
+			it("returns a callable handle", function()
+				local scope = Scope()
+				local src = make_subscribable()
+				local handle = scope:register(src:subscribe(function() end))
+				assert.is_function(handle)
+			end)
+
+			it("calling the handle cancels the subscription immediately", function()
+				local scope = Scope()
+				local src = make_subscribable()
+				local count = 0
+				local handle = scope:register(src:subscribe(function()
+					count = count + 1
+				end))
+				src:push("x")
+				handle()
+				src:push("y")
+				assert.equals(1, count)
+			end)
+
+			it("calling the handle deregisters from scope so dispose does not re-invoke unsub", function()
+				local scope = Scope()
+				local calls = 0
+				local unsub = function()
+					calls = calls + 1
+				end
+				local handle = scope:register(unsub)
+				handle()
+				assert.equals(1, calls)
+				scope:dispose()
+				assert.equals(1, calls)
+			end)
+		end)
+
+		describe("connect_signal", function()
+			it("returns a callable handle", function()
+				local scope = Scope()
+				local src = make_signal_source()
+				local handle = scope:connect_signal(src, "my::event", function() end)
+				assert.is_function(handle)
+			end)
+
+			it("calling the handle disconnects the signal immediately", function()
+				local scope = Scope()
+				local src = make_signal_source()
+				local count = 0
+				local handle = scope:connect_signal(src, "my::event", function()
+					count = count + 1
+				end)
+				src:emit_signal("my::event")
+				handle()
+				src:emit_signal("my::event")
+				assert.equals(1, count)
+			end)
+
+			it("calling the handle deregisters from scope so dispose does not re-disconnect", function()
+				local scope = Scope()
+				local src = make_signal_source()
+				local disconnects = 0
+				local original_disconnect = src.disconnect_signal
+				src.disconnect_signal = function(self, signal, cb)
+					disconnects = disconnects + 1
+					original_disconnect(self, signal, cb)
+				end
+				local handle = scope:connect_signal(src, "my::event", function() end)
+				handle()
+				assert.equals(1, disconnects)
+				scope:dispose()
+				assert.equals(1, disconnects)
+			end)
+		end)
+	end)
 end)
