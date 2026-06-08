@@ -1,9 +1,9 @@
 ---@class Scope
----@field connect_signal      fun(self, source: table, signal: string, cb: fun(...))
----@field weak_connect_signal fun(self, source: table, signal: string, cb: fun(...))
+---@field register            fun(self, unsub: fun()): fun()
+---@field connect_signal      fun(self, source: table, signal: string, cb: fun(...)): fun()
+---@field weak_connect_signal fun(self, source: table, signal: string, cb: fun(...)): fun()
 ---@field dispose             fun(self)
-
--- Instances are callable: scope(unsub) registers any unsub function for cleanup on dispose.
+---@overload fun(unsub: fun()): fun()
 
 -- newproxy exists in LuaJIT (Lua 5.1 compat) but not in standard Lua 5.3.
 -- Lua 5.3 supports __gc on tables directly; LuaJIT requires a userdata proxy.
@@ -16,20 +16,37 @@ local Scope = {}
 
 Scope.MT = {
 	__call = function(self, unsub)
-		self._unsubs[unsub] = true
+		return self:register(unsub)
 	end,
 	__index = {
+		register = function(self, unsub)
+			self._unsubs[unsub] = true
+			return function()
+				self._unsubs[unsub] = nil
+				unsub()
+			end
+		end,
 		connect_signal = function(self, source, signal, cb)
 			source:connect_signal(signal, cb)
-			self._unsubs[function()
+			local unsub = function()
 				source:disconnect_signal(signal, cb)
-			end] = true
+			end
+			self._unsubs[unsub] = true
+			return function()
+				self._unsubs[unsub] = nil
+				unsub()
+			end
 		end,
 		weak_connect_signal = function(self, source, signal, cb)
 			source:weak_connect_signal(signal, cb)
-			self._unsubs[function()
+			local unsub = function()
 				source:disconnect_signal(signal, cb)
-			end] = true
+			end
+			self._unsubs[unsub] = true
+			return function()
+				self._unsubs[unsub] = nil
+				unsub()
+			end
 		end,
 		dispose = function(self)
 			for unsub in pairs(self._unsubs) do
@@ -48,8 +65,6 @@ function Scope.new()
 		_unsubs = {},
 	}, Scope.MT)
 	if use_gc_proxy then
-		-- LuaJIT path: attach __gc to a userdata proxy that holds inst strongly.
-		-- The cycle (inst → proxy → closure → inst) is handled by Lua's mark-and-sweep.
 		---@diagnostic disable-next-line: deprecated
 		local proxy = newproxy(true)
 		getmetatable(proxy).__gc = function()
