@@ -51,6 +51,42 @@ describe("Subscribable", function()
 		end)
 	end)
 
+	describe("debounce opts", function()
+		local gears
+
+		before_each(function()
+			gears = require("gears")
+			gears._created = {}
+		end)
+
+		it("fires debounced callback once with last pushed value", function()
+			local received = {}
+			local inst = Subscribable({})
+			inst:subscribe(function(s)
+				received[#received + 1] = s
+			end, { debounce = 0.05 })
+			inst:push("A")
+			inst:push("B")
+			inst:push("C")
+			assert.equals(0, #received)
+			gears._created[1]:fire()
+			assert.equals(1, #received)
+			assert.equals("C", received[1])
+		end)
+
+		it("unsub stops debounced callback from firing", function()
+			local count = 0
+			local inst = Subscribable({})
+			local unsub = inst:subscribe(function()
+				count = count + 1
+			end, { debounce = 0.05 })
+			inst:push("A")
+			unsub()
+			gears._created[1]:fire()
+			assert.equals(0, count)
+		end)
+	end)
+
 	describe("push", function()
 		it("sets self.state", function()
 			local inst = Subscribable({})

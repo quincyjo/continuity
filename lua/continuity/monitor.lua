@@ -28,17 +28,17 @@ local Monitor = {}
 local _base = extend(Subscribable)
 
 Monitor.MT = _base.MT
-Monitor.MT.__index.subscribe = function(self, cb)
+Monitor.MT.__index.subscribe = function(self, cb, opts)
 	if self.state ~= nil then
 		cb(self.state)
 	end
-	return self._subs:add(cb)
+	return self._subs:add(cb, opts)
 end
-Monitor.MT.__index.weak_subscribe = function(self, cb)
+Monitor.MT.__index.weak_subscribe = function(self, cb, opts)
 	if self.state ~= nil then
 		cb(self.state)
 	end
-	return self._subs:weak_add(cb)
+	return self._subs:weak_add(cb, opts)
 end
 
 Monitor.methods = Monitor.MT.__index
