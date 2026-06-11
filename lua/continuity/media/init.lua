@@ -1,6 +1,6 @@
 -- Media backend module.
--- Public API: setup(), on_source_added(), on_source_updated(), on_source_removed(), sources()
--- Call media.setup({...}) once in rc.lua. Subscribe from anywhere via on_source_*.
+-- Public API: setup(), sources (Observable<MediaSource>), play_pause(), stop(), next(), previous()
+-- Call media.setup({...}) once in rc.lua. Subscribe from anywhere via media.sources:on_added/updated/removed.
 
 local registry_mod = require("continuity.media.registry")
 local notification_mod = require("continuity.media.notification")
@@ -66,12 +66,10 @@ local notification_mod = require("continuity.media.notification")
 ---@field state         MediaState
 ---@field position?     Position
 ---@field playback?     Playback
----@field subscribe     fun(self: MediaSource, cb: fun(state: MediaState), opts: RegistrySubscribeOpts?): fun()
 ---@field active        fun(self: MediaSource): boolean
 
-local Observable = require("continuity.observable")
-
-local _registry = nil
+local _registrar
+local _setup_called = false
 local _notifications = nil
 
 ---@class continuity.media
@@ -79,69 +77,36 @@ local media = {}
 
 media.PlaybackAction = registry_mod.PlaybackAction
 
+--- Source lifecycle subscriptions and snapshot accessor.
+--- Valid at module load time — consumers can subscribe before setup() is called.
+---@type Registry
+media.sources, _registrar = registry_mod.new()
+
 --- Initialize the media module.
 ---@param opts MediaSetupOpts
 function media.setup(opts)
-	assert(not _registry, "media.setup() called more than once")
+	assert(not _setup_called, "media.setup() called more than once")
+	_setup_called = true
 	opts = opts or {}
-
-	_registry = registry_mod.new()
 
 	local notification_opts = opts.notifications
 	if notification_opts ~= false then
 		_notifications =
-			notification_mod.new(_registry, type(notification_opts) == "table" and notification_opts or nil)
+			notification_mod.new(media.sources, type(notification_opts) == "table" and notification_opts or nil)
 	end
 
 	local registrar
 	if opts.sources and #opts.sources > 0 then
 		local coalescer_mod = require("continuity.media.coalescer")
-		registrar = coalescer_mod.new(opts.sources).make_registrar(_registry.registrar())
+		registrar = coalescer_mod.new(opts.sources).make_registrar(_registrar)
 	else
-		registrar = _registry.registrar()
+		registrar = _registrar
 	end
 
 	for _, backend in ipairs(opts.backends or { require("continuity.media.backends.mpris")({}) }) do
 		backend:start(registrar)
 	end
 end
-
----@class MediaSources : Observable<MediaSource>
----@field on_updated fun(cb: fun(source: MediaSource), opts?: RegistrySubscribeOpts): fun()
-
---- Source lifecycle subscriptions and snapshot accessor.
---- on_updated debounce opts allow multi-backend coalescing to settle before firing.
----@type MediaSources
-media.sources = Observable({
-	on_added = function(_, cb)
-		assert(_registry, "media.sources:on_added() called before media.setup()")
-		return _registry.on_source_added(cb)
-	end,
-
-	on_updated = function(_, cb, opts)
-		assert(_registry, "media.sources:on_updated() called before media.setup()")
-		return _registry.on_source_updated(cb, opts)
-	end,
-
-	on_removed = function(_, cb)
-		assert(_registry, "media.sources:on_removed() called before media.setup()")
-		return _registry.on_source_removed(cb)
-	end,
-
-	all = function(_)
-		if not _registry then
-			return {}
-		end
-		return _registry.sources()
-	end,
-
-	get = function(_, id)
-		if not _registry then
-			return nil
-		end
-		return _registry.get(id)
-	end,
-})
 
 --- Toggle playback of the most recently registered media source.
 function media.play_pause()

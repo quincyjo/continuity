@@ -385,9 +385,9 @@ function notification.new(registry, setup_opts)
 		end
 	end
 
-	registry.on_source_added(n.on_source_updated)
-	registry.on_source_updated(n.on_source_updated)
-	registry.on_source_removed(n.on_source_removed)
+	registry:on_added(n.on_source_updated)
+	registry:on_updated(n.on_source_updated)
+	registry:on_removed(n.on_source_removed)
 	registry.on_playback_action(n.on_playback_action)
 
 	return n
