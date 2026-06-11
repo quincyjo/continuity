@@ -1,6 +1,6 @@
 ---@class Subscribable<T>
----@field subscribe      fun(self, cb: fun(state: T)): fun()
----@field weak_subscribe fun(self, cb: fun(state: T)): fun()
+---@field subscribe      fun(self, cb: fun(state: T), opts?: SubscriptionOpts): fun()
+---@field weak_subscribe fun(self, cb: fun(state: T), opts?: SubscriptionOpts): fun()
 ---@field state          T
 ---@field map       fun(self, map: fun(state: T): `S`): Subscribable<`S`>
 
@@ -14,11 +14,11 @@ local Subscribable = {}
 
 Subscribable.MT = {
 	__index = {
-		subscribe = function(self, cb)
-			return self._subs:add(cb)
+		subscribe = function(self, cb, opts)
+			return self._subs:add(cb, opts)
 		end,
-		weak_subscribe = function(self, cb)
-			return self._subs:weak_add(cb)
+		weak_subscribe = function(self, cb, opts)
+			return self._subs:weak_add(cb, opts)
 		end,
 		push = function(self, state)
 			self.state = state

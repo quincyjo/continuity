@@ -78,6 +78,42 @@ describe("Monitor", function()
 		assert.equals(1, #b)
 	end)
 
+	describe("debounce opts", function()
+		local gears
+
+		before_each(function()
+			gears = require("gears")
+			gears._created = {}
+		end)
+
+		it("replays current state immediately even with debounce opts", function()
+			local m = make()
+			m:push({ value = 1 })
+			local received = {}
+			m:subscribe(function(s)
+				received[#received + 1] = s
+			end, { debounce = 0.05 })
+			assert.equals(1, #received)
+			assert.equals(1, received[1].value)
+		end)
+
+		it("debounces subsequent pushes after replay", function()
+			local m = make()
+			m:push({ value = 1 })
+			local received = {}
+			m:subscribe(function(s)
+				received[#received + 1] = s
+			end, { debounce = 0.05 })
+			assert.equals(1, #received)
+			m:push({ value = 2 })
+			m:push({ value = 3 })
+			assert.equals(1, #received)
+			gears._created[1]:fire()
+			assert.equals(2, #received)
+			assert.equals(3, received[2].value)
+		end)
+	end)
+
 	describe("weak_subscribe", function()
 		it("replays current state immediately if state is set", function()
 			local m = make()
