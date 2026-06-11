@@ -1,3 +1,5 @@
+require("spec.support.awesome_mocks")
+
 local Controllable = require("continuity.controllable")
 
 local function make()
@@ -64,6 +66,42 @@ describe("Controllable", function()
 			fired = true
 		end)
 		assert.is_false(fired)
+	end)
+
+	describe("debounce opts", function()
+		local gears
+
+		before_each(function()
+			gears = require("gears")
+			gears._created = {}
+		end)
+
+		it("fires debounced callback once with last control event", function()
+			local received = {}
+			local m = make()
+			m:on_control(function(s)
+				received[#received + 1] = s
+			end, { debounce = 0.05 })
+			m:control_event({ value = 1 })
+			m:control_event({ value = 2 })
+			m:control_event({ value = 3 })
+			assert.equals(0, #received)
+			gears._created[1]:fire()
+			assert.equals(1, #received)
+			assert.equals(3, received[1].value)
+		end)
+
+		it("unsub stops debounced callback from firing", function()
+			local count = 0
+			local m = make()
+			local unsub = m:on_control(function()
+				count = count + 1
+			end, { debounce = 0.05 })
+			m:control_event({})
+			unsub()
+			gears._created[1]:fire()
+			assert.equals(0, count)
+		end)
 	end)
 
 	describe("weak_on_control", function()

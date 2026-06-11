@@ -11,10 +11,13 @@ current state and notifies registered callbacks whenever the state changes.
 
 | Method | Description |
 |---|---|
-| `subscribe(cb)` | Register a callback; returns an unsub function. |
-| `weak_subscribe(cb)` | Same as `subscribe`, but the callback is held weakly and may be collected. |
+| `subscribe(cb, opts?)` | Register a callback; returns an unsub function. |
+| `weak_subscribe(cb, opts?)` | Same as `subscribe`, but the callback is held weakly and may be collected. |
 | `state` | The current state value. Always non-nil on a plain `Subscribable`; only `Monitor` and `ReadyAware` may have a `nil` state. |
 | `map(fn)` | Return a new `Subscribable` whose state is `fn` applied to each update. |
+
+`opts.debounce` (seconds) coalesces rapid state changes: the callback fires once after the
+handle stops changing for the given duration.
 
 ```lua
 local handle = require("continuity.audio").Volume
@@ -63,8 +66,8 @@ initial value.
 |---|---|
 | `setup(opts?)` | Start the backend. Call once in `rc.lua`. |
 | `stop()` | Stop the backend and reset state. |
-| `subscribe(cb)` | Register a callback; replays current state immediately if available. |
-| `weak_subscribe(cb)` | Same as `subscribe` with a weak reference to the callback. |
+| `subscribe(cb, opts?)` | Register a callback; replays current state immediately if available. |
+| `weak_subscribe(cb, opts?)` | Same as `subscribe` with a weak reference to the callback. |
 | `state` | The most recent state pushed by the backend. `nil` before the first update: one of two `Subscribable` subclasses where `nil` state is possible. |
 
 ```lua
@@ -89,8 +92,8 @@ first state.
 | Method | Description |
 |---|---|
 | `on_ready(cb)` | Fires once when the handle becomes ready. If already ready, fires immediately. |
-| `subscribe(cb)` | Register a callback for subsequent state changes. Returns an unsub function. |
-| `weak_subscribe(cb)` | Same as `subscribe` with a weak reference to the callback. |
+| `subscribe(cb, opts?)` | Register a callback for subsequent state changes. Returns an unsub function. |
+| `weak_subscribe(cb, opts?)` | Same as `subscribe` with a weak reference to the callback. |
 | `state` | The current state. `nil` before the handle is ready: one of two `Subscribable` subclasses where `nil` state is possible. |
 
 ```lua
@@ -249,8 +252,12 @@ that should appear only when the user actively changes the volume can use
 
 | Method | Description |
 |---|---|
-| `on_control(cb)` | Register a callback fired after a control action on this handle. Returns an unsub function. |
-| `weak_on_control(cb)` | Same as `on_control` with a weak reference to the callback. |
+| `on_control(cb, opts?)` | Register a callback fired after a control action on this handle. Returns an unsub function. |
+| `weak_on_control(cb, opts?)` | Same as `on_control` with a weak reference to the callback. |
+
+`opts.debounce` (seconds) coalesces rapid control actions: the callback fires once after the
+given duration with no further actions. Useful for rate-limiting OSD redraws when controls
+are invoked in quick succession.
 
 ```lua
 local naughty = require("naughty")
