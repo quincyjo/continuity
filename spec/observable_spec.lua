@@ -249,6 +249,105 @@ describe("Observable", function()
 			end)
 		end)
 
+		describe("debounce opts", function()
+			local gears
+
+			before_each(function()
+				gears = require("gears")
+				gears._created = {}
+			end)
+
+			describe("on_updated", function()
+				it("coalesces rapid updates to the same item", function()
+					local received = {}
+					obs:add(make_item("a"))
+					obs:on_updated(function(h)
+						received[h.id] = h.state
+					end, { debounce = 0.05 })
+					obs:update("a", { v = 1 })
+					obs:update("a", { v = 2 })
+					obs:update("a", { v = 3 })
+					assert.is_nil(received["a"])
+					gears._created[1]:fire()
+					assert.equals(3, received["a"].v)
+				end)
+
+				it("debounces items independently", function()
+					local received = {}
+					obs:add(make_item("a"))
+					obs:add(make_item("b"))
+					obs:on_updated(function(h)
+						received[h.id] = (received[h.id] or 0) + 1
+					end, { debounce = 0.05 })
+					obs:update("a", { v = 1 })
+					obs:update("b", { v = 2 })
+					assert.is_nil(received["a"])
+					assert.is_nil(received["b"])
+					gears._created[1]:fire()
+					assert.equals(1, received["a"])
+					assert.is_nil(received["b"])
+					gears._created[2]:fire()
+					assert.equals(1, received["b"])
+				end)
+
+				it("remove before timer fires suppresses callback", function()
+					local count = 0
+					obs:add(make_item("a"))
+					obs:on_updated(function()
+						count = count + 1
+					end, { debounce = 0.05 })
+					obs:update("a", { v = 1 })
+					obs:remove("a")
+					gears._created[1]:fire()
+					assert.equals(0, count)
+				end)
+			end)
+
+			describe("on_added", function()
+				it("fires once after settle", function()
+					local count = 0
+					local received = {}
+					obs:on_added(function(item)
+						count = count + 1
+						received[item.id] = item
+					end, { debounce = 0.05 })
+					obs:add(make_item("a"))
+					assert.equals(0, count)
+					obs:update("a", { v = 1 })
+					gears._created[1]:fire()
+					assert.equals(1, count)
+					assert.equals(1, received["a"].state.v)
+				end)
+
+				it("debounces items independently", function()
+					local received = {}
+					obs:on_added(function(h)
+						received[h.id] = (received[h.id] or 0) + 1
+					end, { debounce = 0.05 })
+					obs:add(make_item("a"))
+					obs:add(make_item("b"))
+					assert.is_nil(received["a"])
+					assert.is_nil(received["b"])
+					gears._created[1]:fire()
+					assert.equals(1, received["a"])
+					assert.is_nil(received["b"])
+					gears._created[2]:fire()
+					assert.equals(1, received["b"])
+				end)
+
+				it("remove before timer fires suppresses callback", function()
+					local count = 0
+					obs:on_added(function()
+						count = count + 1
+					end, { debounce = 0.05 })
+					obs:add(make_item("a"))
+					obs:remove("a")
+					gears._created[1]:fire()
+					assert.equals(0, count)
+				end)
+			end)
+		end)
+
 		describe("on_added / on_updated / on_removed unsub", function()
 			it("on_added unsub stops callbacks", function()
 				local count = 0

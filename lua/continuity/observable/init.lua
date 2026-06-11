@@ -1,10 +1,10 @@
 ---@generic T: Subscribable, Removable
 ---@class Observable<T>
----@field on_added        fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field on_updated      fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field on_added        fun(self: Observable<T>, cb: fun(handle: T), opts?: SubscriptionOpts): fun()
+---@field on_updated      fun(self: Observable<T>, cb: fun(handle: T), opts?: SubscriptionOpts): fun()
 ---@field on_removed      fun(self: Observable<T>, cb: fun(id: string)): fun()
----@field weak_on_added   fun(self: Observable<T>, cb: fun(handle: T)): fun()
----@field weak_on_updated fun(self: Observable<T>, cb: fun(handle: T)): fun()
+---@field weak_on_added   fun(self: Observable<T>, cb: fun(handle: T), opts?: SubscriptionOpts): fun()
+---@field weak_on_updated fun(self: Observable<T>, cb: fun(handle: T), opts?: SubscriptionOpts): fun()
 ---@field weak_on_removed fun(self: Observable<T>, cb: fun(id: string)): fun()
 ---@field all             fun(self: Observable<T>): T[]
 ---@field get             fun(self: Observable<T>, id: string): T|nil
@@ -21,8 +21,52 @@
 ---@field update fun(self: Observable<T>, id: string, state: S): boolean
 ---@field remove fun(self: Observable<T>, id: string): T|nil
 
+local gears = require("gears")
 local Subscribable = require("continuity.subscribable")
 local Subscriptions = require("continuity.util.subscriptions")
+
+---@generic T
+---@param observable Observable<T>
+---@param id string
+---@param timers table<string, table<number, table>>
+---@param pools table<number, Subscriptions>
+---@param clears_self boolean
+local function schedule_debounced(observable, id, timers, pools, clears_self)
+	if not timers[id] then
+		timers[id] = {}
+	end
+	for d, pool in pairs(pools) do
+		if pool.is_empty then
+			pools[d] = nil
+			for _, item_timer in pairs(timers) do
+				if item_timer[d] then
+					item_timer[d]:stop()
+					item_timer[d] = nil
+				end
+			end
+		else
+			local t = timers[id][d]
+			if t then
+				t:again()
+			else
+				timers[id][d] = gears.timer({
+					timeout = d,
+					autostart = true,
+					single_shot = true,
+					callback = function()
+						if clears_self then
+							timers[id][d] = nil
+						end
+						local it = observable:get(id)
+						if it then
+							pool:fire(it)
+						end
+					end,
+				})
+			end
+		end
+	end
+end
 
 ---@class ObservableClass
 ---@generic T, S
@@ -38,11 +82,25 @@ Observable.UniqueStrategy = {
 
 Observable.MT = {
 	__index = {
-		on_added = function(self, cb)
+		on_added = function(self, cb, opts)
+			if opts and opts.debounce then
+				local d = opts.debounce
+				if not self._debounced_on_added[d] then
+					self._debounced_on_added[d] = Subscriptions()
+				end
+				return self._debounced_on_added[d]:add(cb)
+			end
 			return self._on_added_cbs:add(cb)
 		end,
 
-		on_updated = function(self, cb)
+		on_updated = function(self, cb, opts)
+			if opts and opts.debounce then
+				local d = opts.debounce
+				if not self._debounced_on_updated[d] then
+					self._debounced_on_updated[d] = Subscriptions()
+				end
+				return self._debounced_on_updated[d]:add(cb)
+			end
 			return self._on_updated_cbs:add(cb)
 		end,
 
@@ -50,11 +108,25 @@ Observable.MT = {
 			return self._on_removed_cbs:add(cb)
 		end,
 
-		weak_on_added = function(self, cb)
+		weak_on_added = function(self, cb, opts)
+			if opts and opts.debounce then
+				local d = opts.debounce
+				if not self._debounced_on_added[d] then
+					self._debounced_on_added[d] = Subscriptions()
+				end
+				return self._debounced_on_added[d]:weak_add(cb)
+			end
 			return self._on_added_cbs:weak_add(cb)
 		end,
 
-		weak_on_updated = function(self, cb)
+		weak_on_updated = function(self, cb, opts)
+			if opts and opts.debounce then
+				local d = opts.debounce
+				if not self._debounced_on_updated[d] then
+					self._debounced_on_updated[d] = Subscriptions()
+				end
+				return self._debounced_on_updated[d]:weak_add(cb)
+			end
 			return self._on_updated_cbs:weak_add(cb)
 		end,
 
@@ -68,6 +140,7 @@ Observable.MT = {
 			end
 			self.items[item.id] = item
 			self._on_added_cbs:fire(item)
+			schedule_debounced(self, item.id, self._debounced_timers_added, self._debounced_on_added, true)
 			return true
 		end,
 
@@ -78,6 +151,12 @@ Observable.MT = {
 			end
 			item:push(state)
 			self._on_updated_cbs:fire(item)
+			if self._debounced_timers_added[id] then
+				for _, t in pairs(self._debounced_timers_added[id]) do
+					t:again()
+				end
+			end
+			schedule_debounced(self, id, self._debounced_timers_updated, self._debounced_on_updated, false)
 			return true
 		end,
 
@@ -85,6 +164,18 @@ Observable.MT = {
 			local item = self.items[id]
 			if not item then
 				return nil
+			end
+			if self._debounced_timers_added[id] then
+				for _, t in pairs(self._debounced_timers_added[id]) do
+					t:stop()
+				end
+				self._debounced_timers_added[id] = nil
+			end
+			if self._debounced_timers_updated[id] then
+				for _, t in pairs(self._debounced_timers_updated[id]) do
+					t:stop()
+				end
+				self._debounced_timers_updated[id] = nil
 			end
 			item:remove_event(id)
 			Subscribable.init(item)
@@ -153,6 +244,10 @@ function Observable.init(inst)
 	inst._on_added_cbs = Subscriptions()
 	inst._on_updated_cbs = Subscriptions()
 	inst._on_removed_cbs = Subscriptions()
+	inst._debounced_on_added = {}
+	inst._debounced_on_updated = {}
+	inst._debounced_timers_added = {}
+	inst._debounced_timers_updated = {}
 	inst.items = {}
 	return inst
 end

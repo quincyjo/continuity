@@ -153,14 +153,18 @@ collection as well as when they are updated.
 
 | Method | Description |
 |---|---|
-| `on_added(cb)` | Register a callback fired when an item is added. Returns an unsub function. |
-| `on_updated(cb)` | Register a callback fired when an item is updated. Returns an unsub function. |
+| `on_added(cb, opts?)` | Register a callback fired when an item is added. Returns an unsub function. |
+| `on_updated(cb, opts?)` | Register a callback fired when an item is updated. Returns an unsub function. |
 | `on_removed(cb)` | Register a callback fired with the item's `id` when it is removed. Returns an unsub function. |
-| `weak_on_added(cb)` | Weak variant of `on_added`. |
-| `weak_on_updated(cb)` | Weak variant of `on_updated`. |
+| `weak_on_added(cb, opts?)` | Weak variant of `on_added`. |
+| `weak_on_updated(cb, opts?)` | Weak variant of `on_updated`. |
 | `weak_on_removed(cb)` | Weak variant of `on_removed`. |
 | `all()` | Return a snapshot array of all current items. |
 | `get(id)` | Return the item with the given `id`, or `nil`. |
+
+`on_added` and `on_updated` accept `opts.debounce` (seconds). Debounce is per-item: timers for
+different items are independent. For `on_added`, any update to the item before the window expires
+resets the timer — the callback fires only after the item stops changing.
 
 ```lua
 local audio = require("continuity.audio")

@@ -2,9 +2,11 @@
 ---@field debounce? number  seconds; nil or absent -> immediate (no debounce)
 
 ---@class Subscriptions<T> A collection of subscriptions to an event.
----@field add      fun(self, cb: T, opts?: SubscriptionOpts): fun() Registers a callback.
----@field weak_add fun(self, cb: T, opts?: SubscriptionOpts): fun() Registers callback weakly.
----@field fire     fun(self, ...) Fire an event, notifying all callbacks.
+---@field add       fun(self, cb: T, opts?: SubscriptionOpts): fun() Registers a callback.
+---@field weak_add  fun(self, cb: T, opts?: SubscriptionOpts): fun() Registers callback weakly.
+---@field fire      fun(self, ...) Fire an event, notifying all callbacks.
+---@field is_empty  boolean
+---@field non_empty boolean
 
 ---@class SubscriptionsClass
 ---@field debounced DebouncedSubscriptionsClass
@@ -25,42 +27,60 @@ local function get_debounced_pool(subscriptions, debounce)
 	return debounced
 end
 
+Subscriptions.methods = {
+	add = function(self, cb, opts)
+		if not opts or not opts.debounce then
+			self._strong[cb] = true
+			return function()
+				self._strong[cb] = nil
+			end
+		else
+			local debounced = get_debounced_pool(self, opts.debounce)
+			return debounced:add(cb)
+		end
+	end,
+	weak_add = function(self, cb, opts)
+		if not opts or not opts.debounce then
+			self._weak[cb] = true
+			return function()
+				self._weak[cb] = nil
+			end
+		else
+			local debounced = get_debounced_pool(self, opts.debounce)
+			return debounced:weak_add(cb)
+		end
+	end,
+	fire = function(self, ...)
+		for cb in pairs(self._strong) do
+			cb(...)
+		end
+		for cb in pairs(self._weak) do
+			cb(...)
+		end
+		for _, debounced in pairs(self._debounced) do
+			debounced:fire(...)
+		end
+	end,
+}
+
+Subscriptions.getters = {
+	is_empty = function(self)
+		return not next(self._strong) and not next(self._weak) and not next(self._debounced)
+	end,
+	non_empty = function(self)
+		return not not (next(self._strong) or next(self._weak) or next(self._debounced))
+	end,
+}
+
 Subscriptions.MT = {
-	__index = {
-		add = function(self, cb, opts)
-			if not opts or not opts.debounce then
-				self._strong[cb] = true
-				return function()
-					self._strong[cb] = nil
-				end
-			else
-				local debounced = get_debounced_pool(self, opts.debounce)
-				return debounced:add(cb)
-			end
-		end,
-		weak_add = function(self, cb, opts)
-			if not opts or not opts.debounce then
-				self._weak[cb] = true
-				return function()
-					self._weak[cb] = nil
-				end
-			else
-				local debounced = get_debounced_pool(self, opts.debounce)
-				return debounced:weak_add(cb)
-			end
-		end,
-		fire = function(self, ...)
-			for cb in pairs(self._strong) do
-				cb(...)
-			end
-			for cb in pairs(self._weak) do
-				cb(...)
-			end
-			for _, debounced in pairs(self._debounced) do
-				debounced:fire(...)
-			end
-		end,
-	},
+	__index = function(self, key)
+		if Subscriptions.methods[key] then
+			return Subscriptions.methods[key]
+		end
+		if Subscriptions.getters[key] then
+			return Subscriptions.getters[key](self)
+		end
+	end,
 }
 
 function Subscriptions.new()
