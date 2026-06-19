@@ -1,6 +1,6 @@
 require("spec.support.awesome_mocks")
 
-local Subscribable = require("continuity.subscribable")
+local Subscribable = require("continuity.class.subscribable")
 
 describe("Subscribable", function()
 	describe("subscribe", function()

@@ -1,9 +1,9 @@
 require("spec.support.awesome_mocks")
 
 local Scope = require("continuity.util.scope")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local Controllable = require("continuity.controllable")
+local Subscribable = require("continuity.class.subscribable")
+local Removable = require("continuity.class.removable")
+local Controllable = require("continuity.class.controllable")
 local Observable = require("continuity.observable")
 local support = require("spec.support.make_observable")
 local make_item = support.make_item

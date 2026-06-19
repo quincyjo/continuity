@@ -5,8 +5,8 @@
 local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
 local ReadyAware = require("continuity.readyaware")
-local Controllable = require("continuity.controllable")
-local extend = require("continuity.util.extend")
+local Controllable = require("continuity.class.controllable")
+local class = require("continuity.class")
 
 ---@alias AudioCallback fun(state: AudioState)
 
@@ -38,6 +38,7 @@ local extend = require("continuity.util.extend")
 ---@field state       AudioState
 ---@field set_default fun(self: AudioHandle)
 ---@field set_port    fun(self: AudioHandle, port: AudioPort|string)
+---@field unsubscribe fun(self: AudioHandle, cb: AudioCallback)
 
 ---@alias SinkHandle   AudioHandle
 ---@alias SourceHandle AudioHandle
@@ -86,33 +87,38 @@ local extend = require("continuity.util.extend")
 ---@class continuity.audio
 local Audio = {}
 
-local AudioProxyHandle = extend(ReadyAware, Controllable)
-
-AudioProxyHandle.MT.__index.adjust_perc = function(self, delta)
-	if self._bound_handle then
-		self._bound_handle:adjust_perc(delta)
-	end
-end
-AudioProxyHandle.MT.__index.set_perc = function(self, value)
-	if self._bound_handle then
-		self._bound_handle:set_perc(value)
-	end
-end
-AudioProxyHandle.MT.__index.toggle_mute = function(self)
-	if self._bound_handle then
-		self._bound_handle:toggle_mute()
-	end
-end
-AudioProxyHandle.MT.__index.set_default = function(self)
-	if self._bound_handle then
-		self._bound_handle:set_default()
-	end
-end
-AudioProxyHandle.MT.__index.set_port = function(self, port_name)
-	if self._bound_handle then
-		self._bound_handle:set_port(port_name)
-	end
-end
+local AudioProxyHandle = class
+	.new({
+		methods = {
+			adjust_perc = function(self, delta)
+				if self._bound_handle then
+					self._bound_handle:adjust_perc(delta)
+				end
+			end,
+			set_perc = function(self, value)
+				if self._bound_handle then
+					self._bound_handle:set_perc(value)
+				end
+			end,
+			toggle_mute = function(self)
+				if self._bound_handle then
+					self._bound_handle:toggle_mute()
+				end
+			end,
+			set_default = function(self)
+				if self._bound_handle then
+					self._bound_handle:set_default()
+				end
+			end,
+			set_port = function(self, port_name)
+				if self._bound_handle then
+					self._bound_handle:set_port(port_name)
+				end
+			end,
+		},
+	})
+	:with(ReadyAware)
+	:with(Controllable)()
 
 ---@type SinkHandle|ReadyAware<AudioState>
 Audio.Volume = AudioProxyHandle({

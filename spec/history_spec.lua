@@ -1,7 +1,7 @@
 -- spec/history_spec.lua
 -- No awesome_mocks needed — History has no WM API dependency.
 
-local Subscribable = require("continuity.subscribable")
+local Subscribable = require("continuity.class.subscribable")
 
 local function make_subscribable(initial_state)
 	return Subscribable({ state = initial_state })

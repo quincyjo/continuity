@@ -30,22 +30,27 @@
 ---@class InputCollection : Observable<SinkInputHandle>
 
 local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Controllable = require("continuity.controllable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
+local Subscribable = require("continuity.class.subscribable")
+local Controllable = require("continuity.class.controllable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
 local inputs = {}
 
 ---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
 function inputs.new()
-	local SinkInputHandle = extend(Subscribable, Controllable, Removable)
-	local HandleMT = SinkInputHandle.MT
-
-	HandleMT.__index.adjust_perc = function() end
-	HandleMT.__index.set_perc = function() end
-	HandleMT.__index.toggle_mute = function() end
-	HandleMT.__index.move_to = function() end
+	local SinkInputHandle = class
+		.new({
+			methods = {
+				adjust_perc = function() end,
+				set_perc = function() end,
+				toggle_mute = function() end,
+				move_to = function() end,
+			},
+		})
+		:with(Subscribable)
+		:with(Controllable)
+		:with(Removable)()
 
 	---@type ObservableInternal<SinkInputHandle, SinkInputState>
 	local observable = Observable()
@@ -101,7 +106,7 @@ function inputs.new()
 			handle:control_event(handle.state)
 		end
 
-		HandleMT.__index.adjust_perc = function(self, delta)
+		SinkInputHandle._methods.adjust_perc = function(self, delta)
 			---@cast self SinkInputHandle|ControllableInternal<SinkInputState>
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
@@ -117,20 +122,20 @@ function inputs.new()
 			end)
 		end
 
-		HandleMT.__index.set_perc = function(self, value)
+		SinkInputHandle._methods.set_perc = function(self, value)
 			value = math.max(0, math.min(100, math.floor(value + 0.5)))
 			api_sub.set_perc(self.id, value, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
-		HandleMT.__index.toggle_mute = function(self)
+		SinkInputHandle._methods.toggle_mute = function(self)
 			api_sub.toggle(self.id, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
-		HandleMT.__index.move_to = function(self, target)
+		SinkInputHandle._methods.move_to = function(self, target)
 			local sink_id = type(target) == "table" and target.id or target
 			api_sub.move(self.id, sink_id, function()
 				---@cast self SinkInputHandle|ControllableInternal<SinkInputState>

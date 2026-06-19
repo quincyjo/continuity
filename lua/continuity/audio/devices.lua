@@ -1,4 +1,4 @@
----@generic T
+---@generic T : AudioHandle
 ---@class DeviceCollection<T> : Observable<T>
 
 ---@class DeviceHandles
@@ -9,22 +9,27 @@
 local devices = {}
 
 local Observable = require("continuity.observable")
-local Controllable = require("continuity.controllable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
+local Controllable = require("continuity.class.controllable")
+local Subscribable = require("continuity.class.subscribable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
----@generic T
+---@generic T : AudioHandle
 ---@return DeviceCollection<T>, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
-	local AudioHandle = extend(Subscribable, Controllable, Removable)
-	local HandleMT = AudioHandle.MT
-
-	HandleMT.__index.adjust_perc = function() end
-	HandleMT.__index.set_perc = function() end
-	HandleMT.__index.toggle_mute = function() end
-	HandleMT.__index.set_default = function() end
-	HandleMT.__index.set_port = function() end
+	local AudioHandle = class
+		.new({
+			methods = {
+				adjust_perc = function() end,
+				set_perc = function() end,
+				toggle_mute = function() end,
+				set_default = function() end,
+				set_port = function() end,
+			},
+		})
+		:with(Subscribable)
+		:with(Controllable)
+		:with(Removable)()
 
 	---@type ObservableInternal<AudioHandle, AudioState>
 	local observable = Observable()
@@ -130,8 +135,7 @@ function devices.new()
 			handle:control_event(handle.state)
 		end
 
-		HandleMT.__index.adjust_perc = function(self, delta)
-			---@cast self AudioHandle|ControllableInternal<AudioState>
+		AudioHandle._methods.adjust_perc = function(self, delta)
 			if delta > 0 and delta + self.state.level > 100 then
 				delta = 100 - self.state.level
 			elseif delta < 0 and delta + self.state.level < 0 then
@@ -146,28 +150,26 @@ function devices.new()
 			end)
 		end
 
-		HandleMT.__index.set_perc = function(self, value)
+		AudioHandle._methods.set_perc = function(self, value)
 			value = math.max(0, math.min(100, math.floor(value + 0.5)))
 			api_sub.set_perc(self.id, value, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
-		HandleMT.__index.toggle_mute = function(self)
+		AudioHandle._methods.toggle_mute = function(self)
 			api_sub.toggle(self.id, function(level, muted)
 				update_level_muted(self, level, muted)
 			end)
 		end
 
-		HandleMT.__index.set_default = function(self)
-			---@cast self AudioHandle|ControllableInternal<AudioState>
+		AudioHandle._methods.set_default = function(self)
 			api_sub.set_default(self.id, function()
 				self:control_event(self.state)
 			end)
 		end
 
-		HandleMT.__index.set_port = function(self, port)
-			---@cast self AudioHandle|ControllableInternal<AudioState>
+		AudioHandle._methods.set_port = function(self, port)
 			local port_name = type(port) == "table" and port.name or port
 			api_sub.set_port(self.id, port_name, function()
 				self:control_event(self.state)

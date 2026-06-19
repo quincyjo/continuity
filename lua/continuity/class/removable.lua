@@ -5,13 +5,13 @@
 ---@class RemovableInternal : Removable
 ---@field remove_event fun(self, id: string) Fire all removed callbacks then reset subscription tables.
 
+local class = require("continuity.class")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<RemovableInternal>
-local Removable = {}
-
-Removable.MT = {
-	__index = {
+local Removable
+Removable = class.new({
+	methods = {
 		on_removed = function(self, cb)
 			return self._removed_cbs:add(cb)
 		end,
@@ -23,24 +23,8 @@ Removable.MT = {
 			Removable.init(self)
 		end,
 	},
-}
-
-Removable.methods = Removable.MT.__index
-
-function Removable.init(inst)
+})(function(inst)
 	inst._removed_cbs = Subscriptions()
-	return inst
-end
-
-function Removable.new(inst)
-	return setmetatable(Removable.init(inst or {}), Removable.MT)
-end
-
----@diagnostic disable-next-line: param-type-mismatch
-setmetatable(Removable, {
-	__call = function(self, inst)
-		return self.new(inst)
-	end,
-})
+end)
 
 return Removable

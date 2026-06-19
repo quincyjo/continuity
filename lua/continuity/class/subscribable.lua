@@ -7,13 +7,13 @@
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
 
+local class = require("continuity.class")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<SubscribableInternal>
-local Subscribable = {}
-
-Subscribable.MT = {
-	__index = {
+local Subscribable
+Subscribable = class.new({
+	methods = {
 		subscribe = function(self, cb, opts)
 			return self._subs:add(cb, opts)
 		end,
@@ -24,10 +24,10 @@ Subscribable.MT = {
 			self.state = state
 			self._subs:fire(state)
 		end,
-		map = function(self, map)
+		map = function(self, map_fn)
 			local init_state
 			if self.state ~= nil then
-				init_state = map(self.state)
+				init_state = map_fn(self.state)
 			end
 			local mapped = Subscribable({
 				state = init_state,
@@ -41,39 +41,23 @@ Subscribable.MT = {
 				--    subscribe to a mapped Monitor.
 				subscribe = function(_, cb)
 					return self:subscribe(function(state)
-						cb(map(state))
+						cb(map_fn(state))
 					end)
 				end,
 				weak_subscribe = function(_, cb)
 					return self:weak_subscribe(function(state)
-						cb(map(state))
+						cb(map_fn(state))
 					end)
 				end,
 			})
 			mapped._unsub = self:weak_subscribe(function(state)
-				mapped.state = map(state)
+				mapped.state = map_fn(state)
 			end)
 			return mapped
 		end,
 	},
-}
-
-Subscribable.methods = Subscribable.MT.__index
-
-function Subscribable.init(inst)
+})(function(inst)
 	inst._subs = Subscriptions()
-	return inst
-end
-
-function Subscribable.new(inst)
-	return setmetatable(Subscribable.init(inst), Subscribable.MT)
-end
-
----@diagnostic disable-next-line: param-type-mismatch
-setmetatable(Subscribable, {
-	__call = function(self, inst)
-		return self.new(inst)
-	end,
-})
+end)
 
 return Subscribable

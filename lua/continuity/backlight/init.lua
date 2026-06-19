@@ -47,11 +47,11 @@ local gears = require("gears")
 
 local Observable = require("continuity.observable")
 local ReadyAware = require("continuity.readyaware")
-local Controllable = require("continuity.controllable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
+local Controllable = require("continuity.class.controllable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
-local BacklightHandle = extend(ReadyAware, Controllable, Removable)
+local BacklightHandle = class.union(ReadyAware, Controllable, Removable)
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
@@ -71,9 +71,9 @@ local function _on_control(handle, brightness, raw)
 	handle:control_event(handle.state)
 end
 
-local HandleMeta = BacklightHandle.MT
+local BacklightHandleMethods = BacklightHandle._methods
 
-HandleMeta.__index.set_perc = function(self, value)
+BacklightHandleMethods.set_perc = function(self, value)
 	if not self.id or not _backend then
 		return
 	end
@@ -82,7 +82,7 @@ HandleMeta.__index.set_perc = function(self, value)
 	end)
 end
 
-HandleMeta.__index.adjust_perc = function(self, delta)
+BacklightHandleMethods.adjust_perc = function(self, delta)
 	if not self.id or not _backend then
 		return
 	end
@@ -91,7 +91,7 @@ HandleMeta.__index.adjust_perc = function(self, delta)
 	end)
 end
 
-HandleMeta.__index.set = function(self, step)
+BacklightHandleMethods.set = function(self, step)
 	if not self.id or not _backend or not _backend.set then
 		return
 	end
@@ -100,7 +100,7 @@ HandleMeta.__index.set = function(self, step)
 	end)
 end
 
-HandleMeta.__index.adjust = function(self, delta)
+BacklightHandleMethods.adjust = function(self, delta)
 	if not self.id or not _backend or not _backend.adjust then
 		return
 	end
@@ -111,14 +111,12 @@ end
 
 ---@return BacklightHandle
 local function make_handle(kind)
-	local handle = {
+	return BacklightHandle.new({
 		id = nil,
 		kind = kind,
 		state = { brightness = 0, raw = nil },
 		steps = nil,
-	}
-	BacklightHandle.init(handle)
-	return setmetatable(handle, HandleMeta)
+	})
 end
 
 ---@class continuity.backlight

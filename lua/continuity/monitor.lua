@@ -18,34 +18,29 @@
 
 local gears = require("gears")
 
-local extend = require("continuity.util.extend")
-local Subscribable = require("continuity.subscribable")
+local class = require("continuity.class")
+local Subscribable = require("continuity.class.subscribable")
 
----@class MonitorClass
----@overload fun(inst: table): Monitor
-local Monitor = {}
-
-local _base = extend(Subscribable)
-
-Monitor.MT = _base.MT
-Monitor.MT.__index.subscribe = function(self, cb, opts)
-	if self.state ~= nil then
-		cb(self.state)
-	end
-	return self._subs:add(cb, opts)
-end
-Monitor.MT.__index.weak_subscribe = function(self, cb, opts)
-	if self.state ~= nil then
-		cb(self.state)
-	end
-	return self._subs:weak_add(cb, opts)
-end
-
-Monitor.methods = Monitor.MT.__index
-
-function Monitor.init(inst)
-	inst = inst or {}
-	_base.init(inst)
+---@type CombinableClass<Monitor>
+local Monitor
+Monitor = class
+	.new({
+		methods = {
+			subscribe = function(self, cb, opts)
+				if self.state ~= nil then
+					cb(self.state)
+				end
+				return self._subs:add(cb, opts)
+			end,
+			weak_subscribe = function(self, cb, opts)
+				if self.state ~= nil then
+					cb(self.state)
+				end
+				return self._subs:weak_add(cb, opts)
+			end,
+		},
+	})
+	:extends(Subscribable)(function(inst)
 	inst.state = nil
 	inst._started = false
 	if not inst.setup then
@@ -79,14 +74,6 @@ function Monitor.init(inst)
 			end
 		end
 	end
-	return inst
-end
-
----@diagnostic disable-next-line: param-type-mismatch
-setmetatable(Monitor, {
-	__call = function(self, inst)
-		return setmetatable(self.init(inst), self.MT)
-	end,
-})
+end)
 
 return Monitor
