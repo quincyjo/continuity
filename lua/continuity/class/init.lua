@@ -2,6 +2,8 @@
 ---@field name  string
 ---@field init  fun(inst?: table): table
 ---@field new   fun(inst?: table): T
+---@field private _methods table<string, function>
+---@field private _getters table<string, function>
 
 ---@class Builder<T>
 ---@field extends fun(self: Builder<T>, base: CombinableClass): Builder<T>
@@ -25,6 +27,7 @@ local Class = setmetatable({}, {
 ---@param spec  { methods?: table<string, function>, getters?: table<string, function>, init?: fun(inst: table) }?
 ---@return CombinableClass
 local function finalize(chain, name, spec)
+	---@diagnostic disable: invisible
 	local own_methods = spec and spec.methods or {}
 	local own_getters = spec and spec.getters or {}
 	local own_init = spec and spec.init

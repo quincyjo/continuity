@@ -51,8 +51,6 @@ local Controllable = require("continuity.class.controllable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
-local BacklightHandle = class.union("BacklightHandle", ReadyAware, Controllable, Removable)
-
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
 local observable = Observable()
@@ -71,43 +69,42 @@ local function _on_control(handle, brightness, raw)
 	handle:control_event(handle.state)
 end
 
-local BacklightHandleMethods = BacklightHandle._methods
-
-BacklightHandleMethods.set_perc = function(self, value)
-	if not self.id or not _backend then
-		return
-	end
-	_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-BacklightHandleMethods.adjust_perc = function(self, delta)
-	if not self.id or not _backend then
-		return
-	end
-	_backend:adjust_perc(self.id, delta, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-BacklightHandleMethods.set = function(self, step)
-	if not self.id or not _backend or not _backend.set then
-		return
-	end
-	_backend:set(self.id, step, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-BacklightHandleMethods.adjust = function(self, delta)
-	if not self.id or not _backend or not _backend.adjust then
-		return
-	end
-	_backend:adjust(self.id, delta, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
+local BacklightHandle = class.new("BacklightHandle"):with(ReadyAware):with(Controllable):with(Removable)({
+	methods = {
+		set_perc = function(self, value)
+			if not self.id or not _backend then
+				return
+			end
+			_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		adjust_perc = function(self, delta)
+			if not self.id or not _backend then
+				return
+			end
+			_backend:adjust_perc(self.id, delta, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		set = function(self, step)
+			if not self.id or not _backend or not _backend.set then
+				return
+			end
+			_backend:set(self.id, step, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		adjust = function(self, delta)
+			if not self.id or not _backend or not _backend.adjust then
+				return
+			end
+			_backend:adjust(self.id, delta, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+	},
+})
 
 ---@return BacklightHandle
 local function make_handle(kind)
