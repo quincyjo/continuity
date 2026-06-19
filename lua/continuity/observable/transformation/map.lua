@@ -4,7 +4,7 @@ local Subscribable = require("continuity.class.subscribable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
-local Wrapped = class.union(Subscribable, Removable)
+local Wrapped = class.union("MapWrapper", Subscribable, Removable)
 
 local Map = {}
 

@@ -137,63 +137,16 @@ function Class.new(name)
 end
 
 --- Pure composition from existing classes. All args are treated as mixins (no conflicts allowed).
+---@param name string
 ---@param ... CombinableClass
 ---@return CombinableClass
-function Class.union(...)
+function Class.union(name, ...)
 	local args = { ... }
-	local methods = {}
-	local getters = {}
-	local inits = {}
-	local name_parts = {}
-	for i = #args, 1, -1 do
-		local cls = args[i]
-		for k, v in pairs(cls._methods) do
-			assert(methods[k] == nil, "class.union conflict: " .. tostring(k))
-			methods[k] = v
-		end
-		if cls._getters then
-			for k, v in pairs(cls._getters) do
-				assert(getters[k] == nil, "class.union getter conflict: " .. tostring(k))
-				getters[k] = v
-			end
-		end
-		inits[#inits + 1] = cls.init
-		name_parts[#name_parts + 1] = cls.name or "?"
+	local builder = Class.new(name)
+	for _, cls in ipairs(args) do
+		builder:with(cls)
 	end
-	local full_init
-	if #inits > 0 then
-		full_init = function(inst)
-			inst = inst or {}
-			for _, init_fn in ipairs(inits) do
-				init_fn(inst)
-			end
-			return inst
-		end
-	else
-		full_init = function(inst)
-			return inst or {}
-		end
-	end
-	local _MT = {
-		__index = function(inst, k)
-			return methods[k] or (getters[k] and getters[k](inst))
-		end,
-	}
-	local result = {
-		name = "Union(" .. table.concat(name_parts, ",") .. ")",
-		_methods = methods,
-		_getters = getters,
-		_MT = _MT,
-		init = full_init,
-	}
-	result.new = function(inst)
-		return setmetatable(result.init(inst), _MT)
-	end
-	return setmetatable(result, {
-		__call = function(_, inst)
-			return result.new(inst)
-		end,
-	})
+	return builder()
 end
 
 return Class

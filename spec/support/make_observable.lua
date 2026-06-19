@@ -3,7 +3,7 @@ local Subscribable = require("continuity.class.subscribable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
-local Item = class.union(Subscribable, Removable)
+local Item = class.union("Item", Subscribable, Removable)
 
 local function make_item(id, state)
 	return Item.new({ id = id, state = state })

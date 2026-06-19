@@ -6,7 +6,7 @@ local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
 -- Creates a minimal item compatible with the internal API (Subscribable + Removable).
-local Item = class.union(Subscribable, Removable)
+local Item = class.union("Item", Subscribable, Removable)
 local function make_item(id)
 	return Item.new({ id = id, state = nil })
 end

@@ -8,7 +8,7 @@ local Subscribable = require("continuity.class.subscribable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
-local Group = class.union(Subscribable, Removable)
+local Group = class.union("Group", Subscribable, Removable)
 
 local GroupBy = {}
 

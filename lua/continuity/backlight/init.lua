@@ -51,7 +51,7 @@ local Controllable = require("continuity.class.controllable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
-local BacklightHandle = class.union(ReadyAware, Controllable, Removable)
+local BacklightHandle = class.union("BacklightHandle", ReadyAware, Controllable, Removable)
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
