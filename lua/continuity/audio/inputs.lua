@@ -39,18 +39,14 @@ local inputs = {}
 
 ---@return InputCollection, fun(api_sub: SinkInputApi): InputHandles
 function inputs.new()
-	local SinkInputHandle = class
-		.new({
-			methods = {
-				adjust_perc = function() end,
-				set_perc = function() end,
-				toggle_mute = function() end,
-				move_to = function() end,
-			},
-		})
-		:with(Subscribable)
-		:with(Controllable)
-		:with(Removable)()
+	local SinkInputHandle = class.new("SinkInputHandle"):with(Subscribable):with(Controllable):with(Removable)({
+		methods = {
+			adjust_perc = function() end,
+			set_perc = function() end,
+			toggle_mute = function() end,
+			move_to = function() end,
+		},
+	})
 
 	---@type ObservableInternal<SinkInputHandle, SinkInputState>
 	local observable = Observable()

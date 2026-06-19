@@ -12,7 +12,7 @@ local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<SubscribableInternal>
 local Subscribable
-Subscribable = class.new({
+Subscribable = class.new("Subscribable")({
 	methods = {
 		subscribe = function(self, cb, opts)
 			return self._subs:add(cb, opts)
@@ -56,8 +56,9 @@ Subscribable = class.new({
 			return mapped
 		end,
 	},
-})(function(inst)
-	inst._subs = Subscriptions()
-end)
+	init = function(inst)
+		inst._subs = Subscriptions()
+	end,
+})
 
 return Subscribable

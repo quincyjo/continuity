@@ -8,12 +8,9 @@
 ---@field compat       continuity.compat
 ---@field media        continuity.media
 ---@field observable   ObservableClass
----@field monitor      MonitorClass
+---@field monitor      CombinableClass<Monitor>
 ---@field history      HistoryClass
 ---@field readyaware   CombinableClass<ReadyAware>
----@field controllable CombinableClass<Controllable>
----@field removable    CombinableClass<Removable>
----@field subscribable CombinableClass<Subscribable>
 local M = setmetatable({}, {
 	__index = function(self, k)
 		local mod = require("continuity." .. k)

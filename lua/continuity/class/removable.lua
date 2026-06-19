@@ -10,7 +10,7 @@ local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<RemovableInternal>
 local Removable
-Removable = class.new({
+Removable = class.new("Removable")({
 	methods = {
 		on_removed = function(self, cb)
 			return self._removed_cbs:add(cb)
@@ -23,8 +23,9 @@ Removable = class.new({
 			Removable.init(self)
 		end,
 	},
-})(function(inst)
-	inst._removed_cbs = Subscriptions()
-end)
+	init = function(inst)
+		inst._removed_cbs = Subscriptions()
+	end,
+})
 
 return Removable

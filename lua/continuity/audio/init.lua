@@ -87,38 +87,35 @@ local class = require("continuity.class")
 ---@class continuity.audio
 local Audio = {}
 
-local AudioProxyHandle = class
-	.new({
-		methods = {
-			adjust_perc = function(self, delta)
-				if self._bound_handle then
-					self._bound_handle:adjust_perc(delta)
-				end
-			end,
-			set_perc = function(self, value)
-				if self._bound_handle then
-					self._bound_handle:set_perc(value)
-				end
-			end,
-			toggle_mute = function(self)
-				if self._bound_handle then
-					self._bound_handle:toggle_mute()
-				end
-			end,
-			set_default = function(self)
-				if self._bound_handle then
-					self._bound_handle:set_default()
-				end
-			end,
-			set_port = function(self, port_name)
-				if self._bound_handle then
-					self._bound_handle:set_port(port_name)
-				end
-			end,
-		},
-	})
-	:with(ReadyAware)
-	:with(Controllable)()
+local AudioProxyHandle = class.new("AudioProxyHandle"):with(ReadyAware):with(Controllable)({
+	methods = {
+		adjust_perc = function(self, delta)
+			if self._bound_handle then
+				self._bound_handle:adjust_perc(delta)
+			end
+		end,
+		set_perc = function(self, value)
+			if self._bound_handle then
+				self._bound_handle:set_perc(value)
+			end
+		end,
+		toggle_mute = function(self)
+			if self._bound_handle then
+				self._bound_handle:toggle_mute()
+			end
+		end,
+		set_default = function(self)
+			if self._bound_handle then
+				self._bound_handle:set_default()
+			end
+		end,
+		set_port = function(self, port_name)
+			if self._bound_handle then
+				self._bound_handle:set_port(port_name)
+			end
+		end,
+	},
+})
 
 ---@type SinkHandle|ReadyAware<AudioState>
 Audio.Volume = AudioProxyHandle({

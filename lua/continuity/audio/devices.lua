@@ -17,19 +17,15 @@ local class = require("continuity.class")
 ---@generic T : AudioHandle
 ---@return DeviceCollection<T>, fun(api_sub: SinkApi|SourceApi): DeviceHandles
 function devices.new()
-	local AudioHandle = class
-		.new({
-			methods = {
-				adjust_perc = function() end,
-				set_perc = function() end,
-				toggle_mute = function() end,
-				set_default = function() end,
-				set_port = function() end,
-			},
-		})
-		:with(Subscribable)
-		:with(Controllable)
-		:with(Removable)()
+	local AudioHandle = class.new("AudioHandle"):with(Subscribable):with(Controllable):with(Removable)({
+		methods = {
+			adjust_perc = function() end,
+			set_perc = function() end,
+			toggle_mute = function() end,
+			set_default = function() end,
+			set_port = function() end,
+		},
+	})
 
 	---@type ObservableInternal<AudioHandle, AudioState>
 	local observable = Observable()

@@ -8,33 +8,32 @@ local class = require("continuity.class")
 local Subscribable = require("continuity.class.subscribable")
 
 ---@type CombinableClass<ReadyAwareInternal>
-local ReadyAware = class
-	.new({
-		methods = {
-			on_ready = function(self, cb)
-				if self._ready then
-					cb(self.state)
-				else
-					self._ready_cbs[#self._ready_cbs + 1] = cb
+local ReadyAware = class.new("ReadyAware"):extends(Subscribable)({
+	methods = {
+		on_ready = function(self, cb)
+			if self._ready then
+				cb(self.state)
+			else
+				self._ready_cbs[#self._ready_cbs + 1] = cb
+			end
+		end,
+		push = function(self, state)
+			self.state = state
+			if not self._ready then
+				self._ready = true
+				for _, cb in ipairs(self._ready_cbs) do
+					cb(state)
 				end
-			end,
-			push = function(self, state)
-				self.state = state
-				if not self._ready then
-					self._ready = true
-					for _, cb in ipairs(self._ready_cbs) do
-						cb(state)
-					end
-					self._ready_cbs = nil
-				else
-					self._subs:fire(state)
-				end
-			end,
-		},
-	})
-	:extends(Subscribable)(function(inst)
-	inst._ready = false
-	inst._ready_cbs = {}
-end)
+				self._ready_cbs = nil
+			else
+				self._subs:fire(state)
+			end
+		end,
+	},
+	init = function(inst)
+		inst._ready = false
+		inst._ready_cbs = {}
+	end,
+})
 
 return ReadyAware

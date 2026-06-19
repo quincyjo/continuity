@@ -54,17 +54,13 @@ local Removable = require("continuity.class.removable")
 local Controllable = require("continuity.class.controllable")
 local Observable = require("continuity.observable")
 
-local MediaSource = class
-	.new({
-		methods = {
-			active = function(self)
-				return self.state.title ~= nil or self.state.status == "playing"
-			end,
-		},
-	})
-	:with(Subscribable)
-	:with(Removable)
-	:with(Controllable)()
+local MediaSource = class.new("MediaSource"):with(Subscribable):with(Removable):with(Controllable)({
+	methods = {
+		active = function(self)
+			return self.state.title ~= nil or self.state.status == "playing"
+		end,
+	},
+})
 
 local registry = {}
 

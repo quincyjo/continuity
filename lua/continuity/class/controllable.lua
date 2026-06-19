@@ -9,7 +9,7 @@ local class = require("continuity.class")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<ControllableInternal>
-local Controllable = class.new({
+local Controllable = class.new("Controllable")({
 	methods = {
 		on_control = function(self, cb, opts)
 			return self._control_cbs:add(cb, opts)
@@ -21,8 +21,9 @@ local Controllable = class.new({
 			self._control_cbs:fire(state)
 		end,
 	},
-})(function(inst)
-	inst._control_cbs = Subscriptions()
-end)
+	init = function(inst)
+		inst._control_cbs = Subscriptions()
+	end,
+})
 
 return Controllable
