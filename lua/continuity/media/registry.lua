@@ -44,29 +44,15 @@
 ---@field start fun(self: Backend, reg: SourceRegistrar)
 ---@field stop  fun(self: Backend)
 
----@class Registry
----@field add                   fun(source_id: string, name: string, initial_state: MediaState, capabilities?: SourceCapabilities, app_name?: string, app_icon?: string)
----@field update                fun(source_id: string, partial_state: MediaState, flags?: PlaybackFlags)
----@field remove                fun(source_id: string)
----@field clear                 fun(source_id: string)
----@field add_dbus_sender       fun(source_id: string, unique_name: string)
----@field sources               fun(): MediaSource[]
----@field on_source_added       fun(cb: fun(source: MediaSource)): fun()
----@field on_source_updated     fun(cb: fun(source: MediaSource), opts: RegistrySubscribeOpts?): fun()
----@field on_source_removed     fun(cb: fun(source_id: string)): fun()
----@field on_playback_action    fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
----@field registrar             fun(): SourceRegistrar
----@field get                   fun(source_id: string): MediaSource|nil
----@field PlaybackAction        table<string, PlaybackAction>
+---@class Registry : Observable<MediaSource>
+---@field on_playback_action fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
+---@field PlaybackAction     table<string, PlaybackAction>
 
----@class RegistrySubscribeOpts
----@field debounce? number  seconds; nil or absent -> immediate (no debounce)
-
-local gears = require("gears")
 local extend = require("continuity.util.extend")
 local Subscribable = require("continuity.subscribable")
 local Removable = require("continuity.removable")
 local Controllable = require("continuity.controllable")
+local Observable = require("continuity.observable")
 
 local MediaSource = extend(Subscribable, Removable, Controllable)
 MediaSource.MT.__index.active = function(self)
@@ -89,44 +75,20 @@ registry.PlaybackAction = {
 	ToggleMute = "toggle_mute",
 }
 
---- Create a new registry instance.
----@return Registry
+--- Create a new registry Observable and registrar.
+---@return Registry, SourceRegistrar
 function registry.new()
-	---@class RegistryState
-	---@field sources                table<string, MediaSource>
-	---@field on_added_cbs           fun(source: MediaSource)[]
-	---@field on_updated_cbs         fun(source: MediaSource)[]
-	---@field on_removed_cbs         fun(source_id: string)[]
-	---@field debounced_updated_subs table[]
-	---@field position_cbs           table<string, fun(pos: number)[]>
-	---@field source_capapabilities  table<string, SourceCapabilities>
-	---@field position_stop_fns      table<string, fun()>
-	---@field debounced_source_cbs   table<string, table[]>
-	---@field on_playback_action_cbs fun(source: MediaSource, action: PlaybackAction)[]
 	local state = {
-		sources = {},
 		pre_mute_volumes = {}, -- source_id -> volume before muting
-		on_added_cbs = {},
-		on_updated_cbs = {},
-		on_removed_cbs = {},
-		debounced_updated_subs = {},
-		position_cbs = {},
+		position_cbs = {}, -- source_id -> fun(pos: number)[]
 		source_capapabilities = {}, -- source_id -> SourceCapabilities
 		position_stop_fns = {}, -- source_id -> stop_fn (from capabilities.position.subscribe)
-		debounced_source_cbs = {},
 		on_playback_action_cbs = {},
 	}
 
 	-- Fields whose change signals a track boundary; stale state is cleared on change.
 	---@type string[]
 	local BOUNDARY_FIELDS = { "track_id", "uri", "title", "artist" }
-
-	---@param cbs function[]
-	local function fire(cbs, ...)
-		for _, cb in ipairs(cbs) do
-			cb(...)
-		end
-	end
 
 	---@param partial_state MediaState
 	---@param flags PlaybackFlags?
@@ -157,6 +119,8 @@ function registry.new()
 		end
 	end
 
+	local r = Observable()
+
 	---@param source_id string
 	---@param executor PlaybackCapability
 	---@param flags PlaybackFlags
@@ -166,33 +130,37 @@ function registry.new()
 		---@param action PlaybackAction
 		---@param guard_passed boolean
 		local function dispatch(method, action, guard_passed, ...)
-			local src = state.sources[source_id]
+			local src = r.items[source_id]
 			if not guard_passed or not src then
 				return
 			end
 			executor[method](source_id, ...)
 			-- TODO: Maybe expose CB with ok and do this after the action?
-			fire(state.on_playback_action_cbs, src, action)
+			for _, cb in ipairs(state.on_playback_action_cbs) do
+				cb(src, action)
+			end
 			src:control_event(src.state)
 		end
 		local volume
 		if vol_executor and flags.can_set_volume then
 			volume = {
 				set_perc = function(_, value)
-					local src = state.sources[source_id]
+					local src = r.items[source_id]
 					if not src then
 						return
 					end
 					vol_executor.set_perc(source_id, value)
-					fire(state.on_playback_action_cbs, src, registry.PlaybackAction.SetVolume)
+					for _, cb in ipairs(state.on_playback_action_cbs) do
+						cb(src, registry.PlaybackAction.SetVolume)
+					end
 				end,
 				adjust_perc = function(self, delta)
-					local src = state.sources[source_id]
+					local src = r:get(source_id)
 					local current = (src and src.state.volume) or 0
 					self:set_perc(math.max(0, math.min(100, current + delta)))
 				end,
 				toggle_mute = function(_)
-					local src = state.sources[source_id]
+					local src = r:get(source_id)
 					local current = (src and src.state.volume) or 0
 					if current > 0 then
 						state.pre_mute_volumes[source_id] = current
@@ -200,7 +168,9 @@ function registry.new()
 					else
 						vol_executor.set_perc(source_id, state.pre_mute_volumes[source_id] or 100)
 					end
-					fire(state.on_playback_action_cbs, src, registry.PlaybackAction.ToggleMute)
+					for _, cb in ipairs(state.on_playback_action_cbs) do
+						cb(src, registry.PlaybackAction.ToggleMute)
+					end
 				end,
 			}
 		end
@@ -238,51 +208,18 @@ function registry.new()
 		}
 	end
 
-	local r = {}
-
 	---@param source_id string
 	---@param name string
 	---@param initial_state MediaState
 	---@param capabilities? SourceCapabilities
 	---@param app_name? string
-	function r.add(source_id, name, initial_state, capabilities, app_name, app_icon)
+	local function register_source(source_id, name, initial_state, capabilities, app_name, app_icon)
 		local source = MediaSource.new({
 			id = source_id,
 			name = name,
 			state = initial_state or {},
 			app_name = app_name,
 			app_icon = app_icon,
-			subscribe = function(self, cb, opts)
-				if opts and opts.debounce then
-					if not state.debounced_source_cbs[self.id] then
-						state.debounced_source_cbs[self.id] = {}
-					end
-					local sub = {
-						cb = cb,
-						timer = gears.timer({
-							timeout = opts.debounce,
-							single_shot = true,
-							callback = function()
-								cb(self.state)
-							end,
-						}),
-					}
-					local cbs = state.debounced_source_cbs[self.id]
-					cbs[#cbs + 1] = sub
-					return function()
-						local list = state.debounced_source_cbs[self.id] or {}
-						for i = #list, 1, -1 do
-							if list[i] == sub then
-								table.remove(list, i)
-								break
-							end
-						end
-						sub.timer:stop()
-					end
-				else
-					return Subscribable.methods.subscribe(self, cb)
-				end
-			end,
 		})
 
 		if capabilities then
@@ -300,7 +237,7 @@ function registry.new()
 					local c = state.source_capapabilities[source_id]
 					if c and c.position and c.position.subscribe then
 						local stop = c.position.subscribe(source_id, function(pos)
-							local src = state.sources[source_id]
+							local src = r:get(source_id)
 							if src then
 								src.state.position = pos
 								fire_position(source_id, pos)
@@ -347,25 +284,23 @@ function registry.new()
 			source.playback = nil
 		end
 
-		state.sources[source_id] = source
-		fire(state.on_added_cbs, source)
+		r:add(source)
 	end
 
 	---@param source_id string
 	---@param partial_state MediaState
 	---@param flags PlaybackFlags?
-	function r.update(source_id, partial_state, flags)
+	local function update_source(source_id, partial_state, flags)
 		-- TODO: Probably plumb full SourceCapabilities here also.
 		if next(partial_state) == nil and flags == nil then
 			return
 		end
-		local source = state.sources[source_id]
+		local source = r.items[source_id]
 		if not source then
 			return
 		end
 
 		-- Playback boundary detection: clear stale state when track identity changes.
-		-- local prev = state.last_boundary[source_id] or {}
 		for _, field in ipairs(BOUNDARY_FIELDS) do
 			if
 				partial_state[field] ~= nil
@@ -393,7 +328,7 @@ function registry.new()
 		end
 
 		-- Update playback flags; nil source.playback when can_control becomes false.
-		-- TODO: there is no recovery path for can_control false->true; r.add must be
+		-- TODO: there is no recovery path for can_control false->true; register_source must be
 		-- used to (re)construct source.playback with an executor reference.
 		if flags then
 			if flags.can_control == false then
@@ -427,46 +362,18 @@ function registry.new()
 			fire_position(source_id, partial_state.position)
 		end
 
-		-- Material change, update all subscribers.
+		-- Material change: Observable fires per-source _subs and collection on_updated callbacks.
 		if not pos_only then
-			source._subs:fire(source.state)
-			fire(state.on_updated_cbs, source)
-			for _, sub in ipairs(state.debounced_updated_subs) do
-				if sub.timers[source_id] then
-					sub.timers[source_id]:again()
-				else
-					sub.timers[source_id] = gears.timer({
-						timeout = sub.debounce,
-						single_shot = true,
-						autostart = true,
-						callback = function()
-							sub.timers[source_id] = nil
-							local src = state.sources[source_id]
-							if src then
-								sub.cb(src)
-							end
-						end,
-					})
-				end
-			end
-			for _, sub in pairs(state.debounced_source_cbs[source_id] or {}) do
-				sub.timer:again()
-			end
+			r:update(source_id, source.state)
 		end
 	end
 
 	---@param source_id string
-	function r.remove(source_id)
-		if not state.sources[source_id] then
+	local function remove_source(source_id)
+		if not r.items[source_id] then
 			return
 		end
-		for _, sub in ipairs(state.debounced_updated_subs) do
-			if sub.timers[source_id] then
-				sub.timers[source_id]:stop()
-				sub.timers[source_id] = nil
-			end
-		end
-		-- Stop position subscription before clearing state
+		-- Stop position subscription before Observable clears the item.
 		if state.position_cbs[source_id] and #state.position_cbs[source_id] > 0 then
 			local stop = state.position_stop_fns[source_id]
 			if stop then
@@ -477,32 +384,13 @@ function registry.new()
 		state.position_stop_fns[source_id] = nil
 		state.source_capapabilities[source_id] = nil
 		state.pre_mute_volumes[source_id] = nil
-		local source = state.sources[source_id]
-		state.sources[source_id] = nil
-		source:remove_event(source_id)
-		MediaSource.init(source)
-		fire(state.on_removed_cbs, source_id)
-	end
-
-	---@param source_id string
-	function r.clear(source_id)
-		local source = state.sources[source_id]
-		if not source then
-			return
-		end
-		local keys = {}
-		for k in pairs(source.state) do
-			keys[#keys + 1] = k
-		end
-		for _, k in ipairs(keys) do
-			source.state[k] = nil
-		end
+		r:remove(source_id)
 	end
 
 	---@param source_id string
 	---@param unique_name string
-	function r.add_dbus_sender(source_id, unique_name)
-		local source = state.sources[source_id]
+	local function add_dbus_sender_fn(source_id, unique_name)
+		local source = r.items[source_id]
 		if not source then
 			return
 		end
@@ -512,77 +400,7 @@ function registry.new()
 		source.dbus_senders[unique_name] = true
 	end
 
-	---@return MediaSource[]
-	function r.sources()
-		local list = {}
-		for _, source in pairs(state.sources) do
-			list[#list + 1] = source
-		end
-		return list
-	end
-
-	---@param cb fun(source: MediaSource)
-	---@return fun()
-	function r.on_source_added(cb)
-		state.on_added_cbs[#state.on_added_cbs + 1] = cb
-		return function()
-			for i = #state.on_added_cbs, 1, -1 do
-				if state.on_added_cbs[i] == cb then
-					table.remove(state.on_added_cbs, i)
-					break
-				end
-			end
-		end
-	end
-
-	---@param cb fun(source: MediaSource)
-	---@param opts RegistrySubscribeOpts|nil
-	---@return fun()
-	function r.on_source_updated(cb, opts)
-		if opts and opts.debounce then
-			local sub = {
-				cb = cb,
-				debounce = opts.debounce,
-				timers = {},
-			}
-			state.debounced_updated_subs[#state.debounced_updated_subs + 1] = sub
-			return function()
-				for i = #state.debounced_updated_subs, 1, -1 do
-					if state.debounced_updated_subs[i] == sub then
-						table.remove(state.debounced_updated_subs, i)
-						break
-					end
-				end
-				for _, t in pairs(sub.timers) do
-					t:stop()
-				end
-			end
-		else
-			state.on_updated_cbs[#state.on_updated_cbs + 1] = cb
-			return function()
-				for i = #state.on_updated_cbs, 1, -1 do
-					if state.on_updated_cbs[i] == cb then
-						table.remove(state.on_updated_cbs, i)
-						break
-					end
-				end
-			end
-		end
-	end
-
-	---@param cb fun(source_id: string)
-	---@return fun()
-	function r.on_source_removed(cb)
-		state.on_removed_cbs[#state.on_removed_cbs + 1] = cb
-		return function()
-			for i = #state.on_removed_cbs, 1, -1 do
-				if state.on_removed_cbs[i] == cb then
-					table.remove(state.on_removed_cbs, i)
-					break
-				end
-			end
-		end
-	end
+	r.PlaybackAction = registry.PlaybackAction
 
 	---@param cb fun(source: MediaSource, action: PlaybackAction)
 	---@return fun()
@@ -598,24 +416,13 @@ function registry.new()
 		end
 	end
 
-	--- Returns a SourceRegistrar view for use by backends and the coalescer.
-	---@return SourceRegistrar
-	function r.registrar()
-		return {
-			add = r.add,
-			update = r.update,
-			remove = r.remove,
-			add_dbus_sender = r.add_dbus_sender,
+	return r,
+		{
+			add = register_source,
+			update = update_source,
+			remove = remove_source,
+			add_dbus_sender = add_dbus_sender_fn,
 		}
-	end
-
-	---@param id string
-	---@return MediaSource|nil
-	function r.get(id)
-		return state.sources[id]
-	end
-
-	return r
 end
 
 return registry

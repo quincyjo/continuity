@@ -1523,7 +1523,7 @@ describe("refresh_player Can* propagation", function()
 	it("propagates CanGoNext=false and CanPlay=true onto source.playback via registry", function()
 		package.loaded["continuity.media.backends.mpris"] = nil
 		local registry_mod = require("continuity.media.registry")
-		local reg2 = registry_mod.new()
+		local reg2, reg2_registrar = registry_mod.new()
 		local awful = require("awful")
 		awful.spawn.easy_async = function(cmd, cb2)
 			if type(cmd) == "table" then
@@ -1553,8 +1553,8 @@ describe("refresh_player Can* propagation", function()
 			return {}
 		end
 		local b2 = require("continuity.media.backends.mpris")()
-		b2:start(reg2.registrar())
-		local sources = reg2.sources()
+		b2:start(reg2_registrar)
+		local sources = reg2:all()
 		assert.equals(1, #sources)
 		assert.is_false(sources[1].playback.can_go_next)
 		assert.is_false(sources[1].playback.can_go_previous)

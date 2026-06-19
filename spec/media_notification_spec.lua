@@ -66,13 +66,13 @@ local function make_mock_registry()
 		_removed_cbs = {},
 		_playback_cbs = {},
 	}
-	r.on_source_added = function(cb)
+	r.on_added = function(_, cb)
 		r._added_cbs[#r._added_cbs + 1] = cb
 	end
-	r.on_source_updated = function(cb)
+	r.on_updated = function(_, cb)
 		r._updated_cbs[#r._updated_cbs + 1] = cb
 	end
-	r.on_source_removed = function(cb)
+	r.on_removed = function(_, cb)
 		r._removed_cbs[#r._removed_cbs + 1] = cb
 	end
 	r.on_playback_action = function(cb)
