@@ -5,10 +5,15 @@
 ---@field private _methods table<string, function>
 ---@field private _getters table<string, function>
 
----@class Builder<T>
----@field extends fun(self: Builder<T>, base: CombinableClass): Builder<T>
----@field with    fun(self: Builder<T>, mixin: CombinableClass): Builder<T>
----@overload      fun(spec?: { methods?: table<string, function>, getters?: table<string, function>, init?: fun(inst: table) }): CombinableClass<T>
+---@class ClassSpec<T>
+---@field methods? table<string, fun(self: T, ...): any>
+---@field getters? table<string, fun(self: T, ...): any>
+---@field init?    fun(inst: table)
+
+---@class ClassBuilder
+---@field extends fun(self: ClassBuilder, base: CombinableClass): ClassBuilder
+---@field with    fun(self: ClassBuilder, mixin: CombinableClass): ClassBuilder
+---@overload      fun(spec?: ClassSpec<`T`>): CombinableClass<`T`>
 
 ---@class Class
 ---@field controllable CombinableClass<Controllable>
@@ -22,10 +27,11 @@ local Class = setmetatable({}, {
 	end,
 })
 
+---@generic T
 ---@param chain { op: string, cls: CombinableClass }[]
 ---@param name  string
----@param spec  { methods?: table<string, function>, getters?: table<string, function>, init?: fun(inst: table) }?
----@return CombinableClass
+---@param spec  ClassSpec<T>
+---@return CombinableClass<T>
 local function finalize(chain, name, spec)
 	---@diagnostic disable: invisible
 	local own_methods = spec and spec.methods or {}
@@ -131,7 +137,7 @@ local BuilderMT = {
 }
 
 ---@param name string
----@return Builder
+---@return ClassBuilder
 function Class.new(name)
 	return setmetatable({
 		name = name,

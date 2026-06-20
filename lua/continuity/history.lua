@@ -15,6 +15,11 @@ local class = require("continuity.class")
 local Subscribable = require("continuity.class.subscribable")
 
 local HistoryBase = class.new("History"):extends(Subscribable)({
+	init = function(inst)
+		inst._buf = inst._buf or {}
+		inst._head = inst._head or 1
+		inst._count = inst._count or 0
+	end,
 	methods = {
 		push = function(self, entry)
 			local tail = ((self._head - 1 + self._count) % self.capacity) + 1
@@ -65,11 +70,6 @@ local HistoryBase = class.new("History"):extends(Subscribable)({
 			end)
 		end,
 	},
-	init = function(inst)
-		inst._buf = inst._buf or {}
-		inst._head = inst._head or 1
-		inst._count = inst._count or 0
-	end,
 })
 
 ---@generic T

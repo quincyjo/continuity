@@ -2,7 +2,7 @@
 ---@field subscribe      fun(self, cb: fun(state: T), opts?: SubscriptionOpts): fun()
 ---@field weak_subscribe fun(self, cb: fun(state: T), opts?: SubscriptionOpts): fun()
 ---@field state          T
----@field map       fun(self, map: fun(state: T): `S`): Subscribable<`S`>
+---@field map            fun(self, map: fun(state: T): `S`): Subscribable<`S`>
 
 ---@class SubscribableInternal<T> : Subscribable<T>
 ---@field push fun(self, state: T)
@@ -13,6 +13,9 @@ local Subscriptions = require("continuity.util.subscriptions")
 ---@type CombinableClass<SubscribableInternal>
 local Subscribable
 Subscribable = class.new("Subscribable")({
+	init = function(inst)
+		inst._subs = Subscriptions()
+	end,
 	methods = {
 		subscribe = function(self, cb, opts)
 			return self._subs:add(cb, opts)
@@ -56,9 +59,6 @@ Subscribable = class.new("Subscribable")({
 			return mapped
 		end,
 	},
-	init = function(inst)
-		inst._subs = Subscriptions()
-	end,
 })
 
 return Subscribable

@@ -24,23 +24,10 @@ local Subscribable = require("continuity.class.subscribable")
 ---@type CombinableClass<Monitor>
 local Monitor
 Monitor = class.new("Monitor"):extends(Subscribable)({
-	methods = {
-		subscribe = function(self, cb, opts)
-			if self.state ~= nil then
-				cb(self.state)
-			end
-			return self._subs:add(cb, opts)
-		end,
-		weak_subscribe = function(self, cb, opts)
-			if self.state ~= nil then
-				cb(self.state)
-			end
-			return self._subs:weak_add(cb, opts)
-		end,
-	},
 	init = function(inst)
 		inst.state = nil
 		inst._started = false
+		-- We inject onto the monitor to maintain the dot notation from the singleton definition.
 		if not inst.setup then
 			inst.setup = function(opts)
 				if inst._started then
@@ -73,6 +60,20 @@ Monitor = class.new("Monitor"):extends(Subscribable)({
 			end
 		end
 	end,
+	methods = {
+		subscribe = function(self, cb, opts)
+			if self.state ~= nil then
+				cb(self.state)
+			end
+			return self._subs:add(cb, opts)
+		end,
+		weak_subscribe = function(self, cb, opts)
+			if self.state ~= nil then
+				cb(self.state)
+			end
+			return self._subs:weak_add(cb, opts)
+		end,
+	},
 })
 
 return Monitor

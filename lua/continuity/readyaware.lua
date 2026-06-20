@@ -9,6 +9,10 @@ local Subscribable = require("continuity.class.subscribable")
 
 ---@type CombinableClass<ReadyAwareInternal>
 local ReadyAware = class.new("ReadyAware"):extends(Subscribable)({
+	init = function(inst)
+		inst._ready = false
+		inst._ready_cbs = {}
+	end,
 	methods = {
 		on_ready = function(self, cb)
 			if self._ready then
@@ -30,10 +34,6 @@ local ReadyAware = class.new("ReadyAware"):extends(Subscribable)({
 			end
 		end,
 	},
-	init = function(inst)
-		inst._ready = false
-		inst._ready_cbs = {}
-	end,
 })
 
 return ReadyAware
