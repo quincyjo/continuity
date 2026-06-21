@@ -4,7 +4,7 @@
 
 local inputs_mod = require("continuity.audio.inputs")
 local devices_mod = require("continuity.audio.devices")
-local ReadyAware = require("continuity.readyaware")
+local ReadyAware = require("continuity.class.readyaware")
 local Controllable = require("continuity.class.controllable")
 local class = require("continuity.class")
 

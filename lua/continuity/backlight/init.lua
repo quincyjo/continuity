@@ -46,7 +46,7 @@ local gears = require("gears")
 ---@class BacklightDevices : Observable<BacklightHandle>
 
 local Observable = require("continuity.observable")
-local ReadyAware = require("continuity.readyaware")
+local ReadyAware = require("lua.continuity.class.readyaware")
 local Controllable = require("continuity.class.controllable")
 local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
