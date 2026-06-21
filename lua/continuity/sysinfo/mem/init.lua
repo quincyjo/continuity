@@ -1,4 +1,4 @@
-local Monitor = require("continuity.monitor")
+local Monitor = require("lua.continuity.class.monitor")
 
 ---@class MemState
 ---@field total      integer  Mebibytes total

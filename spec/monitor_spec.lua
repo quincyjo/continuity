@@ -1,5 +1,5 @@
 require("spec.support.awesome_mocks")
-local Monitor = require("continuity.monitor")
+local Monitor = require("continuity.class.monitor")
 
 local function make()
 	return Monitor({})

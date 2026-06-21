@@ -1,4 +1,4 @@
-local Monitor = require("continuity.monitor")
+local Monitor = require("continuity.class.monitor")
 
 ---@class TempSensor
 ---@field label  string   Sensor label (temp*_label from hwmon, or zone type from thermal)
