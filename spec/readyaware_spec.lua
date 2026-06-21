@@ -1,4 +1,4 @@
-local ReadyAware = require("lua.continuity.class.readyaware")
+local ReadyAware = require("continuity.class.readyaware")
 
 local function make()
 	return ReadyAware({})

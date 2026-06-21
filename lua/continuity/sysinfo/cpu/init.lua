@@ -1,4 +1,4 @@
-local Monitor = require("lua.continuity.class.monitor")
+local Monitor = require("continuity.class.monitor")
 
 ---@class CpuCoreState
 ---@field usage   number  Percentage (0-100)

@@ -1,4 +1,4 @@
-local Monitor = require("lua.continuity.class.monitor")
+local Monitor = require("continuity.class.monitor")
 
 ---@class NetDeviceState
 ---@field state    DeviceState "up" or "down"
