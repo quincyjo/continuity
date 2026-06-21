@@ -17,6 +17,8 @@
 
 ---@class Class
 ---@field controllable CombinableClass<Controllable>
+---@field monitor      CombinableClass<Monitor>
+---@field readyaware   CombinableClass<ReadyAware>
 ---@field removable    CombinableClass<Removable>
 ---@field subscribable CombinableClass<Subscribable>
 local Class = setmetatable({}, {
