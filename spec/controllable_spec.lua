@@ -1,6 +1,6 @@
 require("spec.support.awesome_mocks")
 
-local Controllable = require("continuity.controllable")
+local Controllable = require("continuity.class.controllable")
 
 local function make()
 	return Controllable({})

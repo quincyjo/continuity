@@ -1,10 +1,10 @@
 local Transformation = require("continuity.observable.transformation")
 local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
+local Subscribable = require("continuity.class.subscribable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
-local Wrapped = extend(Subscribable, Removable)
+local Wrapped = class.union("MapWrapper", Subscribable, Removable)
 
 local Map = {}
 

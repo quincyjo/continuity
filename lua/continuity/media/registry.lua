@@ -48,17 +48,19 @@
 ---@field on_playback_action fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
 ---@field PlaybackAction     table<string, PlaybackAction>
 
-local extend = require("continuity.util.extend")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local Controllable = require("continuity.controllable")
+local class = require("continuity.class")
+local Subscribable = require("continuity.class.subscribable")
+local Removable = require("continuity.class.removable")
+local Controllable = require("continuity.class.controllable")
 local Observable = require("continuity.observable")
 
-local MediaSource = extend(Subscribable, Removable, Controllable)
-MediaSource.MT.__index.active = function(self)
-	return self.state.title ~= nil or self.state.status == "playing"
-end
-MediaSource.methods.active = MediaSource.MT.__index.active
+local MediaSource = class.new("MediaSource"):with(Subscribable):with(Removable):with(Controllable)({
+	methods = {
+		active = function(self)
+			return self.state.title ~= nil or self.state.status == "playing"
+		end,
+	},
+})
 
 local registry = {}
 
@@ -119,7 +121,22 @@ function registry.new()
 		end
 	end
 
-	local r = Observable()
+	local r = Observable({
+		PlaybackAction = registry.PlaybackAction,
+		---@param cb fun(source: MediaSource, action: PlaybackAction)
+		---@return fun()
+		on_playback_action = function(cb)
+			state.on_playback_action_cbs[#state.on_playback_action_cbs + 1] = cb
+			return function()
+				for i = #state.on_playback_action_cbs, 1, -1 do
+					if state.on_playback_action_cbs[i] == cb then
+						table.remove(state.on_playback_action_cbs, i)
+						break
+					end
+				end
+			end
+		end,
+	})
 
 	---@param source_id string
 	---@param executor PlaybackCapability
@@ -398,22 +415,6 @@ function registry.new()
 			source.dbus_senders = {}
 		end
 		source.dbus_senders[unique_name] = true
-	end
-
-	r.PlaybackAction = registry.PlaybackAction
-
-	---@param cb fun(source: MediaSource, action: PlaybackAction)
-	---@return fun()
-	function r.on_playback_action(cb)
-		state.on_playback_action_cbs[#state.on_playback_action_cbs + 1] = cb
-		return function()
-			for i = #state.on_playback_action_cbs, 1, -1 do
-				if state.on_playback_action_cbs[i] == cb then
-					table.remove(state.on_playback_action_cbs, i)
-					break
-				end
-			end
-		end
 	end
 
 	return r,

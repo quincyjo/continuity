@@ -5,13 +5,15 @@
 ---@class ControllableInternal<T> : Controllable<T>
 ---@field control_event fun(self, state: T)
 
+local class = require("continuity.class")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@type CombinableClass<ControllableInternal>
-local Controllable = {}
-
-Controllable.MT = {
-	__index = {
+local Controllable = class.new("Controllable")({
+	init = function(inst)
+		inst._control_cbs = Subscriptions()
+	end,
+	methods = {
 		on_control = function(self, cb, opts)
 			return self._control_cbs:add(cb, opts)
 		end,
@@ -22,24 +24,6 @@ Controllable.MT = {
 			self._control_cbs:fire(state)
 		end,
 	},
-}
-
-Controllable.methods = Controllable.MT.__index
-
-function Controllable.init(inst)
-	inst._control_cbs = Subscriptions()
-	return inst
-end
-
-function Controllable.new(inst)
-	return setmetatable(Controllable.init(inst), Controllable.MT)
-end
-
----@diagnostic disable-next-line: param-type-mismatch
-setmetatable(Controllable, {
-	__call = function(self, inst)
-		return self.new(inst)
-	end,
 })
 
 return Controllable

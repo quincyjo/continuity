@@ -1,4 +1,4 @@
-local ReadyAware = require("continuity.readyaware")
+local ReadyAware = require("continuity.class.readyaware")
 
 local function make()
 	return ReadyAware({})

@@ -1,4 +1,4 @@
-local Monitor = require("continuity.monitor")
+local Monitor = require("continuity.class.monitor")
 
 ---@class BatteryState
 ---@field name         string         e.g. "BAT0"

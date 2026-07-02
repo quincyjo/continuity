@@ -4,11 +4,15 @@
 ---@class ReadyAwareInternal<T> : ReadyAware<T>
 ---@field push fun(self, state: T)
 
-local extend = require("continuity.util.extend")
-local Subscribable = require("continuity.subscribable")
+local class = require("continuity.class")
+local Subscribable = require("continuity.class.subscribable")
 
 ---@type CombinableClass<ReadyAwareInternal>
-local ReadyAware = extend.override(Subscribable, {
+local ReadyAware = class.new("ReadyAware"):extends(Subscribable)({
+	init = function(inst)
+		inst._ready = false
+		inst._ready_cbs = {}
+	end,
 	methods = {
 		on_ready = function(self, cb)
 			if self._ready then
@@ -30,12 +34,6 @@ local ReadyAware = extend.override(Subscribable, {
 			end
 		end,
 	},
-	init = function(inst)
-		inst = inst or {}
-		inst._ready = false
-		inst._ready_cbs = {}
-		return inst
-	end,
 })
 
 return ReadyAware

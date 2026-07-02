@@ -46,12 +46,10 @@ local gears = require("gears")
 ---@class BacklightDevices : Observable<BacklightHandle>
 
 local Observable = require("continuity.observable")
-local ReadyAware = require("continuity.readyaware")
-local Controllable = require("continuity.controllable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
-
-local BacklightHandle = extend(ReadyAware, Controllable, Removable)
+local ReadyAware = require("continuity.class.readyaware")
+local Controllable = require("continuity.class.controllable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
 local _backend = nil ---@type BacklightBackend|nil
 local _setup_called = false
@@ -71,54 +69,51 @@ local function _on_control(handle, brightness, raw)
 	handle:control_event(handle.state)
 end
 
-local HandleMeta = BacklightHandle.MT
-
-HandleMeta.__index.set_perc = function(self, value)
-	if not self.id or not _backend then
-		return
-	end
-	_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-HandleMeta.__index.adjust_perc = function(self, delta)
-	if not self.id or not _backend then
-		return
-	end
-	_backend:adjust_perc(self.id, delta, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-HandleMeta.__index.set = function(self, step)
-	if not self.id or not _backend or not _backend.set then
-		return
-	end
-	_backend:set(self.id, step, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
-
-HandleMeta.__index.adjust = function(self, delta)
-	if not self.id or not _backend or not _backend.adjust then
-		return
-	end
-	_backend:adjust(self.id, delta, function(brightness, raw)
-		_on_control(self, brightness, raw)
-	end)
-end
+local BacklightHandle = class.new("BacklightHandle"):with(ReadyAware):with(Controllable):with(Removable)({
+	methods = {
+		set_perc = function(self, value)
+			if not self.id or not _backend then
+				return
+			end
+			_backend:set_perc(self.id, math.max(0, math.min(100, value)), function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		adjust_perc = function(self, delta)
+			if not self.id or not _backend then
+				return
+			end
+			_backend:adjust_perc(self.id, delta, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		set = function(self, step)
+			if not self.id or not _backend or not _backend.set then
+				return
+			end
+			_backend:set(self.id, step, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+		adjust = function(self, delta)
+			if not self.id or not _backend or not _backend.adjust then
+				return
+			end
+			_backend:adjust(self.id, delta, function(brightness, raw)
+				_on_control(self, brightness, raw)
+			end)
+		end,
+	},
+})
 
 ---@return BacklightHandle
 local function make_handle(kind)
-	local handle = {
+	return BacklightHandle.new({
 		id = nil,
 		kind = kind,
 		state = { brightness = 0, raw = nil },
 		steps = nil,
-	}
-	BacklightHandle.init(handle)
-	return setmetatable(handle, HandleMeta)
+	})
 end
 
 ---@class continuity.backlight

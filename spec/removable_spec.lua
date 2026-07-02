@@ -1,6 +1,6 @@
 require("spec.support.awesome_mocks")
 
-local Removable = require("continuity.removable")
+local Removable = require("continuity.class.removable")
 
 describe("Removable", function()
 	describe("on_removed", function()

@@ -1,14 +1,14 @@
 require("spec.support.awesome_mocks")
 
 local Observable = require("continuity.observable")
-local Subscribable = require("continuity.subscribable")
-local Removable = require("continuity.removable")
-local extend = require("continuity.util.extend")
+local Subscribable = require("continuity.class.subscribable")
+local Removable = require("continuity.class.removable")
+local class = require("continuity.class")
 
 -- Creates a minimal item compatible with the internal API (Subscribable + Removable).
-local Item = extend(Subscribable, Removable)
+local Item = class.union("Item", Subscribable, Removable)
 local function make_item(id)
-	return setmetatable(Item.init({ id = id, state = nil }), Item.MT)
+	return Item.new({ id = id, state = nil })
 end
 
 describe("Observable", function()

@@ -22,7 +22,7 @@
 ---@field remove fun(self: Observable<T>, id: string): T|nil
 
 local gears = require("gears")
-local Subscribable = require("continuity.subscribable")
+local Subscribable = require("continuity.class.subscribable")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@generic T
