@@ -344,6 +344,9 @@ function _private.parse_dbus_output(stdout)
 		local meta_content = extract_balanced(stdout, meta_start)
 		if meta_content then
 			parse_block(meta_content, props)
+			if not props["mpris:trackid"] then
+				props["mpris:trackid"] = ""
+			end
 		end
 	end
 

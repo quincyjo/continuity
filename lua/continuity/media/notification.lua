@@ -182,8 +182,19 @@ function notification.new(registry, setup_opts)
 	end
 
 	-- TODO: Make playback boundary first class.
+	-- track_id is authoritative when present; the "id:" prefix guarantees a
+	-- source gaining or losing a track_id always compares as a different
+	-- identity, matching registry.lua's boundary detection. "" is a backend's
+	-- absent-track_id sentinel, not a real identity, so it falls back to
+	-- title|artist same as nil — two sources that both lack a track_id must
+	-- not compare as "the same track" via empty-string equality.
+	---@param state MediaState
+	---@return string
 	local function identity(state)
-		return (state.title or "") .. "|" .. (state.artist or "")
+		if state.track_id ~= nil and state.track_id ~= "" then
+			return "id:" .. state.track_id
+		end
+		return "ta:" .. (state.title or "") .. "|" .. (state.artist or "")
 	end
 
 	--- Returns true if the source's app is currently visible on the active screen.

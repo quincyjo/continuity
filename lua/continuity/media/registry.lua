@@ -88,9 +88,21 @@ function registry.new()
 		on_playback_action_cbs = {},
 	}
 
-	-- Fields whose change signals a track boundary; stale state is cleared on change.
+	-- Fallback fields checked for a track boundary when track_id is absent on
+	-- both sides of the update; stale state is cleared on change.
 	---@type string[]
-	local BOUNDARY_FIELDS = { "track_id", "uri", "title", "artist" }
+	local FALLBACK_BOUNDARY_FIELDS = { "uri", "title", "artist" }
+
+	-- "" is a backend's absent-track_id sentinel, not a real identity; treat it as
+	-- nil so two sources that both lack a track_id don't compare as "the same track".
+	---@param id string?
+	---@return string?
+	local function normalize_track_id(id)
+		if id == "" then
+			return nil
+		end
+		return id
+	end
 
 	---@param partial_state MediaState
 	---@param flags PlaybackFlags?
@@ -318,23 +330,43 @@ function registry.new()
 		end
 
 		-- Playback boundary detection: clear stale state when track identity changes.
-		for _, field in ipairs(BOUNDARY_FIELDS) do
-			if
-				partial_state[field] ~= nil
-				and source.state[field] ~= nil
-				and partial_state[field] ~= source.state[field]
-			then
-				-- Keep non-track state, clear track state.
-				-- TODO: Consider splitting track data into state.track or state.metadata?
-				-- This is a breaking change, so needs to be carefully considered.
-				source.state = {
-					status = source.state.status,
-					volume = source.state.volume,
-					shuffle = source.state.shuffle,
-					loop = source.state.loop,
-				}
-				break
+		-- track_id is authoritative when THIS update reports a real (normalized
+		-- non-nil) one: it alone decides, so a changed title/artist alone (e.g.
+		-- live-stream metadata) is not a boundary when track_id stayed the same,
+		-- and a track_id appearing where there was none is always a boundary.
+		-- partial_state.track_id is nil when this (partial) update simply didn't
+		-- include track_id at all (e.g. a position/status-only update) rather not a
+		-- signal about the track's identity either way. It's "" when the update DID
+		-- report Metadata but the backend has no track_id to give (the sentinel
+		-- normalized in the MPRIS backend). Both are treated as non-authoritative here.
+		local new_id = normalize_track_id(partial_state.track_id)
+		local is_boundary
+		if new_id ~= nil then
+			is_boundary = normalize_track_id(source.state.track_id) ~= new_id
+		else
+			is_boundary = false
+			for _, field in ipairs(FALLBACK_BOUNDARY_FIELDS) do
+				if
+					partial_state[field] ~= nil
+					and source.state[field] ~= nil
+					and partial_state[field] ~= source.state[field]
+				then
+					is_boundary = true
+					break
+				end
 			end
+		end
+
+		if is_boundary then
+			-- Keep non-track state, clear track state.
+			-- TODO: Consider splitting track data into state.track or state.metadata?
+			-- This would be a breaking change, so needs to be carefully considered.
+			source.state = {
+				status = source.state.status,
+				volume = source.state.volume,
+				shuffle = source.state.shuffle,
+				loop = source.state.loop,
+			}
 		end
 
 		-- Update the source's media state.
