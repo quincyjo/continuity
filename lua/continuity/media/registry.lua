@@ -20,8 +20,7 @@
 ---@field seek          fun(source_id: string, offset_seconds: number)
 ---@field set_position  fun(source_id: string, pos_seconds: number)
 
----@class PositionCapability   -- backend executor; one per backend instance; takes source_id
----@field subscribe fun(source_id: string, cb: fun(pos: number)): fun()
+---@class PositionCapability : Subscribable<number>
 ---@field get       fun(source_id: string, cb: fun(pos: number|nil))
 
 ---@class VolumeCapability   -- backend executor; one per backend instance; takes source_id
@@ -48,13 +47,18 @@
 ---@field on_playback_action fun(cb: fun(source: MediaSource, action: PlaybackAction)): fun()
 ---@field PlaybackAction     table<string, PlaybackAction>
 
-local class = require("continuity.class")
-local Subscribable = require("continuity.class.subscribable")
-local Removable = require("continuity.class.removable")
 local Controllable = require("continuity.class.controllable")
 local Observable = require("continuity.observable")
+local Removable = require("continuity.class.removable")
+local Subscribable = require("continuity.class.subscribable")
+local class = require("continuity.class")
 
 local MediaSource = class.new("MediaSource"):with(Subscribable):with(Removable):with(Controllable)({
+	teardown = function(inst)
+		if inst.position then
+			class.of(inst.position).teardown(inst.position)
+		end
+	end,
 	methods = {
 		active = function(self)
 			return self.state.title ~= nil or self.state.status == "playing"
@@ -82,9 +86,7 @@ registry.PlaybackAction = {
 function registry.new()
 	local state = {
 		pre_mute_volumes = {}, -- source_id -> volume before muting
-		position_cbs = {}, -- source_id -> fun(pos: number)[]
 		source_capapabilities = {}, -- source_id -> SourceCapabilities
-		position_stop_fns = {}, -- source_id -> stop_fn (from capabilities.position.subscribe)
 		on_playback_action_cbs = {},
 	}
 
@@ -109,18 +111,6 @@ function registry.new()
 		return true -- single key "position"
 	end
 
-	---@param source_id string
-	---@param pos number
-	local function fire_position(source_id, pos)
-		local cbs = state.position_cbs[source_id]
-		if not cbs then
-			return
-		end
-		for _, cb in ipairs(cbs) do
-			cb(pos)
-		end
-	end
-
 	local r = Observable({
 		PlaybackAction = registry.PlaybackAction,
 		---@param cb fun(source: MediaSource, action: PlaybackAction)
@@ -136,6 +126,61 @@ function registry.new()
 				end
 			end
 		end,
+	})
+
+	local Position = class.new("MediaSourcePosition"):extends(Subscribable)({
+		teardown = function(inst)
+			if inst._stop then
+				inst._stop()
+				inst._stop = nil
+			end
+		end,
+		methods = {
+			_ensure_position_monitoring = function(self)
+				if not self._stop then
+					local c = state.source_capapabilities[self._source_id]
+					if c and c.position and c.position.subscribe then
+						self._stop = c.position.subscribe(self._source_id, function(pos)
+							local src = r:get(self._source_id)
+							if src then
+								src.state.position = pos
+								self:push(pos)
+							end
+						end)
+					end
+				end
+			end,
+			subscribe = function(self, cb)
+				self:_ensure_position_monitoring()
+				local unsub = self._subs:add(cb)
+				return function()
+					unsub()
+					if self._subs.is_empty and self._stop then
+						self._stop()
+						self._stop = nil
+					end
+				end
+			end,
+			weak_subscribe = function(self, cb)
+				self:_ensure_position_monitoring()
+				local unsub = self._subs:weak_add(cb)
+				return function()
+					unsub()
+					if self._subs.is_empty and self._stop then
+						self._stop()
+						self._stop = nil
+					end
+				end
+			end,
+			get = function(self, cb)
+				local c = state.source_capapabilities[self._source_id]
+				if c and c.position and c.position.get then
+					c.position.get(self._source_id, cb)
+				else
+					cb(nil)
+				end
+			end,
+		},
 	})
 
 	---@param source_id string
@@ -231,75 +276,24 @@ function registry.new()
 	---@param capabilities? SourceCapabilities
 	---@param app_name? string
 	local function register_source(source_id, name, initial_state, capabilities, app_name, app_icon)
+		if capabilities then
+			state.source_capapabilities[source_id] = capabilities
+		end
+
 		local source = MediaSource.new({
 			id = source_id,
 			name = name,
 			state = initial_state or {},
 			app_name = app_name,
 			app_icon = app_icon,
+			position = Position.new({ _source_id = source_id }),
+			playback = capabilities
+					and capabilities.playback
+					and capabilities.flags
+					and capabilities.flags.can_control ~= false
+					and make_playback(source_id, capabilities.playback, capabilities.flags, capabilities.volume)
+				or nil,
 		})
-
-		if capabilities then
-			state.source_capapabilities[source_id] = capabilities
-		end
-
-		source.position = {
-			subscribe = function(_, cb)
-				if not state.position_cbs[source_id] then
-					state.position_cbs[source_id] = {}
-				end
-				local cbs = state.position_cbs[source_id]
-				cbs[#cbs + 1] = cb
-				if #cbs == 1 then
-					local c = state.source_capapabilities[source_id]
-					if c and c.position and c.position.subscribe then
-						local stop = c.position.subscribe(source_id, function(pos)
-							local src = r:get(source_id)
-							if src then
-								src.state.position = pos
-								fire_position(source_id, pos)
-							end
-						end)
-						state.position_stop_fns[source_id] = stop
-					end
-				end
-				return function()
-					for i = #cbs, 1, -1 do
-						if cbs[i] == cb then
-							table.remove(cbs, i)
-							break
-						end
-					end
-					if #cbs == 0 then
-						local stop = state.position_stop_fns[source_id]
-						if stop then
-							stop()
-							state.position_stop_fns[source_id] = nil
-						end
-					end
-				end
-			end,
-
-			get = function(_, cb)
-				local c = state.source_capapabilities[source_id]
-				if c and c.position and c.position.get then
-					c.position.get(source_id, cb)
-				else
-					cb(nil)
-				end
-			end,
-		}
-
-		if
-			capabilities
-			and capabilities.playback
-			and capabilities.flags
-			and capabilities.flags.can_control ~= false
-		then
-			source.playback = make_playback(source_id, capabilities.playback, capabilities.flags, capabilities.volume)
-		else
-			source.playback = nil
-		end
 
 		r:add(source)
 	end
@@ -376,7 +370,7 @@ function registry.new()
 		local pos_only = false
 		if partial_state.position ~= nil then
 			pos_only = is_position_only(partial_state, flags)
-			fire_position(source_id, partial_state.position)
+			source.position:push(partial_state.position)
 		end
 
 		-- Material change: Observable fires per-source _subs and collection on_updated callbacks.
@@ -390,15 +384,6 @@ function registry.new()
 		if not r.items[source_id] then
 			return
 		end
-		-- Stop position subscription before Observable clears the item.
-		if state.position_cbs[source_id] and #state.position_cbs[source_id] > 0 then
-			local stop = state.position_stop_fns[source_id]
-			if stop then
-				stop()
-			end
-		end
-		state.position_cbs[source_id] = nil
-		state.position_stop_fns[source_id] = nil
 		state.source_capapabilities[source_id] = nil
 		state.pre_mute_volumes[source_id] = nil
 		r:remove(source_id)
