@@ -1,7 +1,7 @@
 require("spec.support.awesome_mocks")
 
-local gears = require("gears")
 local DebouncedSubscriptions = require("continuity.util.subscriptions.debounced")
+local gears = require("gears")
 
 describe("DebouncedSubscriptions", function()
 	local debounced

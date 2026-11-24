@@ -2,6 +2,7 @@
 ---@field add      fun(self, cb: T): fun() Registers a callback.
 ---@field weak_add fun(self, cb: T): fun() Registers callback weakly.
 ---@field fire     fun(self, ...)          Fire a debounced event.
+---@field cancel   fun(self) Cancel all debounced events.
 
 ---@diagnostic disable: deprecated
 local unpack = unpack or table.unpack
@@ -29,6 +30,9 @@ DebouncedSubscriptions.MT = {
 		fire = function(self, ...)
 			self._event = { ... }
 			self._timer:again()
+		end,
+		cancel = function(self)
+			self._timer:stop()
 		end,
 	},
 }

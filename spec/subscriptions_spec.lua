@@ -366,4 +366,74 @@ describe("Subscriptions", function()
 			assert.equals(1, count)
 		end)
 	end)
+
+	describe("teardown", function()
+		local gears
+
+		before_each(function()
+			gears = require("gears")
+			gears._created = {}
+		end)
+
+		it("is a static dot-call, not an instance method", function()
+			local subs = Subscriptions()
+			assert.is_nil(subs.teardown)
+			assert.is_function(Subscriptions.teardown)
+		end)
+
+		it("drops strong subscriptions so fire no longer calls them", function()
+			local subs = Subscriptions()
+			local count = 0
+			subs:add(function()
+				count = count + 1
+			end)
+			Subscriptions.teardown(subs)
+			subs:fire()
+			assert.equals(0, count)
+		end)
+
+		it("drops weak subscriptions so fire no longer calls them", function()
+			local subs = Subscriptions()
+			local count = 0
+			local cb = function()
+				count = count + 1
+			end
+			subs:weak_add(cb)
+			Subscriptions.teardown(subs)
+			subs:fire()
+			assert.equals(0, count)
+		end)
+
+		it("stops pending debounced timers", function()
+			local subs = Subscriptions()
+			subs:add(function() end, { debounce = 0.3 })
+			subs:fire("x")
+			Subscriptions.teardown(subs)
+			assert.is_true(gears._created[1].stopped)
+		end)
+
+		it("a debounced callback never fires after teardown", function()
+			local subs = Subscriptions()
+			local called = false
+			subs:add(function()
+				called = true
+			end, { debounce = 0.3 })
+			subs:fire("x")
+			Subscriptions.teardown(subs)
+			gears._created[1]:fire()
+			assert.is_false(called)
+		end)
+
+		it("leaves the instance reusable for new subscriptions", function()
+			local subs = Subscriptions()
+			subs:add(function() end)
+			Subscriptions.teardown(subs)
+			local count = 0
+			subs:add(function()
+				count = count + 1
+			end)
+			subs:fire()
+			assert.equals(1, count)
+		end)
+	end)
 end)

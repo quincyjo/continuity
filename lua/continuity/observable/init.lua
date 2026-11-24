@@ -21,8 +21,8 @@
 ---@field update fun(self: Observable<T>, id: string, state: S): boolean
 ---@field remove fun(self: Observable<T>, id: string): T|nil
 
+local class = require("continuity.class")
 local gears = require("gears")
-local Subscribable = require("continuity.class.subscribable")
 local Subscriptions = require("continuity.util.subscriptions")
 
 ---@generic T
@@ -177,8 +177,7 @@ Observable.MT = {
 				end
 				self._debounced_timers_updated[id] = nil
 			end
-			item:remove_event(id)
-			Subscribable.init(item)
+			class.of(item).teardown(item)
 			self.items[id] = nil
 			self._on_removed_cbs:fire(id)
 			return item
