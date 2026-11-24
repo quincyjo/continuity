@@ -311,6 +311,44 @@ describe("Subscriptions", function()
 			assert.equals(2, #gears._created)
 		end)
 
+		it("pool entry removed eagerly on last unsub; re-subscribe creates a new timer", function()
+			local subs = Subscriptions()
+			local unsub = subs:add(function() end, { debounce = 0.3 })
+			unsub()
+			subs:add(function() end, { debounce = 0.3 })
+			assert.equals(2, #gears._created)
+		end)
+
+		it("is_empty is true immediately after the last debounced unsub", function()
+			local subs = Subscriptions()
+			local unsub = subs:add(function() end, { debounce = 0.3 })
+			assert.is_false(subs.is_empty)
+			assert.is_true(subs.non_empty)
+			unsub()
+			assert.is_true(subs.is_empty)
+			assert.is_false(subs.non_empty)
+		end)
+
+		it("is_empty is true when a lingering pool's only weak cb was GC'd", function()
+			local subs = Subscriptions()
+			local cb = function() end
+			subs:weak_add(cb, { debounce = 0.3 })
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			-- The pool is still registered (no unsub, no timer fire), but holds no live cbs.
+			assert.is_true(subs.is_empty)
+			assert.is_false(subs.non_empty)
+		end)
+
+		it("is_empty stays false while one of several debounce pools has a subscriber", function()
+			local subs = Subscriptions()
+			local unsub = subs:add(function() end, { debounce = 0.3 })
+			subs:add(function() end, { debounce = 0.5 })
+			unsub()
+			assert.is_false(subs.is_empty)
+			assert.is_true(subs.non_empty)
+		end)
+
 		it("weak_add with debounce fires cb via timer while cb is alive", function()
 			local subs = Subscriptions()
 			local called = false

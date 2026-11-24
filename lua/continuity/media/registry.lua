@@ -20,7 +20,8 @@
 ---@field seek          fun(source_id: string, offset_seconds: number)
 ---@field set_position  fun(source_id: string, pos_seconds: number)
 
----@class PositionCapability : Subscribable<number>
+---@class PositionCapability   -- backend executor; one per backend instance; takes source_id
+---@field subscribe fun(source_id: string, cb: fun(pos: number)): fun()
 ---@field get       fun(source_id: string, cb: fun(pos: number|nil))
 
 ---@class VolumeCapability   -- backend executor; one per backend instance; takes source_id
@@ -150,9 +151,9 @@ function registry.new()
 					end
 				end
 			end,
-			subscribe = function(self, cb)
+			subscribe = function(self, cb, opts)
 				self:_ensure_position_monitoring()
-				local unsub = self._subs:add(cb)
+				local unsub = self._subs:add(cb, opts)
 				return function()
 					unsub()
 					if self._subs.is_empty and self._stop then
@@ -161,9 +162,9 @@ function registry.new()
 					end
 				end
 			end,
-			weak_subscribe = function(self, cb)
+			weak_subscribe = function(self, cb, opts)
 				self:_ensure_position_monitoring()
-				local unsub = self._subs:weak_add(cb)
+				local unsub = self._subs:weak_add(cb, opts)
 				return function()
 					unsub()
 					if self._subs.is_empty and self._stop then

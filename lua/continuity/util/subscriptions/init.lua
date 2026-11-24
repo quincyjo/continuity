@@ -82,10 +82,18 @@ Subscriptions = class.new("Subscriptions")({
 	},
 	getters = {
 		is_empty = function(self)
-			return not next(self._strong) and not next(self._weak) and not next(self._debounced)
+			if next(self._strong) or next(self._weak) then
+				return false
+			end
+			for _, debounced in pairs(self._debounced) do
+				if debounced.non_empty then
+					return false
+				end
+			end
+			return true
 		end,
 		non_empty = function(self)
-			return not not (next(self._strong) or next(self._weak) or next(self._debounced))
+			return not self.is_empty
 		end,
 	},
 })

@@ -138,11 +138,42 @@ describe("DebouncedSubscriptions", function()
 			assert.equals(0, when_empty_calls)
 		end)
 
-		it("is called after the last subscriber unsubscribes and timer fires", function()
+		it("is called immediately when the last strong subscriber unsubscribes", function()
 			local unsub = debounced:add(function() end)
 			unsub()
+			assert.equals(1, when_empty_calls)
+		end)
+
+		it("is called immediately when the last weak subscriber unsubscribes", function()
+			local cb = function() end
+			local unsub = debounced:weak_add(cb)
+			unsub()
+			assert.equals(1, when_empty_calls)
+		end)
+
+		it("is not called while another subscriber remains", function()
+			local unsub = debounced:add(function() end)
+			debounced:add(function() end)
+			unsub()
+			assert.equals(0, when_empty_calls)
+		end)
+
+		it("is not called again by a repeated unsub", function()
+			local unsub = debounced:add(function() end)
+			unsub()
+			unsub()
+			assert.equals(1, when_empty_calls)
+		end)
+
+		it("last unsub stops a pending timer so it does not fire", function()
+			local called = false
+			local unsub = debounced:add(function()
+				called = true
+			end)
 			debounced:fire("x")
+			unsub()
 			timer():fire()
+			assert.is_false(called)
 			assert.equals(1, when_empty_calls)
 		end)
 
@@ -153,6 +184,43 @@ describe("DebouncedSubscriptions", function()
 			timer():fire()
 			assert.equals(0, when_empty_calls)
 			cb = nil -- luacheck: ignore
+		end)
+	end)
+
+	describe("is_empty / non_empty", function()
+		it("is empty with no subscribers", function()
+			assert.is_true(debounced.is_empty)
+			assert.is_false(debounced.non_empty)
+		end)
+
+		it("is non-empty with a strong subscriber", function()
+			debounced:add(function() end)
+			assert.is_false(debounced.is_empty)
+			assert.is_true(debounced.non_empty)
+		end)
+
+		it("is non-empty with a live weak subscriber", function()
+			local cb = function() end
+			debounced:weak_add(cb)
+			assert.is_false(debounced.is_empty)
+			assert.is_true(debounced.non_empty)
+			cb = nil -- luacheck: ignore
+		end)
+
+		it("is empty again after the last subscriber unsubscribes", function()
+			local unsub = debounced:add(function() end)
+			unsub()
+			assert.is_true(debounced.is_empty)
+			assert.is_false(debounced.non_empty)
+		end)
+
+		it("is empty once its only weak subscriber is GC'd", function()
+			local cb = function() end
+			debounced:weak_add(cb)
+			cb = nil -- luacheck: ignore
+			collectgarbage("collect")
+			assert.is_true(debounced.is_empty)
+			assert.is_false(debounced.non_empty)
 		end)
 	end)
 end)
