@@ -13,6 +13,9 @@ local Controllable = class.new("Controllable")({
 	init = function(inst)
 		inst._control_cbs = Subscriptions()
 	end,
+	teardown = function(inst)
+		Subscriptions.teardown(inst._control_cbs)
+	end,
 	methods = {
 		on_control = function(self, cb, opts)
 			return self._control_cbs:add(cb, opts)

@@ -53,9 +53,8 @@ local notification_mod = require("continuity.media.notification")
 ---@field seek            fun(self, offset_seconds: number)
 ---@field set_position    fun(self, pos_seconds: number)
 
----@class Position             -- consumer-facing; constructed by registry; closed over source_id
----@field subscribe fun(self, cb: fun(pos: number)): fun()
----@field get       fun(self, cb: fun(pos: number|nil))
+---@class Position : Subscribable<number>
+---@field get fun(self, cb: fun(pos: number|nil))
 
 ---@class MediaSource : Subscribable<MediaState>, Controllable<MediaState>, Removable
 ---@field id            string

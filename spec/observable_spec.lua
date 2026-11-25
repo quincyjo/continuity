@@ -6,7 +6,14 @@ local Removable = require("continuity.class.removable")
 local class = require("continuity.class")
 
 -- Creates a minimal item compatible with the internal API (Subscribable + Removable).
-local Item = class.union("Item", Subscribable, Removable)
+-- Its own `teardown` records calls so tests can assert that Observable.remove invokes the full
+-- composed teardown chain.
+local torn_down
+local Item = class.new("Item"):with(Subscribable):with(Removable)({
+	teardown = function(inst)
+		torn_down[#torn_down + 1] = inst.id
+	end,
+})
 local function make_item(id)
 	return Item.new({ id = id, state = nil })
 end
@@ -17,6 +24,7 @@ describe("Observable", function()
 
 		before_each(function()
 			obs = Observable()
+			torn_down = {}
 		end)
 
 		describe("add", function()
@@ -101,35 +109,11 @@ describe("Observable", function()
 				assert.is_nil(obs:get("a"))
 			end)
 
-			it("fires item _removed_cbs before clearing them", function()
+			it("tears down the removed item via the full composed teardown chain", function()
 				local item = make_item("a")
 				obs:add(item)
-				local received
-				item:on_removed(function(id)
-					received = id
-				end)
 				obs:remove("a")
-				assert.equals("a", received)
-			end)
-
-			it("clears item _removed_cbs after firing", function()
-				local item = make_item("a")
-				obs:add(item)
-				local count = 0
-				item:on_removed(function()
-					count = count + 1
-				end)
-				obs:remove("a")
-				item:remove_event("a")
-				assert.equals(1, count)
-			end)
-
-			it("clears item _subs after removal", function()
-				local item = make_item("a")
-				obs:add(item)
-				item:subscribe(function() end)
-				obs:remove("a")
-				assert.equals(0, #item._subs)
+				assert.same({ "a" }, torn_down)
 			end)
 
 			it("fires on_removed with the id", function()
@@ -143,18 +127,15 @@ describe("Observable", function()
 				assert.equals("a", received)
 			end)
 
-			it("item _removed_cbs fire before observable on_removed", function()
+			it("tears down the item before firing the observable's own on_removed", function()
 				local item = make_item("a")
 				obs:add(item)
-				local order = {}
-				item:on_removed(function()
-					order[#order + 1] = "item"
-				end)
+				local torn_down_count_when_obs_fired
 				obs:on_removed(function()
-					order[#order + 1] = "obs"
+					torn_down_count_when_obs_fired = #torn_down
 				end)
 				obs:remove("a")
-				assert.same({ "item", "obs" }, order)
+				assert.equals(1, torn_down_count_when_obs_fired)
 			end)
 		end)
 

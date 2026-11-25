@@ -122,7 +122,7 @@ media.sources:on_updated(function(source) ... end, { debounce = 0.1 })
 media.sources:on_added(function(source)
     -- Note that the source subscription receives the state, not the whole source.
     local unsub = source:subscribe(function(state) ... end, { debounce = 0.1 })
-    local stop_pos = source.state.position:subscribe(function(pos) ... end)
+    local stop_pos = source.position:subscribe(function(pos) ... end)
     source:on_removed(functino()
         unsub()
         stop_pos()
@@ -136,12 +136,12 @@ Depending on the backend(s) backing a given source, the playback position may or
 may not be updated regularly, which means `source.state.position` may not be
 accurate at read time. To this end, position has an independent lifecycle. Pure
 position updates do not update source update subscribers via either
-`on_source_update` or `source:subscribe`. Instead, the `source.position`
+`sources:on_updated` or `source:subscribe`. Instead, the `source.position`
 handle may be used to request authoritative playback position.
 
 `source.position:get` fetches the current playback position once
 asynchronously, while `source.position:subscribe` informs the preferred
-position capable backend to being observing playback position updates which will
+position capable backend to begin observing playback position updates which will
 be delivered to position subscribers.
 
 ```lua

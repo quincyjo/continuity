@@ -16,6 +16,9 @@ Subscribable = class.new("Subscribable")({
 	init = function(inst)
 		inst._subs = Subscriptions()
 	end,
+	teardown = function(inst)
+		Subscriptions.teardown(inst._subs)
+	end,
 	methods = {
 		subscribe = function(self, cb, opts)
 			return self._subs:add(cb, opts)

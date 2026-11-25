@@ -210,6 +210,30 @@ describe("Subscribable", function()
 		end)
 	end)
 
+	describe("teardown", function()
+		it("drops existing subscribers", function()
+			local inst = Subscribable({})
+			local count = 0
+			inst:subscribe(function()
+				count = count + 1
+			end)
+			Subscribable.teardown(inst)
+			inst:push("x")
+			assert.equals(0, count)
+		end)
+
+		it("leaves the instance reusable for new subscriptions", function()
+			local inst = Subscribable({})
+			Subscribable.teardown(inst)
+			local count = 0
+			inst:subscribe(function()
+				count = count + 1
+			end)
+			inst:push("x")
+			assert.equals(1, count)
+		end)
+	end)
+
 	describe("weak_subscribe", function()
 		it("calls the callback on push while the callback is held", function()
 			local inst = Subscribable({})

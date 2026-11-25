@@ -1,14 +1,16 @@
 ---@class CombinableClass<T>
----@field name  string
----@field init  fun(inst?: table): table
----@field new   fun(inst?: table): T
+---@field name     string
+---@field init     fun(inst?: table): table
+---@field teardown fun(inst: table)
+---@field new      fun(inst?: table): T
 ---@field private _methods table<string, function>
 ---@field private _getters table<string, function>
 
 ---@class ClassSpec<T>
----@field methods? table<string, fun(self: T, ...): any>
----@field getters? table<string, fun(self: T, ...): any>
----@field init?    fun(inst: table)
+---@field methods?  table<string, fun(self: T, ...): any>
+---@field getters?  table<string, fun(self: T, ...): any>
+---@field init?     fun(inst: table)
+---@field teardown? fun(inst: table)
 
 ---@class ClassBuilder
 ---@field extends fun(self: ClassBuilder, base: CombinableClass): ClassBuilder
@@ -21,6 +23,7 @@
 ---@field readyaware   CombinableClass<ReadyAware>
 ---@field removable    CombinableClass<Removable>
 ---@field subscribable CombinableClass<Subscribable>
+---@field of           fun(inst: table): CombinableClass?
 local Class = setmetatable({}, {
 	__index = function(self, k)
 		local mod = require("continuity.class." .. k)
@@ -39,6 +42,7 @@ local function finalize(chain, name, spec)
 	local own_methods = spec and spec.methods or {}
 	local own_getters = spec and spec.getters or {}
 	local own_init = spec and spec.init
+	local own_teardown = spec and spec.teardown
 
 	local methods = {}
 	local getters = {}
@@ -82,6 +86,13 @@ local function finalize(chain, name, spec)
 		base_inits[#base_inits + 1] = cls.init
 	end
 
+	-- Walked forward (opposite of base_inits' reverse-push order) so that, combined with
+	-- own_teardown running first, teardown unwinds in the exact reverse of init's order.
+	local base_teardowns = {}
+	for i = 1, #chain do
+		base_teardowns[#base_teardowns + 1] = chain[i].cls.teardown
+	end
+
 	local full_init
 	if #base_inits > 0 or own_init then
 		full_init = function(inst)
@@ -100,6 +111,15 @@ local function finalize(chain, name, spec)
 		end
 	end
 
+	local full_teardown = function(inst)
+		if own_teardown then
+			own_teardown(inst)
+		end
+		for _, teardown_fn in ipairs(base_teardowns) do
+			teardown_fn(inst)
+		end
+	end
+
 	local _MT = {
 		__index = function(inst, k)
 			return methods[k] or (getters[k] and getters[k](inst))
@@ -108,12 +128,15 @@ local function finalize(chain, name, spec)
 	local result = {
 		name = name,
 		init = full_init,
+		teardown = full_teardown,
 		_methods = methods,
 		_getters = getters,
 		_MT = _MT,
 	}
 	result.new = function(inst)
-		return setmetatable(result.init(inst), _MT)
+		inst = result.init(inst)
+		inst._class = result
+		return setmetatable(inst, _MT)
 	end
 	return setmetatable(result, {
 		__call = function(_, inst)
@@ -145,6 +168,13 @@ function Class.new(name)
 		name = name,
 		_chain = {},
 	}, BuilderMT)
+end
+
+--- Resolves the finalized class table for an instance, if it has one.
+---@param inst table
+---@return CombinableClass?
+function Class.of(inst)
+	return inst._class
 end
 
 --- Pure composition from existing classes. All args are treated as mixins (no conflicts allowed).

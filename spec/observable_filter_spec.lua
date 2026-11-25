@@ -1,5 +1,6 @@
 require("spec.support.awesome_mocks")
 
+local class = require("continuity.class")
 local support = require("spec.support.make_observable")
 local make_item = support.make_item
 local make_observable = support.make_observable
@@ -192,7 +193,7 @@ describe("Observable", function()
 				item_a:on_removed(function()
 					fired = true
 				end)
-				item_a:remove_event("a")
+				class.of(item_a).teardown(item_a)
 				assert.is_true(fired)
 			end)
 		end)
