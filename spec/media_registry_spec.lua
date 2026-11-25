@@ -348,6 +348,62 @@ describe("registry", function()
 			assert.is_true(spy.stop_called)
 		end)
 
+		it("subscribe forwards opts: debounced listener fires only via timer", function()
+			local gears = require("gears")
+			gears._created = {}
+			local caps, spy = make_position_caps()
+			registrar.add("src:1", "source", {}, caps)
+			local source = reg:all()[1]
+			local received
+			source.position:subscribe(function(p)
+				received = p
+			end, { debounce = 0.3 })
+			spy.position_cb(12.5)
+			assert.is_nil(received)
+			gears._created[#gears._created]:fire()
+			assert.is_near(12.5, received, 0.001)
+		end)
+
+		it("weak_subscribe forwards opts: debounced listener fires only via timer", function()
+			local gears = require("gears")
+			gears._created = {}
+			local caps, spy = make_position_caps()
+			registrar.add("src:1", "source", {}, caps)
+			local source = reg:all()[1]
+			local received
+			local cb = function(p)
+				received = p
+			end
+			source.position:weak_subscribe(cb, { debounce = 0.3 })
+			spy.position_cb(7.0)
+			assert.is_nil(received)
+			gears._created[#gears._created]:fire()
+			assert.is_near(7.0, received, 0.001)
+			cb = nil -- luacheck: ignore
+		end)
+
+		it("caps stop_fn called when last debounced listener removed", function()
+			local caps, spy = make_position_caps()
+			registrar.add("src:1", "source", {}, caps)
+			local source = reg:all()[1]
+			local stop = source.position:subscribe(function() end, { debounce = 0.3 })
+			spy.position_cb(1.0)
+			stop()
+			assert.is_true(spy.stop_called)
+		end)
+
+		it("caps stop_fn not called while a debounced listener remains", function()
+			local caps, spy = make_position_caps()
+			registrar.add("src:1", "source", {}, caps)
+			local source = reg:all()[1]
+			local stop1 = source.position:subscribe(function() end)
+			local stop2 = source.position:subscribe(function() end, { debounce = 0.3 })
+			stop1()
+			assert.is_false(spy.stop_called)
+			stop2()
+			assert.is_true(spy.stop_called)
+		end)
+
 		it("caps stop_fn called when source removed with active listener", function()
 			local caps, spy = make_position_caps()
 			registrar.add("src:1", "source", {}, caps)
@@ -355,6 +411,35 @@ describe("registry", function()
 			source.position:subscribe(function() end)
 			registrar.remove("src:1")
 			assert.is_true(spy.stop_called)
+		end)
+
+		it("removing a source that never subscribed to position does not error", function()
+			local caps = make_position_caps()
+			registrar.add("src:1", "source", {}, caps)
+			assert.has_no.errors(function()
+				registrar.remove("src:1")
+			end)
+		end)
+
+		it("removing one source's position subscription does not affect another's", function()
+			local caps1, spy1 = make_position_caps()
+			local caps2, spy2 = make_position_caps()
+			registrar.add("src:1", "source", {}, caps1)
+			registrar.add("src:2", "source", {}, caps2)
+			local source1 = reg:get("src:1")
+			local source2 = reg:get("src:2")
+			source1.position:subscribe(function() end)
+			local received2
+			source2.position:subscribe(function(p)
+				received2 = p
+			end)
+
+			registrar.remove("src:1")
+			assert.is_true(spy1.stop_called)
+			assert.is_false(spy2.stop_called)
+
+			spy2.position_cb(5.0)
+			assert.is_near(5.0, received2, 0.001)
 		end)
 
 		it("position.subscribe cb receives pos only (not source)", function()

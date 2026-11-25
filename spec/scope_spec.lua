@@ -1,10 +1,10 @@
 require("spec.support.awesome_mocks")
 
-local Scope = require("continuity.util.scope")
-local Subscribable = require("continuity.class.subscribable")
-local Removable = require("continuity.class.removable")
 local Controllable = require("continuity.class.controllable")
 local Observable = require("continuity.observable")
+local Removable = require("continuity.class.removable")
+local Scope = require("continuity.util.scope")
+local Subscribable = require("continuity.class.subscribable")
 local support = require("spec.support.make_observable")
 local make_item = support.make_item
 
@@ -39,8 +39,8 @@ local function make_subscribable()
 	return Subscribable({})
 end
 
-local function make_removable()
-	return Removable({})
+local function make_removable(id)
+	return Removable({ id = id })
 end
 
 local function make_controllable()
@@ -120,24 +120,24 @@ describe("Scope", function()
 	describe("on_removed (Removable) via __call", function()
 		it("callback fires while scope is alive", function()
 			local scope = Scope()
-			local item = make_removable()
+			local item = make_removable("dev-1")
 			local received
 			scope(item:on_removed(function(id)
 				received = id
 			end))
-			item:remove_event("dev-1")
+			Removable.teardown(item)
 			assert.equals("dev-1", received)
 		end)
 
 		it("callback stops firing after dispose", function()
 			local scope = Scope()
-			local item = make_removable()
+			local item = make_removable("dev-1")
 			local count = 0
 			scope(item:on_removed(function()
 				count = count + 1
 			end))
 			scope:dispose()
-			item:remove_event("dev-1")
+			Removable.teardown(item)
 			assert.equals(0, count)
 		end)
 	end)

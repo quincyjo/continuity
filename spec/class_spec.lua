@@ -159,4 +159,82 @@ describe("class", function()
 			assert.equals("a", inst._a)
 		end)
 	end)
+
+	describe("teardown", function()
+		it("chains in reverse of init order: own teardown runs before base's", function()
+			local order = {}
+			local Base = class.new("Base")({
+				init = function()
+					order[#order + 1] = "base init"
+				end,
+				teardown = function()
+					order[#order + 1] = "base teardown"
+				end,
+			})
+			local Sub = class.new("Sub"):extends(Base)({
+				init = function()
+					order[#order + 1] = "sub init"
+				end,
+				teardown = function()
+					order[#order + 1] = "sub teardown"
+				end,
+			})
+			local inst = Sub.new()
+			Sub.teardown(inst)
+			assert.same({ "base init", "sub init", "sub teardown", "base teardown" }, order)
+		end)
+
+		it("is a safe no-op when nothing in the chain defines teardown", function()
+			local Combined = class.new("Combined"):with(ClassA)({})
+			local inst = Combined.new()
+			assert.has_no.errors(function()
+				Combined.teardown(inst)
+			end)
+		end)
+
+		it(":with chains teardown across multiple mixins", function()
+			local order = {}
+			local MixinA = class.new("MixinA")({
+				teardown = function()
+					order[#order + 1] = "mixin_a"
+				end,
+			})
+			local MixinB = class.new("MixinB")({
+				teardown = function()
+					order[#order + 1] = "mixin_b"
+				end,
+			})
+			local Combined = class.new("Combined"):with(MixinA):with(MixinB)({
+				teardown = function()
+					order[#order + 1] = "own"
+				end,
+			})
+			Combined.teardown(Combined.new())
+			assert.same({ "own", "mixin_a", "mixin_b" }, order)
+		end)
+	end)
+
+	describe("class.of", function()
+		it("resolves the finalized class table for an instance built via .new()", function()
+			local inst = ClassA.new()
+			assert.equals(ClassA, class.of(inst))
+		end)
+
+		it("lets generic code invoke the full composed teardown chain without knowing the concrete type", function()
+			local torn = {}
+			local Base = class.new("Base")({
+				teardown = function()
+					torn[#torn + 1] = "base"
+				end,
+			})
+			local Sub = class.new("Sub"):extends(Base)({
+				teardown = function()
+					torn[#torn + 1] = "sub"
+				end,
+			})
+			local inst = Sub.new()
+			class.of(inst).teardown(inst)
+			assert.same({ "sub", "base" }, torn)
+		end)
+	end)
 end)

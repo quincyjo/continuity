@@ -68,6 +68,30 @@ describe("Controllable", function()
 		assert.is_false(fired)
 	end)
 
+	describe("teardown", function()
+		it("drops existing subscribers", function()
+			local m = make()
+			local count = 0
+			m:on_control(function()
+				count = count + 1
+			end)
+			Controllable.teardown(m)
+			m:control_event({})
+			assert.equals(0, count)
+		end)
+
+		it("leaves the instance reusable for new subscriptions", function()
+			local m = make()
+			Controllable.teardown(m)
+			local count = 0
+			m:on_control(function()
+				count = count + 1
+			end)
+			m:control_event({})
+			assert.equals(1, count)
+		end)
+	end)
+
 	describe("debounce opts", function()
 		local gears
 
