@@ -189,6 +189,15 @@ method return time=1234567890.123456 sender=:1.42 -> destination=:1.100 serial=1
 			assert.equals("Album Artist", props["xesam:albumArtist"][1])
 		end)
 
+		it("defaults mpris:trackid to empty string when Metadata omits it", function()
+			-- `sample`'s Metadata block has no mpris:trackid entry. Normalizing
+			-- to "" (rather than leaving the key absent) distinguishes "this update
+			-- carries no usable track_id" from "the update didn't report Metadata
+			-- at all", matching parse_properties_changed's normalization.
+			local props = mpris._private.parse_dbus_output(sample)
+			assert.equals("", props["mpris:trackid"])
+		end)
+
 		it("parses title containing embedded double-quotes (unescaped dbus-send output)", function()
 			-- dbus-send does not escape " inside string values; the parser must
 			-- capture up to the last " on the line, not stop at the first inner one.

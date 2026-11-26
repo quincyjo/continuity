@@ -181,6 +181,72 @@ describe("notification", function()
 			assert.equals(2, #notifications_fired)
 		end)
 
+		it("does not fire again when title changes but track_id is unchanged (live-stream metadata)", function()
+			local mock_reg = make_mock_registry()
+			notification.new(mock_reg, nil)
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Stream Title A",
+				track_id = "/org/mpris/MediaPlayer2/Track/1",
+				status = "playing",
+			}))
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Stream Title B",
+				track_id = "/org/mpris/MediaPlayer2/Track/1",
+				status = "playing",
+			}))
+			assert.equals(1, #notifications_fired)
+		end)
+
+		it("fires again when track_id changes even if title is unchanged", function()
+			local mock_reg = make_mock_registry()
+			notification.new(mock_reg, nil)
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Same Title",
+				track_id = "/org/mpris/MediaPlayer2/Track/1",
+				status = "playing",
+			}))
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Same Title",
+				track_id = "/org/mpris/MediaPlayer2/Track/2",
+				status = "playing",
+			}))
+			assert.equals(2, #notifications_fired)
+		end)
+
+		it("fires again when title changes and track_id is the absent sentinel on both sides", function()
+			-- "" is the backend's absent-track_id sentinel, not a real identity;
+			-- two updates that both report "" must not be treated as the same
+			-- track just because the sentinels match.
+			local mock_reg = make_mock_registry()
+			notification.new(mock_reg, nil)
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Stream Title A",
+				track_id = "",
+				status = "playing",
+			}))
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Stream Title B",
+				track_id = "",
+				status = "playing",
+			}))
+			assert.equals(2, #notifications_fired)
+		end)
+
+		it("fires again when track_id appears where it was previously absent", function()
+			local mock_reg = make_mock_registry()
+			notification.new(mock_reg, nil)
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Same Title",
+				status = "playing",
+			}))
+			mock_reg.fire_updated(make_source("mpris:browser", {
+				title = "Same Title",
+				track_id = "/org/mpris/MediaPlayer2/Track/1",
+				status = "playing",
+			}))
+			assert.equals(2, #notifications_fired)
+		end)
+
 		it("does not fire when status is not playing", function()
 			local mock_reg = make_mock_registry()
 			notification.new(mock_reg, nil)

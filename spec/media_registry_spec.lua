@@ -539,6 +539,30 @@ describe("registry", function()
 			assert.is_nil(reg:all()[1].state.artist)
 		end)
 
+		it("does not clear when title changes but track_id is unchanged (live-stream metadata)", function()
+			registrar.add("src:2", "source", { title = "Song A", artist = "Artist", track_id = "/Track/1" })
+			registrar.update("src:2", { track_id = "/Track/1", title = "New Stream Title" })
+			local updated = reg:get("src:2")
+			assert.equals("Artist", updated.state.artist)
+			assert.equals("New Stream Title", updated.state.title)
+		end)
+
+		it('treats "" track_id as absent, not a real match, falling back to other fields', function()
+			-- \"\" is the backend's absent-track_id sentinel, not a real identity;
+			-- two updates that both report \"\" must not be treated as the same
+			-- track just because the sentinels match.
+			registrar.add("src:3", "source", { title = "Song A", artist = "Artist", track_id = "" })
+			registrar.update("src:3", { track_id = "", title = "Song B" })
+			local updated = reg:get("src:3")
+			assert.is_nil(updated.state.artist)
+			assert.equals("Song B", updated.state.title)
+		end)
+
+		it("clears stale state when track_id appears where it was previously absent", function()
+			registrar.update("src:1", { track_id = "/Track/1" })
+			assert.is_nil(reg:all()[1].state.artist)
+		end)
+
 		it("update clears stale state when artist changes", function()
 			registrar.update("src:1", { artist = "New Artist" })
 			-- title was set on add; after boundary clear it should be gone
